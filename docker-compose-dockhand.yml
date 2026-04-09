@@ -1,0 +1,22 @@
+services:
+  servermanager:
+    container_name: assetto-server-manager
+    build: .
+    volumes:
+      - ${APP_PATH:-./}assetocorsa:/corsa/:ro
+      - ${APP_PATH:-./}data:/appdata/:rw
+    ports:
+      3030:3030
+    networks:
+      - proxy
+    labels:
+      - "traefik.docker.network=proxy"
+      - "traefik.enable=true"
+      - "traefik.http.routers.assetto-server-manager-bridge.entrypoints=https"
+      - "traefik.http.routers.assetto-server-manager-bridge.rule=Host(`assetto-server-manager.chrispo.no`)"
+      - "traefik.http.routers.assetto-server-manager-bridge.tls=true"
+      - "traefik.http.services.assetto-server-manager-bridge.loadbalancer.server.port=3030"
+
+networks:
+  proxy:
+    external: true

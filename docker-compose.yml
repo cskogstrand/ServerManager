@@ -16,7 +16,7 @@ services:
       - "traefik.docker.network=proxy"
       - "traefik.enable=true"
       - "traefik.http.routers.assetto-server-manager-bridge.entrypoints=https"
-      - "traefik.http.routers.assetto-server-manager-bridge.rule=Host(`assetto-server-manager.chrispo.no`)"
+      - "traefik.http.routers.assetto-server-manager-bridge.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.assetto-server-manager-bridge.tls=true"
       - "traefik.http.services.assetto-server-manager-bridge.loadbalancer.server.port=3030"
 

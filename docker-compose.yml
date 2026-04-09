@@ -1,7 +1,10 @@
 services:
   servermanager:
     container_name: assetto-server-manager
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: build
     volumes:
       - ${APP_PATH:-./}/assetocorsa:/corsa/:ro
       - ${APP_PATH:-./}/data:/appdata/:rw

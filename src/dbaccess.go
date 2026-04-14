@@ -17,6 +17,13 @@ type Dbaccess struct {
 	db   *sql.DB
 }
 
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 func open(name string) Dbaccess {
 	db, err := sql.Open("sqlite3", "file:"+name+"?_foreign_keys=on")
 	if err != nil {
@@ -724,13 +731,18 @@ func (dba Dbaccess) insertEventCategory(categoryname string) (int64, error) {
 }
 
 func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_event_category SET name = ?, filled = 1 WHERE id = ?")
+	tx, err := dba.db.Begin()
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE user_event_category SET name = ?, filled = 1 WHERE id = ?")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 	res, err := stmt.Exec(&cat.Name, &cat.Id)
-	defer stmt.Close()
-
+	stmt.Close()
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -740,36 +752,89 @@ func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 		return -1, tracerr.Wrap(err)
 	}
 
-	stmt, err = dba.db.Prepare("DELETE FROM user_event WHERE event_category_id = ?")
-	if err != nil {
-		return -1, tracerr.Wrap(err)
-	}
-	_, err = stmt.Exec(cat.Id)
-	defer stmt.Close()
-
+	rows, err := tx.Query("SELECT id FROM user_event WHERE event_category_id = ?", cat.Id)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 
+	existing := make(map[int]struct{})
+	for rows.Next() {
+		var id int
+		err = rows.Scan(&id)
+		if err != nil {
+			rows.Close()
+			return -1, tracerr.Wrap(err)
+		}
+		existing[id] = struct{}{}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	seen := make(map[int]struct{})
 	for _, evt := range cat.Events {
+		trackKey := ""
+		trackConfig := ""
+		if evt.CacheTrack != nil {
+			track := strings.SplitN(*evt.CacheTrack, ":", 2)
+			trackKey = track[0]
+			if len(track) > 1 {
+				trackConfig = track[1]
+			}
+		} else {
+			trackKey = derefOrEmpty(evt.CacheTrackKey)
+			trackConfig = derefOrEmpty(evt.CacheTrackConfig)
+		}
 
-		track := strings.Split(*evt.CacheTrack, ":")
+		if evt.Id != nil {
+			if _, ok := existing[*evt.Id]; ok {
+				seen[*evt.Id] = struct{}{}
+				stmt, err = tx.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, race_laps = ?, strategy = ? WHERE id = ? AND event_category_id = ?")
+				if err != nil {
+					return -1, tracerr.Wrap(err)
+				}
+				_, err = stmt.Exec(trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy, evt.Id, cat.Id)
+				stmt.Close()
+				if err != nil {
+					return -1, tracerr.Wrap(err)
+				}
+				continue
+			}
+		}
 
-		stmt, err = dba.db.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err = tx.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-
-		_, err := stmt.Exec(&cat.Id, track[0], track[1], &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy)
-		defer stmt.Close()
-
+		_, err = stmt.Exec(cat.Id, trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy)
+		stmt.Close()
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
+	}
+
+	stmt, err = tx.Prepare("DELETE FROM user_event WHERE id = ? AND event_category_id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	for id := range existing {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		_, err = stmt.Exec(id, cat.Id)
+		if err != nil {
+			stmt.Close()
+			return -1, tracerr.Wrap(err)
+		}
+	}
+	stmt.Close()
+
+	if err := tx.Commit(); err != nil {
+		return -1, tracerr.Wrap(err)
 	}
 
 	return affected, nil
-
 }
 
 func (dba Dbaccess) deleteEventCategory(id int) (int64, error) {

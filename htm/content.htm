@@ -30,7 +30,7 @@
       csp_hidepit: {{ .form.CspHidepit | toJsBool}},
 
       csp_required_changed: function(val) {
-        if (val) {
+        if (!val) {
           this.csp_version = '';
           this.csp_phycars = false;
           this.csp_phytracks = false;

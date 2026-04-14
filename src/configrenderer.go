@@ -122,23 +122,27 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	cspstr := ""
 	cr.cspVersion = ""
 	cr.cspLetter = ""
-	if cfg.CspRequired != nil && *cfg.CspRequired > 0 {
+	if cfg.CspRequired != nil && *cfg.CspRequired > 0 && cfg.CspVersion != nil && *cfg.CspVersion > 0 {
 		Cr.cspRequired = true
 		cspLetter := ""
 
-		if *cfg.CspPhycars > 0 && *cfg.CspPhytracks > 0 && *cfg.CspHidepit > 0 {
+		cspPhycars := cfg.CspPhycars != nil && *cfg.CspPhycars > 0
+		cspPhytracks := cfg.CspPhytracks != nil && *cfg.CspPhytracks > 0
+		cspHidepit := cfg.CspHidepit != nil && *cfg.CspHidepit > 0
+
+		if cspPhycars && cspPhytracks && cspHidepit {
 			cspLetter = "/../H"
-		} else if *cfg.CspPhycars > 0 && *cfg.CspPhytracks > 0 {
+		} else if cspPhycars && cspPhytracks {
 			cspLetter = "/../D"
-		} else if *cfg.CspPhycars > 0 && *cfg.CspHidepit > 0 {
+		} else if cspPhycars && cspHidepit {
 			cspLetter = "/../F"
-		} else if *cfg.CspPhytracks > 0 && *cfg.CspHidepit > 0 {
+		} else if cspPhytracks && cspHidepit {
 			cspLetter = "/../G"
-		} else if *cfg.CspPhycars > 0 {
+		} else if cspPhycars {
 			cspLetter = "/../B"
-		} else if *cfg.CspPhytracks > 0 {
+		} else if cspPhytracks {
 			cspLetter = "/../C"
-		} else if *cfg.CspHidepit > 0 {
+		} else if cspHidepit {
 			cspLetter = "/../E"
 		}
 

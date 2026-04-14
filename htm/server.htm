@@ -38,21 +38,21 @@
       },
 
       apply(json) {
-        this.is_running = json.is_running;
-        this.players = json.players;
-        this.public_ip = json.public_ip || "";
-        this.console_text = json.text || "";
-        this.tmp_loc = json.tmp_loc || this.tmp_loc;
-        this.cfg_path = json.cfg_path || this.cfg_path;
-        this.entry_path = json.entry_path || this.entry_path;
-        this.session = json.session || this.session;
+        this.is_running    = json.is_running;
+        this.players       = json.players;
+        this.public_ip     = json.public_ip     || "";
+        this.console_text  = json.text          || "";
+        this.tmp_loc       = json.tmp_loc       || this.tmp_loc;
+        this.cfg_path      = json.cfg_path      || this.cfg_path;
+        this.entry_path    = json.entry_path    || this.entry_path;
+        this.session       = json.session       || this.session;
         this.current_event = json.current_event || this.current_event;
       },
 
       fetch_status() {
         fetch("/api/server/status")
-          .then((response) => response.json())
-          .then((json) => this.apply(json));
+          .then(r => r.json())
+          .then(j => this.apply(j));
       },
 
       start_loop() {
@@ -62,236 +62,267 @@
 
       start_server() {
         fetch("/api/server/start")
-          .then((response) => response.json())
-          .then((json) => this.apply(json));
+          .then(r => r.json())
+          .then(j => this.apply(j));
       },
 
       stop_server() {
         fetch("/api/server/stop")
-          .then((response) => response.json())
-          .then((json) => this.apply(json));
+          .then(r => r.json())
+          .then(j => this.apply(j));
       },
 
       console_lines() {
         if (!this.console_text) return [];
-        return this.console_text.trim().split("\n").filter(Boolean).slice(-80).reverse();
+        return this.console_text.trim().split("\n").filter(Boolean).slice(-100).reverse();
       },
 
       uptime_label() {
-        if (!this.current_event.started_at) return "Waiting for queue";
-        const seconds = Math.max(0, Math.floor(Date.now() / 1000) - this.current_event.started_at);
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
-        return [hours, minutes, secs].map((n) => String(n).padStart(2, "0")).join(":");
+        if (!this.current_event.started_at) return "—";
+        const s = Math.max(0, Math.floor(Date.now() / 1000) - this.current_event.started_at);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        return [h, m, sec].map(n => String(n).padStart(2, "0")).join(":");
       },
 
       elapsed_label() {
         const total = Math.max(0, Math.floor((this.session.elapsed_ms || 0) / 1000));
-        const minutes = Math.floor(total / 60);
-        const seconds = total % 60;
-        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
-      },
-
-      title_label() {
-        if (!this.is_running) return "Server Idle";
-        if (this.current_event.category) return this.current_event.category;
-        if (this.session.server_name) return this.session.server_name;
-        return "Server Running";
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
       },
 
       track_label() {
-        if (this.current_event.track) return this.current_event.track;
-        return this.session.track || "No track loaded";
+        return this.current_event.track || this.session.track || "No track loaded";
+      },
+
+      category_label() {
+        if (!this.is_running) return "Server idle";
+        return this.current_event.category || this.session.server_name || "Running";
+      },
+
+      session_index_label() {
+        const idx   = (this.session.index || 0) + 1;
+        const total = this.session.session_count || 1;
+        return `Session ${idx} of ${total}`;
+      },
+
+      format_label() {
+        const laps = this.session.laps;
+        const mins = this.session.time;
+        if (laps && laps > 0) return `${laps} laps`;
+        if (mins && mins > 0) return `${mins} min`;
+        return "—";
       }
     };
   }
 </script>
 
 <div class="server-dashboard" x-data="dashboard()" x-init="start_loop()">
-  <section class="server-hero">
-    <div class="server-hero__copy">
-      <p class="server-eyebrow">Live Control Room</p>
-      <h1 class="server-hero__title" x-text="title_label()"></h1>
-      <p class="server-hero__subtitle">
-        Track:
-        <span x-text="track_label()"></span>
-        <template x-if="session.type">
-          <span> · <span x-text="session.type"></span></span>
-        </template>
-      </p>
+
+  <!-- ── Status strip ──────────────────────────────────── -->
+  <div class="srv-strip" :class="is_running ? 'srv-strip--live' : 'srv-strip--idle'">
+    <div class="srv-strip__info">
+      <div class="srv-strip__badge">
+        <span class="srv-strip__badge-dot"></span>
+        <span x-text="is_running ? 'Live' : 'Idle'"></span>
+      </div>
+      <div class="srv-strip__track" x-text="track_label()"></div>
+      <div class="srv-strip__category" x-text="category_label()"></div>
     </div>
-    <div class="server-hero__actions">
-      <button @click="start_server()" class="server-button server-button--primary" type="button" x-show="!is_running">
-        <i class="fas fa-play mr-2"></i> Start Server
+
+    <div class="srv-strip__meta">
+      <div class="srv-stat">
+        <span class="srv-stat__n" x-text="players"></span>
+        <span class="srv-stat__l">Players</span>
+      </div>
+      <div class="srv-stat">
+        <span class="srv-stat__n" x-text="uptime_label()"></span>
+        <span class="srv-stat__l">Uptime</span>
+      </div>
+      <div class="srv-stat">
+        <span class="srv-stat__n" x-text="elapsed_label()"></span>
+        <span class="srv-stat__l">Session</span>
+      </div>
+    </div>
+
+    <div class="srv-strip__ctrl">
+      <button class="srv-btn srv-btn--start" type="button" @click="start_server()" x-show="!is_running">
+        <i class="fas fa-play"></i> Start Server
       </button>
-      <button @click="stop_server()" class="server-button server-button--danger" type="button" x-show="is_running">
-        <i class="fas fa-stop mr-2"></i> Stop Server
+      <button class="srv-btn srv-btn--stop"  type="button" @click="stop_server()"  x-show="is_running">
+        <i class="fas fa-stop"></i> Stop Server
       </button>
     </div>
-  </section>
+  </div>
 
-  <section class="server-kpis">
-    <article class="server-kpi server-kpi--status">
-      <span class="server-kpi__label">Status</span>
-      <span class="server-kpi__value" x-text="is_running ? 'Running' : 'Offline'"></span>
-      <span class="server-kpi__meta" x-text="is_running ? 'Queue head is active' : 'Ready to launch from queue'"></span>
-    </article>
-    <article class="server-kpi">
-      <span class="server-kpi__label">Players</span>
-      <span class="server-kpi__value" x-text="players"></span>
-      <span class="server-kpi__meta">Connected now</span>
-    </article>
-    <article class="server-kpi">
-      <span class="server-kpi__label">Runtime</span>
-      <span class="server-kpi__value" x-text="uptime_label()"></span>
-      <span class="server-kpi__meta">Since current event boot</span>
-    </article>
-    <article class="server-kpi">
-      <span class="server-kpi__label">Session Clock</span>
-      <span class="server-kpi__value" x-text="elapsed_label()"></span>
-      <span class="server-kpi__meta" x-text="session.name || 'No active session'"></span>
-    </article>
-  </section>
+  <!-- ── Main content grid ─────────────────────────────── -->
+  <div class="srv-content">
 
-  <section class="server-grid">
-    <article class="server-panel server-panel--feature">
-      <div class="server-panel__header">
-        <div>
-          <p class="server-panel__eyebrow">Current Event</p>
-          <h2 class="server-panel__title">What is running now</h2>
-        </div>
+    <!-- Left: current event details -->
+    <div class="srv-card">
+      <div class="srv-card__head">
+        <span class="srv-card__eyebrow srv-card__eyebrow--accent">Current Event</span>
+        <span class="srv-card__eyebrow" x-text="is_running ? 'Running' : 'Queued next'"></span>
       </div>
-      <div class="server-stack">
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Category</span>
-          <span class="server-feature-line__value" x-text="current_event.category || 'Queue not started'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Track</span>
-          <span class="server-feature-line__value" x-text="current_event.track || session.track || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Difficulty</span>
-          <span class="server-feature-line__value" x-text="current_event.difficulty || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Preset</span>
-          <span class="server-feature-line__value" x-text="current_event.session || session.name || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Class</span>
-          <span class="server-feature-line__value" x-text="current_event.class || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Weather</span>
-          <span class="server-feature-line__value" x-text="current_event.time || session.weather_graphics || 'Unknown'"></span>
-        </div>
-      </div>
-    </article>
+      <div class="srv-card__body">
 
-    <article class="server-panel">
-      <div class="server-panel__header">
-        <div>
-          <p class="server-panel__eyebrow">Session Telemetry</p>
-          <h2 class="server-panel__title">Live run state</h2>
+        <div class="srv-event-name" x-text="current_event.track || session.track || '—'"></div>
+        <div class="srv-event-config"
+          x-text="session.track_config ? '[' + session.track_config + ']' : 'Default layout'">
         </div>
-      </div>
-      <div class="server-metrics">
-        <div class="server-metric">
-          <span class="server-metric__label">Type</span>
-          <span class="server-metric__value" x-text="session.type || 'Unknown'"></span>
-        </div>
-        <div class="server-metric">
-          <span class="server-metric__label">Index</span>
-          <span class="server-metric__value" x-text="(session.index + 1) + ' / ' + (session.session_count || 1)"></span>
-        </div>
-        <div class="server-metric">
-          <span class="server-metric__label">Minutes</span>
-          <span class="server-metric__value" x-text="session.time || 0"></span>
-        </div>
-        <div class="server-metric">
-          <span class="server-metric__label">Laps</span>
-          <span class="server-metric__value" x-text="session.laps || 0"></span>
-        </div>
-        <div class="server-metric">
-          <span class="server-metric__label">Ambient</span>
-          <span class="server-metric__value" x-text="session.ambient_temp + '°'"></span>
-        </div>
-        <div class="server-metric">
-          <span class="server-metric__label">Road</span>
-          <span class="server-metric__value" x-text="session.road_temp + '°'"></span>
-        </div>
-      </div>
-    </article>
 
-    <article class="server-panel">
-      <div class="server-panel__header">
-        <div>
-          <p class="server-panel__eyebrow">Runtime Paths</p>
-          <h2 class="server-panel__title">Generated assets</h2>
+        <div class="srv-rows">
+          <div class="srv-row">
+            <span class="srv-row__k">Category</span>
+            <span class="srv-row__v" x-text="current_event.category || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Session preset</span>
+            <span class="srv-row__v" x-text="current_event.session || session.name || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Difficulty</span>
+            <span class="srv-row__v" x-text="current_event.difficulty || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Car class</span>
+            <span class="srv-row__v" x-text="current_event.class || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Time / Weather preset</span>
+            <span class="srv-row__v" x-text="current_event.time || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Weather graphics</span>
+            <span class="srv-row__v" x-text="session.weather_graphics || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Server name</span>
+            <span class="srv-row__v" x-text="session.server_name || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Race format</span>
+            <span class="srv-row__v" x-text="format_label()"></span>
+          </div>
         </div>
-      </div>
-      <div class="server-stack server-stack--compact">
-        <div class="server-path">
-          <span class="server-path__label">Temp Root</span>
-          <code class="server-path__value" x-text="tmp_loc"></code>
-        </div>
-        <div class="server-path">
-          <span class="server-path__label">Server Cfg</span>
-          <code class="server-path__value" x-text="cfg_path"></code>
-        </div>
-        <div class="server-path">
-          <span class="server-path__label">Entry List</span>
-          <code class="server-path__value" x-text="entry_path"></code>
-        </div>
-      </div>
-    </article>
 
-    <article class="server-panel">
-      <div class="server-panel__header">
-        <div>
-          <p class="server-panel__eyebrow">Network</p>
-          <h2 class="server-panel__title">Reachability snapshot</h2>
-        </div>
-      </div>
-      <div class="server-stack server-stack--compact">
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Public IP</span>
-          <span class="server-feature-line__value" x-text="public_ip || 'Unavailable'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Server Name</span>
-          <span class="server-feature-line__value" x-text="session.server_name || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Track Key</span>
-          <span class="server-feature-line__value" x-text="session.track || 'Unknown'"></span>
-        </div>
-        <div class="server-feature-line">
-          <span class="server-feature-line__label">Track Config</span>
-          <span class="server-feature-line__value" x-text="session.track_config || 'Default'"></span>
-        </div>
-      </div>
-    </article>
-  </section>
-
-  <section class="server-panel server-log-panel">
-    <div class="server-panel__header">
-      <div>
-        <p class="server-panel__eyebrow">Console Stream</p>
-        <h2 class="server-panel__title">Recent server output</h2>
       </div>
     </div>
-    <div class="server-log">
+
+    <!-- Middle: session telemetry -->
+    <div class="srv-card">
+      <div class="srv-card__head">
+        <span class="srv-card__eyebrow srv-card__eyebrow--accent">Session Telemetry</span>
+      </div>
+      <div class="srv-card__body">
+
+        <div class="srv-session-type"  x-text="session.type || 'Waiting for session'"></div>
+        <div class="srv-session-index" x-text="session_index_label()"></div>
+
+        <div class="srv-gauges">
+          <div class="srv-gauge">
+            <span class="srv-gauge__val" x-text="session.laps  || 0"></span>
+            <span class="srv-gauge__lbl">Laps</span>
+          </div>
+          <div class="srv-gauge">
+            <span class="srv-gauge__val" x-text="session.time  || 0"></span>
+            <span class="srv-gauge__lbl">Minutes</span>
+          </div>
+          <div class="srv-gauge">
+            <span class="srv-gauge__val" x-text="(session.ambient_temp || 0) + '°'"></span>
+            <span class="srv-gauge__lbl">Ambient</span>
+          </div>
+          <div class="srv-gauge">
+            <span class="srv-gauge__val" x-text="(session.road_temp    || 0) + '°'"></span>
+            <span class="srv-gauge__lbl">Road temp</span>
+          </div>
+        </div>
+
+        <div class="srv-rows">
+          <div class="srv-row">
+            <span class="srv-row__k">Elapsed in session</span>
+            <span class="srv-row__v srv-row__v--mono" x-text="elapsed_label()"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Between-session wait</span>
+            <span class="srv-row__v" x-text="(session.wait_time || 0) + 's'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Event uptime</span>
+            <span class="srv-row__v srv-row__v--mono" x-text="uptime_label()"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Right: network + file paths -->
+    <div class="srv-card">
+      <div class="srv-card__head">
+        <span class="srv-card__eyebrow srv-card__eyebrow--accent">Infrastructure</span>
+      </div>
+      <div class="srv-card__body">
+
+        <div class="srv-rows">
+          <div class="srv-row">
+            <span class="srv-row__k">Public IP</span>
+            <span class="srv-row__v srv-row__v--mono" x-text="public_ip || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Track key</span>
+            <span class="srv-row__v srv-row__v--mono" x-text="session.track || '—'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Track layout</span>
+            <span class="srv-row__v srv-row__v--mono"
+              x-text="session.track_config || 'default'"></span>
+          </div>
+          <div class="srv-row">
+            <span class="srv-row__k">Players</span>
+            <span class="srv-row__v" x-text="players + ' connected'"></span>
+          </div>
+        </div>
+
+        <div class="srv-section-label">Generated paths</div>
+
+        <div class="srv-rows">
+          <div class="srv-row srv-row--col">
+            <span class="srv-row__k">Temp root</span>
+            <code class="srv-row__v srv-row__v--path" x-text="tmp_loc"></code>
+          </div>
+          <div class="srv-row srv-row--col">
+            <span class="srv-row__k">Server config</span>
+            <code class="srv-row__v srv-row__v--path" x-text="cfg_path"></code>
+          </div>
+          <div class="srv-row srv-row--col">
+            <span class="srv-row__k">Entry list</span>
+            <code class="srv-row__v srv-row__v--path" x-text="entry_path"></code>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /.srv-content -->
+
+  <!-- ── Console ───────────────────────────────────────── -->
+  <div class="srv-card srv-card--console">
+    <div class="srv-card__head">
+      <span class="srv-card__eyebrow srv-card__eyebrow--accent">Console output</span>
+      <span class="srv-card__eyebrow" x-text="console_lines().length + ' lines'"></span>
+    </div>
+    <div class="srv-console">
       <template x-if="console_lines().length === 0">
-        <div class="server-log__empty">No server output yet.</div>
+        <div class="srv-console__empty">No server output yet — start the server to see logs here.</div>
       </template>
-      <template x-for="(line, index) in console_lines()" :key="index">
-        <div class="server-log__line" x-text="line"></div>
+      <template x-for="(line, i) in console_lines()" :key="i">
+        <div class="srv-console__line" x-text="line"></div>
       </template>
     </div>
-  </section>
+  </div>
+
 </div>
 
 {{template "/htm/footer.htm"}}

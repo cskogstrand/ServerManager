@@ -519,6 +519,25 @@ func (dba Dbaccess) deleteServerEvent(id int) (int64, error) {
 	return 0, nil
 }
 
+func (dba Dbaccess) deleteServerEventsByUserEvent(id int) (int64, error) {
+	stmt, err := dba.db.Prepare("DELETE FROM server_event WHERE user_event_id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	res, err := stmt.Exec(id)
+	defer stmt.Close()
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return affected, nil
+}
+
 func (dba Dbaccess) selectEvent(id int) (UserEvent, error) {
 	evt := UserEvent{}
 	stmt, err := dba.db.Prepare("SELECT id, event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy FROM user_event WHERE id = ? LIMIT 1")
@@ -607,6 +626,10 @@ func (dba Dbaccess) updateEvent(evt UserEvent) (int64, error) {
 }
 
 func (dba Dbaccess) deleteEvent(id int) (int64, error) {
+	_, err := dba.deleteServerEventsByUserEvent(id)
+	if err != nil {
+		return -1, err
+	}
 	return dba.deleteFrom(id, "user_event")
 }
 
@@ -822,6 +845,11 @@ func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 		if _, ok := seen[id]; ok {
 			continue
 		}
+		_, err = tx.Exec("DELETE FROM server_event WHERE user_event_id = ?", id)
+		if err != nil {
+			stmt.Close()
+			return -1, tracerr.Wrap(err)
+		}
 		_, err = stmt.Exec(id, cat.Id)
 		if err != nil {
 			stmt.Close()
@@ -838,7 +866,58 @@ func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 }
 
 func (dba Dbaccess) deleteEventCategory(id int) (int64, error) {
-	return dba.deleteFrom(id, "user_event_category")
+	tx, err := dba.db.Begin()
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query("SELECT id FROM user_event WHERE event_category_id = ?", id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	var eventIDs []int
+	for rows.Next() {
+		var eventID int
+		if err := rows.Scan(&eventID); err != nil {
+			rows.Close()
+			return -1, tracerr.Wrap(err)
+		}
+		eventIDs = append(eventIDs, eventID)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	for _, eventID := range eventIDs {
+		_, err = tx.Exec("DELETE FROM server_event WHERE user_event_id = ?", eventID)
+		if err != nil {
+			return -1, tracerr.Wrap(err)
+		}
+	}
+
+	_, err = tx.Exec("DELETE FROM user_event WHERE event_category_id = ?", id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	res, err := tx.Exec("DELETE FROM user_event_category WHERE id = ?", id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return affected, nil
 }
 
 func (dba Dbaccess) selectDifficulty(id int) (UserDifficulty, error) {

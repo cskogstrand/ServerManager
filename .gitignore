@@ -5,3 +5,5 @@ go.mod
 bin/*
 src/assets.go
 *.syso
+
+.idea

@@ -231,14 +231,19 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	}
 
 	if Cr.serverCfgIni == nil {
-		file := FindFile("/ini/server_cfg.ini")
-		tmplStr, err := io.ReadAll(file)
+		file, err := OpenAsset("/ini/server_cfg.ini")
 		if err != nil {
-			log.Print("Could not read template file server_cfg.ini: ", err)
-		}
-		Cr.serverCfgIni, err = ttemplate.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
-		if err != nil {
-			log.Print("Error parsing server_cfg.ini template: ", err)
+			log.Print("Could not open template file server_cfg.ini: ", err)
+		} else {
+			defer file.Close()
+			tmplStr, err := io.ReadAll(file)
+			if err != nil {
+				log.Print("Could not read template file server_cfg.ini: ", err)
+			}
+			Cr.serverCfgIni, err = ttemplate.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
+			if err != nil {
+				log.Print("Error parsing server_cfg.ini template: ", err)
+			}
 		}
 	}
 
@@ -263,14 +268,19 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	}
 
 	if Cr.entryListIni == nil {
-		file := FindFile("/ini/entry_list.ini")
-		tmplStr, err := io.ReadAll(file)
+		file, err := OpenAsset("/ini/entry_list.ini")
 		if err != nil {
-			log.Print("Could not read template file entry_list.ini: ", err)
-		}
-		Cr.entryListIni, err = ttemplate.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
-		if err != nil {
-			log.Print("Error parsing entry_list.ini template: ", err)
+			log.Print("Could not open template file entry_list.ini: ", err)
+		} else {
+			defer file.Close()
+			tmplStr, err := io.ReadAll(file)
+			if err != nil {
+				log.Print("Could not read template file entry_list.ini: ", err)
+			}
+			Cr.entryListIni, err = ttemplate.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
+			if err != nil {
+				log.Print("Error parsing entry_list.ini template: ", err)
+			}
 		}
 	}
 

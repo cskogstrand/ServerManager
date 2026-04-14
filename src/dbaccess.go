@@ -7,7 +7,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/jessevdk/go-assets"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/ztrue/tracerr"
 )
@@ -39,7 +38,13 @@ func (dba Dbaccess) basepath() (string, error) {
 	return *cfg.InstallPath, err
 }
 
-func (dba Dbaccess) applySchema(f *assets.File) {
+func (dba Dbaccess) applySchema(filePath string) {
+	f, err := OpenAsset(filePath)
+	if err != nil {
+		log.Fatal("Could not open sql schema file: ", err)
+	}
+	defer f.Close()
+
 	sqlBytes, err := io.ReadAll(f)
 	if err != nil {
 		log.Fatal("Could not read sql schema file: ", err)

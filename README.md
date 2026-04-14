@@ -85,6 +85,47 @@ It is best to use the included Makefile to generate a build
 make build
 ```
 
+### Local dev mode
+
+For faster UI iteration, you can run the app in local dev mode without regenerating embedded assets on every template change.
+
+```sh
+make rundebug
+```
+
+This runs the app with `-debug`, which serves:
+
+- templates from `./htm`
+- static files from the repo root under `/static`
+- config templates like `ini/server_cfg.ini` and `ini/entry_list.ini` from disk
+
+Notes:
+
+- run it from the repository root
+- HTML, CSS, image, and INI template changes are picked up after restarting the app
+- `css/main.css` is still generated before startup
+
+### Docker dev mode
+
+If you do not want to install Go locally, you can run the same debug workflow in Docker:
+
+```sh
+make rundebug-docker
+```
+
+This starts a dev container that:
+
+- mounts the repository into `/go/src/app`
+- runs the app with `-debug`
+- serves templates, static files, and INI templates directly from your working tree
+- exposes the Web UI on `http://localhost:3030`
+
+To stop it:
+
+```sh
+make stopdebug-docker
+```
+
 ### Cross-compile for Windows
 
 The makefile provides an easy to use method to create a build for Windows

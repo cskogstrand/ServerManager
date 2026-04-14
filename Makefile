@@ -1,6 +1,6 @@
 VERSION ?= dev-build
 
-.PHONY: all build buildwin run deps package clean
+.PHONY: all build buildwin run rundebug rundebug-docker stopdebug-docker deps package clean
 
 all: deps clean buildwin build
 
@@ -21,6 +21,17 @@ buildwin:
 run:
 	go-assets-builder schema.sql favicon.ico ini htm img css -o src/assets.go
 	cd src; go run .
+
+rundebug:
+	test -d node_modules || npm install
+	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css
+	cd src; go run . -debug
+
+rundebug-docker:
+	docker compose -f docker-compose.dev.yml up --build
+
+stopdebug-docker:
+	docker compose -f docker-compose.dev.yml down
 
 deps:
 	go install github.com/jessevdk/go-assets-builder@latest

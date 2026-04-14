@@ -1,0 +1,20 @@
+services:
+  servermanager-dev:
+    container_name: assetto-server-manager-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /go/src/app
+    volumes:
+      - ./:/go/src/app
+      - servermanager_dev_node_modules:/go/src/app/node_modules
+      - ${APP_PATH:-./}/assetocorsa:/corsa/:ro
+      - ${APP_PATH:-./}/data:/appdata/:rw
+    ports:
+      - 3030:3030
+      - ${AC_TCP_PORT:-9600}:9600/tcp
+      - ${AC_UDP_PORT:-9600}:9600/udp
+      - ${AC_HTTP_PORT:-8081}:8081/tcp
+
+volumes:
+  servermanager_dev_node_modules:

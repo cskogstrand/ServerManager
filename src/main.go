@@ -84,6 +84,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	showVersion := flag.Bool("v", false, "display version information")
+	flag.BoolVar(&debug, "debug", false, "serve templates and static files from disk for local development")
 	flag.StringVar(&ConfigFolder, "p", "", "Configuration path")
 	flag.Parse()
 
@@ -133,7 +134,7 @@ func main() {
 	dbpath := filepath.Join(ConfigFolder, "smdata.db")
 	log.Print("Opening database file located at: " + dbpath)
 	Dba = open(dbpath)
-	Dba.applySchema(FindFile("/schema.sql"))
+	Dba.applySchema("/schema.sql")
 
 	cfg, err := Dba.selectConfig()
 	if err != nil {
@@ -215,7 +216,11 @@ func main() {
 	}
 	router.SetHTMLTemplate(t)
 
-	router.StaticFS("/static", Assets)
+	if debug {
+		router.Static("/static", "../")
+	} else {
+		router.StaticFS("/static", Assets)
+	}
 
 	router.GET("/login", routeLogin)
 	router.POST("/login", routeLogin)

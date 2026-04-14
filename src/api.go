@@ -279,14 +279,15 @@ func apiValidateInstallpath(c *gin.Context) {
 
 func apiServerStart(c *gin.Context) {
 	if !isRunning() {
-		Status.serverApplyTrack()
-		start()
-		// Hang the request until the UDP Server becomes online
-		for start := time.Now(); time.Since(start) < time.Minute; {
-			if Udp.online {
-				break
+		if Status.serverApplyTrack() {
+			start()
+			// Hang the request until the UDP Server becomes online
+			for start := time.Now(); time.Since(start) < time.Minute; {
+				if Udp.online {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
 			}
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 	c.PureJSON(http.StatusOK, gin.H{

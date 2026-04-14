@@ -129,6 +129,7 @@ func routeServer(c *gin.Context) {
 	c.HTML(http.StatusOK, "/htm/server.htm", gin.H{
 		"page":          "server",
 		"config_filled": cfgFilled,
+		"tmpLoc":        TempFolder,
 		"status":        Status,
 	})
 }
@@ -189,6 +190,7 @@ func routeQueue(c *gin.Context) {
 		"event_cat":     eventCat,
 		"event_list":    eventList,
 		"server_events": serverEvents,
+		"tmpLoc":        TempFolder,
 		"status":        Status,
 	})
 }

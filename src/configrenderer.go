@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"html/template"
 	"io"
 	"log"
 	"math"
@@ -11,12 +10,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	ttemplate "text/template"
 	"time"
 )
 
 type ConfigRenderer struct {
-	serverCfgIni    *template.Template
-	entryListIni    *template.Template
+	serverCfgIni    *ttemplate.Template
+	entryListIni    *ttemplate.Template
 	serverCfgResult string
 	entryListResult string
 	class           UserClass
@@ -196,9 +196,24 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		class.Entries = class.Entries[:maxclients]
 	}
 
-	funcMap := template.FuncMap{
+	funcMap := ttemplate.FuncMap{
 		"derefInt": func(i *int) int {
+			if i == nil {
+				return 0
+			}
 			return *i
+		},
+		"defaultInt": func(i *int, def int) int {
+			if i == nil {
+				return def
+			}
+			return *i
+		},
+		"defaultStr": func(s *string, def string) string {
+			if s == nil {
+				return def
+			}
+			return *s
 		},
 	}
 
@@ -208,7 +223,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		if err != nil {
 			log.Print("Could not read template file server_cfg.ini: ", err)
 		}
-		Cr.serverCfgIni, err = template.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
+		Cr.serverCfgIni, err = ttemplate.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
 		if err != nil {
 			log.Print("Error parsing server_cfg.ini template: ", err)
 		}
@@ -240,7 +255,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		if err != nil {
 			log.Print("Could not read template file entry_list.ini: ", err)
 		}
-		Cr.entryListIni, err = template.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
+		Cr.entryListIni, err = ttemplate.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
 		if err != nil {
 			log.Print("Error parsing entry_list.ini template: ", err)
 		}

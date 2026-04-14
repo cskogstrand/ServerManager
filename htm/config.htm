@@ -1,274 +1,198 @@
 {{ template "/htm/header.htm" . }}
 
-<form class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" method="POST">
-  <h1 class="text-3xl text-black pb-6">Server Configuration</h1>
-  <div class="w-full mt-6">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i> Hosting Information
-      </p>
-      <p class="text-gray-600 leading-[1.3]"></p>
-      <hr class="pb-6" />
-      <div class="">
-        <label class="block text-sm text-gray-600 group relative" for="name">
-          Server Name
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              The name of the server that will appear on the lobby / in content manager
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="name" name="name" type="text" required=""
-          placeholder="Server Name" aria-label="Name" value="{{.form.Name | derefStr }}" />
+<form style="max-width: 680px;" method="POST">
+  <h1 class="pw-page-title">Server Configuration</h1>
+
+  <!-- ── Hosting Information ─────────────────────── -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <i class="pw-card__icon fas fa-broadcast-tower"></i>
+      <div>
+        <div class="pw-card__title">Hosting Information</div>
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="append_eventname">
-          Append Event Category Name
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Flag this if you want to append the event category name to the server name
-            </div>
-          </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="append_eventname" id="append_eventname" value="1" {{ if (eq (derefInt .form.AppendEventname) "1") }} checked {{ end }}
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="append_eventname"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-          <input type="hidden" value="0" name="append_eventname" />
-        </div>
+    </div>
+    <div class="pw-card__body">
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="name">Server Name</label>
+        <span class="pw-hint">Name shown in the AC lobby and Content Manager</span>
+        <input class="pw-input" id="name" name="name" type="text" required=""
+          placeholder="My Racing Server" aria-label="Name" value="{{.form.Name | derefStr }}" />
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="password">
-          Password (optional)
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              If you want to run a private server, just set a password and make it known to your friends
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="password" name="password" type="password"
-          placeholder="Server Password" aria-label="Password" value="{{ .form.Password | derefStr }}" />
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="password">Password <span style="color: var(--c-text-dim); font-weight: 400;">(optional)</span></label>
+        <span class="pw-hint">Set to run a private server — share with your friends</span>
+        <input class="pw-input" id="password" name="password" type="password"
+          placeholder="Server password" aria-label="Password" value="{{ .form.Password | derefStr }}" />
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="admin_password">
-          Admin Password (optional)
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Chat -&gt; /admin your_password to become server admin or use it to join the server. Use /help to see the
-              command list
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="admin_password" name="admin_password"
-          type="password" placeholder="Admin Password" aria-label="Admin Password"
-          value="{{ .form.AdminPassword | derefStr }}" />
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="admin_password">Admin Password <span style="color: var(--c-text-dim); font-weight: 400;">(optional)</span></label>
+        <span class="pw-hint">Use <code style="font-family: var(--font-mono); font-size: 11px;">/admin your_password</code> in chat to become server admin</span>
+        <input class="pw-input" id="admin_password" name="admin_password" type="password"
+          placeholder="Admin password" aria-label="Admin Password" value="{{ .form.AdminPassword | derefStr }}" />
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="register_to_lobby">
-          Show on Lobby (REGISTER_TO_LOBBY)
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Set this to off to write REGISTER_TO_LOBBY=0 in the generated server_cfg.ini
-            </div>
-          </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="register_to_lobby" id="register_to_lobby" value="1" {{ if (eq (derefInt .form.RegisterToLobby) "1") }} checked {{ end }}
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="register_to_lobby"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-          <input type="hidden" value="0" name="register_to_lobby" />
-        </div>
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="result_screen_time">Result Screen Time <span style="color: var(--c-text-dim); font-weight: 400;">(seconds)</span></label>
+        <span class="pw-hint">How long the server waits for players to end the race</span>
+        <input class="pw-input" id="result_screen_time" name="result_screen_time" type="number"
+          required="" placeholder="60" min="10" aria-label="Result Screen Time"
+          value="{{ .form.ResultScreenTime }}" />
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="locked_entry_list">
-          Pickup Locked Entry List
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Flag it if you want to limit the server to the entrylist GUID player and ignore password
-            </div>
-          </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="locked_entry_list" id="locked_entry_list" value="1" {{ if (eq (derefInt .form.LockedEntryList) "1") }} checked {{ end }}
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="locked_entry_list"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-          <input type="hidden" value="0" name="locked_entry_list" />
-        </div>
-      </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="auto_start_server">
-          Start Server Automatically On Launch
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Automatically starts the first unfinished event in the queue when ServerManager starts
-            </div>
-          </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="auto_start_server" id="auto_start_server" value="1" {{ if (eq (derefInt .form.AutoStartServer) "1") }} checked {{ end }}
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="auto_start_server"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-          <input type="hidden" value="0" name="auto_start_server" />
-        </div>
-      </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="result_screen_time">
-          Result Screen Time
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Seconds what the server is going to wait for players to end the race
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="result_screen_time"
-          name="result_screen_time" type="number" required="" placeholder="Result Screen Time" min="10"
-          aria-label="Result Screen Time" value="{{ .form.ResultScreenTime }}" />
-      </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="max_clients">
-          Maximum Players
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Minimum between maximum players, pitboxes or vehicles in classes will be used
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="max_clients" name="max_clients"
-          type="number" required="" placeholder="Maximum Players" min="2" aria-label="Maximum Players"
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="max_clients">Maximum Players</label>
+        <span class="pw-hint">Capped by pitboxes or car class size, whichever is smallest</span>
+        <input class="pw-input" id="max_clients" name="max_clients" type="number"
+          required="" placeholder="24" min="2" aria-label="Maximum Players"
           value="{{ .form.MaxClients }}" />
       </div>
+
+      <div class="pw-form-row">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label class="pw-label" style="margin-bottom: 8px;">Append Event Category Name</label>
+            <span class="pw-hint" style="margin-bottom: 6px;">Appends the event category to the server name on the lobby</span>
+            <div class="pw-toggle">
+              <input type="checkbox" name="append_eventname" id="append_eventname" value="1"
+                {{ if (eq (derefInt .form.AppendEventname) "1") }} checked {{ end }}
+                class="toggle-checkbox" />
+              <label for="append_eventname" class="toggle-label"></label>
+              <input type="hidden" value="0" name="append_eventname" />
+            </div>
+          </div>
+
+          <div>
+            <label class="pw-label" style="margin-bottom: 8px;">Show on Lobby <code style="font-family: var(--font-mono); font-size: 10px; color: var(--c-text-dim);">REGISTER_TO_LOBBY</code></label>
+            <div class="pw-toggle">
+              <input type="checkbox" name="register_to_lobby" id="register_to_lobby" value="1"
+                {{ if (eq (derefInt .form.RegisterToLobby) "1") }} checked {{ end }}
+                class="toggle-checkbox" />
+              <label for="register_to_lobby" class="toggle-label"></label>
+              <input type="hidden" value="0" name="register_to_lobby" />
+            </div>
+          </div>
+
+          <div>
+            <label class="pw-label" style="margin-bottom: 8px;">Pickup Locked Entry List</label>
+            <span class="pw-hint" style="margin-bottom: 6px;">Restrict to GUID players in the entry list, ignoring password</span>
+            <div class="pw-toggle">
+              <input type="checkbox" name="locked_entry_list" id="locked_entry_list" value="1"
+                {{ if (eq (derefInt .form.LockedEntryList) "1") }} checked {{ end }}
+                class="toggle-checkbox" />
+              <label for="locked_entry_list" class="toggle-label"></label>
+              <input type="hidden" value="0" name="locked_entry_list" />
+            </div>
+          </div>
+
+          <div>
+            <label class="pw-label" style="margin-bottom: 8px;">Auto-Start on Launch</label>
+            <span class="pw-hint" style="margin-bottom: 6px;">Automatically start the first queued event when ServerManager starts</span>
+            <div class="pw-toggle">
+              <input type="checkbox" name="auto_start_server" id="auto_start_server" value="1"
+                {{ if (eq (derefInt .form.AutoStartServer) "1") }} checked {{ end }}
+                class="toggle-checkbox" />
+              <label for="auto_start_server" class="toggle-label"></label>
+              <input type="hidden" value="0" name="auto_start_server" />
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <div class="w-full mt-6">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i> Server Details
-      </p>
-      <p class="text-gray-600 leading-[1.3]">
-        UDP Port, TCP Port and HTTP Port needs to be opened on your firewall.
-      </p>
-      <hr class="pb-6" />
-      <div class="">
-        <label class="block text-sm text-gray-600 group relative" for="udp_port">
-          UDP Port
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Remember to open this port on your firewall
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="udp_port" name="udp_port" type="number"
-          required="" placeholder="UDP Port" aria-label="UDP Port" value="{{ .form.UdpPort }}" min="1"
-          max="65535" />
+  <!-- ── Network & Performance ───────────────────── -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <i class="pw-card__icon fas fa-network-wired"></i>
+      <div>
+        <div class="pw-card__title">Network &amp; Performance</div>
+        <div class="pw-card__subtitle">UDP, TCP, and HTTP ports must be open on your firewall</div>
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="tcp_port">
-          TCP Port
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Remember to open this port on your firewall
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="tcp_port" name="tcp_port" type="number"
-          required="" placeholder="TCP Port" aria-label="TCP Port" value="{{ .form.TcpPort }}" min="1"
-          max="65535" />
+    </div>
+    <div class="pw-card__body">
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div class="pw-form-row" style="margin-bottom: 0;">
+          <label class="pw-label" for="udp_port">UDP Port</label>
+          <input class="pw-input pw-input--full" id="udp_port" name="udp_port" type="number"
+            required="" placeholder="9600" aria-label="UDP Port"
+            value="{{ .form.UdpPort }}" min="1" max="65535" />
+        </div>
+        <div class="pw-form-row" style="margin-bottom: 0;">
+          <label class="pw-label" for="tcp_port">TCP Port</label>
+          <input class="pw-input pw-input--full" id="tcp_port" name="tcp_port" type="number"
+            required="" placeholder="9600" aria-label="TCP Port"
+            value="{{ .form.TcpPort }}" min="1" max="65535" />
+        </div>
+        <div class="pw-form-row" style="margin-bottom: 0;">
+          <label class="pw-label" for="http_port">HTTP Port</label>
+          <input class="pw-input pw-input--full" id="http_port" name="http_port" type="number"
+            required="" placeholder="8081" aria-label="HTTP Port"
+            value="{{ .form.HttpPort }}" min="1" max="65535" />
+        </div>
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="http_port">
-          HTTP Port
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              HTTP is TCP. Remember to open this port on your firewall
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="http_port" name="http_port" type="number"
-          required="" placeholder="HTTP Port" aria-label="HTTP Port" value="{{ .form.HttpPort }}" min="1"
-          max="65535" />
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="pw-form-row" style="margin-bottom: 0;">
+          <label class="pw-label" for="client_send_interval">Packet Hz</label>
+          <span class="pw-hint">Higher = better MP quality, requires more bandwidth</span>
+          <input class="pw-input pw-input--full" id="client_send_interval" name="client_send_interval"
+            type="number" required="" placeholder="18" min="10" max="35"
+            aria-label="Packet Hz" value="{{ .form.ClientSendInterval }}" />
+        </div>
+        <div class="pw-form-row" style="margin-bottom: 0;">
+          <label class="pw-label" for="num_threads">Threads</label>
+          <input class="pw-input pw-input--full" id="num_threads" name="num_threads"
+            type="number" required="" placeholder="4" min="2" max="8"
+            aria-label="Threads" value="{{ .form.NumThreads }}" />
+        </div>
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="client_send_interval">
-          Packet HZ
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Higher value gives better MP quality, but requires a more powerful connection
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="client_send_interval" min="10" max="35"
-          name="client_send_interval" type="number" required="" placeholder="Packet HZ" aria-label="Packet HZ"
-          value="{{ .form.ClientSendInterval }}" />
-      </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="num_threads">
-          Threads
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              # TODO: caption
-            </div>
-          </div>
-        </label>
-        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="num_threads" name="num_threads" min="2"
-          max="8" type="number" required="" placeholder="Threads" aria-label="Threads"
-          value="{{ .form.NumThreads }}" />
-      </div>
+
     </div>
   </div>
 
-
-  <div class="w-full mt-6">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i> Welcome Message
-      </p>
-      <p class="text-gray-600 leading-[1.3]"></p>
-      <hr class="pb-6" />
-      <div class="">
-        <label class="block text-sm text-gray-600 group relative" for="measurement_unit">
-          Welcome Message (optional)
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              #TODO: caption
-            </div>
-          </div>
-        </label>
-        <textarea class="w-full px-3 py-1 text-gray-700 bg-gray-200 rounded" 
-          aria-label="Welcome Message" rows="5" name="welcome_message" style="line-height: 1.3">{{ .form.WelcomeMessage | derefStr }}</textarea>
+  <!-- ── Welcome Message ─────────────────────────── -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <i class="pw-card__icon fas fa-comment-alt"></i>
+      <div>
+        <div class="pw-card__title">Welcome Message</div>
       </div>
-      <div class="mt-2">
-        <label class="block text-sm text-gray-600 group relative" for="append_modlinks">
-          Append Mod Links
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Flag this if you want to append mod links to the description. Note: you must provide these links under the Mods page.
-            </div>
-          </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="append_modlinks" id="append_modlinks" value="1" {{ if (eq (derefInt .form.AppendModlinks) "1") }} checked {{ end }}
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="append_modlinks"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+    </div>
+    <div class="pw-card__body">
+
+      <div class="pw-form-row">
+        <label class="pw-label" for="welcome_message">Message <span style="color: var(--c-text-dim); font-weight: 400;">(optional)</span></label>
+        <textarea class="pw-textarea" id="welcome_message" name="welcome_message"
+          rows="5" aria-label="Welcome Message">{{ .form.WelcomeMessage | derefStr }}</textarea>
+      </div>
+
+      <div class="pw-form-row" style="margin-bottom: 0;">
+        <label class="pw-label" style="margin-bottom: 8px;">Append Mod Links</label>
+        <span class="pw-hint" style="margin-bottom: 6px;">Appends mod download links from the Content &amp; Mods page to the description</span>
+        <div class="pw-toggle">
+          <input type="checkbox" name="append_modlinks" id="append_modlinks" value="1"
+            {{ if (eq (derefInt .form.AppendModlinks) "1") }} checked {{ end }}
+            class="toggle-checkbox" />
+          <label for="append_modlinks" class="toggle-label"></label>
           <input type="hidden" value="0" name="append_modlinks" />
         </div>
       </div>
+
     </div>
   </div>
 
-
-  <div class="w-full mt-6">
-    <p class="text-xl pb-6 flex">
-      <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded m-auto" type="submit">
-        Save
-      </button>
-    </p>
+  <!-- ── Save ────────────────────────────────────── -->
+  <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+    <button class="pw-btn pw-btn--primary" type="submit" style="padding: 10px 32px; font-size: 13px;">
+      <i class="fas fa-save"></i> Save Configuration
+    </button>
   </div>
+
 </form>
 
 {{ template "/htm/footer.htm" }}

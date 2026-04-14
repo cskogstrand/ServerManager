@@ -7,193 +7,129 @@
   <title>ServerManager {{ .title }}</title>
   <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
   <meta name="author" content="8bitmcu" />
-  <meta name="description" content="" />
 
   <!-- Tailwindcss -->
   <link href="/static/css/main.css" rel="stylesheet" />
 
-  <!-- extra css -->
+  <!-- Pit Wall design system -->
   <link href="/static/css/extra.css" rel="stylesheet" />
 
   <!-- AlpineJS -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
   <!-- Font Awesome -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/js/all.min.js"
-    crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/js/all.min.js" crossorigin="anonymous"></script>
 
   <!-- ChartJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js" crossorigin="anonymous"></script>
-
 </head>
 
-<body class="bg-gray-100 flex">
-  <aside class="relative bg-corsa h-screen w-70 hidden sm:block shadow-xl">
-    <div class="p-6">
-      <div class="text-white text-3xl font-semibold text-center">ServerManager</div>
-      <div
-        class="w-full bg-white font-semibold py-2 mt-5 rounded-lg shadow-lg flex items-center justify-center flex-col">
-        <div>
-          <span>Server status: &nbsp;</span>
-          <div
-              class="center relative inline-block select-none whitespace-nowrap rounded-lg {{ if .status.Status }}bg-green-500{{ else }}bg-corsa{{ end }} py-1 px-2 align-baseline font-sans text-xs font-bold uppercase leading-none text-white">
-            {{ if .status.Status }}<div class="mt-px">online</div>{{ end }}
-            {{ if not .status.Status }}<div class="mt-px">offline</div>{{ end}}
-          </div>
-        </div>
-        <div class="mt-2">
-          <span>Server IP: &nbsp;</span>
-          <input type="textbox" class="text-gray-700 bg-gray-200 rounded text-center" x-data="" @click="$el.select()"
-            value="{{ .status.PublicIp }}" style="width: 100px; font-weight: lighter" />
-        </div>
+<body>
+
+  <!-- ── Sidebar ────────────────────────────────────── -->
+  <aside class="pw-sidebar">
+    <div class="pw-sidebar__brand">
+      <div class="pw-sidebar__logo-text">ServerManager</div>
+      <div class="pw-sidebar__logo-sub">Assetto Corsa</div>
+    </div>
+
+    <div class="pw-status-widget">
+      <div class="pw-status-widget__row">
+        <div class="pw-status-dot {{ if .status.Status }}pw-status-dot--online{{ else }}pw-status-dot--offline{{ end }}"></div>
+        <span class="pw-status-widget__label">Status</span>
+        <span class="pw-status-widget__value">
+          {{ if .status.Status }}Online{{ else }}Offline{{ end }}
+        </span>
+      </div>
+      <div class="pw-status-widget__row">
+        <span class="pw-status-widget__label">IP</span>
+        <input
+          type="text"
+          class="pw-status-widget__ip"
+          x-data=""
+          @click="$el.select()"
+          value="{{ .status.PublicIp }}"
+          readonly
+        />
       </div>
     </div>
-    <nav class="text-white text-base font-semibold pt-3">
+
+    <nav class="pw-nav">
       {{ if .config_filled }}
-      <a href="/queue"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "queue") }}bg-red-900{{ end }}">
-        <i class="fas fa-clipboard-list mr-3"></i>
-        Queue
+      <div class="pw-nav__section-label">Operations</div>
+      <a href="/queue"   class="pw-nav__item {{ if (eq .page "queue")      }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-clipboard-list"></i> Queue
       </a>
-      <a href="/event"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "event") }}bg-red-900{{ end }}">
-        <i class="fas fa-flag-checkered mr-3"></i>
-        Event Categories
+      <a href="/event"   class="pw-nav__item {{ if (eq .page "event")      }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-flag-checkered"></i> Event Categories
       </a>
-      <a href="/class"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "class") }}bg-red-900{{ end }}">
-        <i class="fas fa-car mr-3"></i>
-        Car Classes
+      <a href="/class"   class="pw-nav__item {{ if (eq .page "class")      }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-car"></i> Car Classes
       </a>
-      <a href="/time"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "time") }}bg-red-900{{ end }}">
-        <i class="fas fa-cloud-moon-rain mr-3"></i>
-        Time &amp; Weather Presets
+
+      <div class="pw-nav__section-label">Presets</div>
+      <a href="/time"       class="pw-nav__item {{ if (eq .page "time")       }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-cloud-moon-rain"></i> Time &amp; Weather
       </a>
-      <a href="/session"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "session") }}bg-red-900{{ end }}">
-        <i class="fas fa-calendar-check mr-3"></i>
-        Session Presets
+      <a href="/session"    class="pw-nav__item {{ if (eq .page "session")    }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-calendar-check"></i> Sessions
       </a>
-      <a href="/difficulty"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "difficulty") }}bg-red-900{{ end }}">
-        <i class="fas fa-road mr-3"></i>
-        Difficulty Presets
+      <a href="/difficulty" class="pw-nav__item {{ if (eq .page "difficulty") }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-road"></i> Difficulty
       </a>
       {{ end }}
-      <a href="/config"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "config") }}bg-red-900{{ end }}">
-        <i class="fas fa-server mr-3"></i>
-        Server Configuration
+
+      <div class="pw-nav__section-label">Server</div>
+      <a href="/config"  class="pw-nav__item {{ if (eq .page "config")  }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-server"></i> Configuration
       </a>
-      <a href="/content"
-        class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "content") }}bg-red-900{{ end }}">
-        <i class="fas fa-cog mr-3"></i>
-        Content and Mods
+      <a href="/content" class="pw-nav__item {{ if (eq .page "content") }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-cog"></i> Content &amp; Mods
       </a>
       {{ if .config_filled }}
-      <a href="/server" class="flex items-center text-white opacity-75 hover:opacity-100 py-4 pl-4 nav-item {{ if (eq .page "server") }}bg-red-900{{ end }}">
-        <i class="fas fa-terminal mr-3"></i>
-        Server Status
+      <a href="/server"  class="pw-nav__item {{ if (eq .page "server")  }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-terminal"></i> Live Status
       </a>
       {{ end }}
     </nav>
-    <div class="absolute w-full bottom-0 flex items-center justify-center py-4">
-      <img src="/static/img/corsa_logo.png" style="margin: auto; width: 90%" />
-    </div>
   </aside>
 
-  <div class="w-full flex flex-col h-screen overflow-y-hidden">
-    <!-- Desktop Header -->
-    <header class="w-full items-center bg-white py-2 px-6 hidden sm:flex">
-      <div class="w-1/2"></div>
-      <div x-data="{ isOpen: false }" class="relative w-1/2 flex justify-end">
-        <div class="flex flex-col mr-6">
-          <div class="text-gray-500">Logged in as:</div>
-          <div>Admin</div>
-        </div>
-        <button @click="isOpen = !isOpen" class="realtive z-10 w-12 h-12 rounded-full overflow-hidden border-4 border-gray-400 hover:border-gray-300 focus:border-gray-300 focus:outline-none text-gray-400 hover:text-gray-300">
-          <span class="text-xl"><i class="fas fa-user"></i></span>
-        </button>
-        <button x-show="isOpen" @click="isOpen = false" class="h-full w-full fixed inset-0 cursor-default"></button>
-        <div x-show="isOpen" class="absolute w-32 bg-white rounded-lg shadow-lg py-2 mt-16" style="z-index: 10">
-            {{ if .config_filled }}
-            <a href="/user" class="block px-4 py-2 account-link hover:text-red-500">Preferences</a>
-            {{ end }}
-            <a href="/logout" class="block px-4 py-2 account-link hover:text-red-500">Sign Out</a>
-        </div>
-      </div> 
-    </header>
-
-    <!-- Mobile Header & Nav -->
-    <header x-data="{ isOpen: false }" class="w-full bg-sidebar py-5 px-6 sm:hidden bg-corsa">
-      <div class="flex items-center justify-between">
-        <button @click="isOpen = !isOpen" class="text-white text-3xl focus:outline-none">
-          <i x-show="!isOpen" class="fas fa-bars"></i>
-          <i x-show="isOpen" class="fas fa-times"></i>
-        </button>
+  <!-- ── Topbar ─────────────────────────────────────── -->
+  <header class="pw-topbar">
+    <div class="pw-topbar__user" x-data="{ isOpen: false }">
+      <button @click="isOpen = !isOpen" class="pw-topbar__user-btn">
+        <i class="fas fa-user" style="font-size: 10px; opacity: 0.55;"></i>
+        Admin
+        <i class="fas fa-chevron-down" style="font-size: 8px; opacity: 0.45;"></i>
+      </button>
+      <button
+        x-show="isOpen"
+        @click="isOpen = false"
+        x-cloak
+        style="position: fixed; inset: 0; cursor: default; z-index: 195; background: transparent;"
+      ></button>
+      <div x-show="isOpen" x-cloak class="pw-topbar__dropdown">
+        {{ if .config_filled }}
+        <a href="/user">Preferences</a>
+        {{ end }}
+        <a href="/logout">Sign Out</a>
       </div>
+    </div>
+  </header>
 
-      <!-- Dropdown Nav -->
-      <nav :class="isOpen ? 'flex': 'hidden'" class="flex flex-col pt-4">
+  <!-- ── Main layout ────────────────────────────────── -->
+  <div class="pw-layout">
+    <main class="pw-main">
 
-        {{ if .config_filled }}
-        <a href="/queue" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-clipboard-list mr-3"></i>
-          Queue
-        </a>
-        <a href="/event_cat" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-flag-checkered mr-3"></i>
-          Event Categories
-        </a>
-        <a href="/class" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-car mr-3"></i>
-          Car Classes
-        </a>
-        <a href="/time" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-cloud-moon-rain mr-3"></i>
-          Time and Weather Presets
-        </a>
-        <a href="/session" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-calendar-check mr-3"></i>
-          Session Presets
-        </a>
-        <a href="/difficulty" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-road mr-3"></i>
-          Difficulty Presets
-        </a>
-        {{ end }}
-        <a href="/config" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-server mr-3"></i>
-          Server Configuration
-        </a>
-        <a href="/content" class="flex items-center text-white opacity-75 hover:opacity-100 py-2 pl-4 nav-item">
-          <i class="fas fa-cogs mr-3"></i>
-          Content and Mods
-        </a>
-        {{ if .config_filled }}
-        <a href="/server" class="flex items-center opacity-75 hover:opacity-100 text-white py-2 pl-4 nav-item">
-          <i class="fas fa-terminal mr-3"></i>
-          Server Status
-        </a>
-        {{ end }}
-      </nav>
-    </header>
-
-    <div class="w-full h-screen overflow-x-hidden border-t flex flex-col">
-      <main class="mb-auto w-full flex-grow lg:p-6 md:p-4 p-2">
-        {{ if not .config_filled }}
-        <div class="font-regular relative block w-full rounded-lg bg-green-500 px-4 py-4 text-base text-white mb-6">
-          <div class="absolute top-12 left-4">
-            <i class="fas fa-check"></i>
-          </div>
-          <div class="ml-8 mr-6">
-            <h5 class="block text-xl text-white">
-              Welcome!
-            </h5>
-            <p class="mt-2 block text-white">
-              Welcome to Server Manager. Please take the time to fill in the details in the Server Config and Content &amp; Mods page
-            </p>
-          </div>
+      {{ if not .config_filled }}
+      <div class="pw-welcome">
+        <i class="fas fa-info-circle pw-welcome__icon"></i>
+        <div>
+          <div class="pw-welcome__title">Welcome to ServerManager</div>
+          <p class="pw-welcome__body">
+            Please fill in the <a href="/config" style="color: var(--c-green); text-decoration: underline;">Server Configuration</a>
+            and <a href="/content" style="color: var(--c-green); text-decoration: underline;">Content &amp; Mods</a> pages to get started.
+          </p>
         </div>
-        {{ end }}
+      </div>
+      {{ end }}

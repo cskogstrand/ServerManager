@@ -1,4 +1,5 @@
 {{template "/htm/header.htm" . }}
+
 <script>
   function queue() {
     return {
@@ -9,9 +10,9 @@
       evnt: "",
 
       random_category: function() {
-        if (this.category_list.length == 0) 
-          return
-        let rand = Math.floor(Math.random()*this.category_list.length);
+        if (this.category_list.length == 0)
+          return;
+        let rand = Math.floor(Math.random() * this.category_list.length);
         this.category = this.category_list[rand].id;
         this.evnt = "";
       },
@@ -20,22 +21,20 @@
       },
       submit_category: function() {
         if (document.getElementById("category").checkValidity()) {
-          document.getElementById("event").value = ""
-          document.getElementById('frm').submit()
+          document.getElementById("event").value = "";
+          document.getElementById("frm").submit();
         } else {
-          document.getElementById("category").reportValidity()
+          document.getElementById("category").reportValidity();
         }
       },
 
       get_events: function() {
-        return this.event_list.filter(x => x.event_category_id == this.category)
+        return this.event_list.filter(x => x.event_category_id == this.category);
       },
       random_event: function() {
         let events = this.get_events();
-
-        if (events.length == 0) 
-          return;
-        let rand = Math.floor(Math.random()*events.length);
+        if (events.length == 0) return;
+        let rand = Math.floor(Math.random() * events.length);
         this.evnt = events[rand].id;
       },
 
@@ -43,227 +42,215 @@
       skipping: false,
       server_start: function() {
         this.loading = true;
-        fetch("/api/server/start").then(x => {
-          window.location=window.location;
-        })
+        fetch("/api/server/start").then(x => { window.location = window.location; });
       },
       server_stop: function() {
         this.loading = true;
-        fetch("/api/server/stop").then(x => {
-          window.location=window.location;
-        })
+        fetch("/api/server/stop").then(x => { window.location = window.location; });
       },
 
       move_up: function(id) {
-        fetch("/api/queue/moveup/" + id).then(x => {
-          window.location=window.location;
-        })
+        fetch("/api/queue/moveup/" + id).then(x => { window.location = window.location; });
       },
       move_down: function(id) {
-        fetch("/api/queue/movedown/" + id).then(x => {
-          window.location=window.location;
-        })
+        fetch("/api/queue/movedown/" + id).then(x => { window.location = window.location; });
       },
 
       skip_event: function() {
         this.skipping = true;
-        if (!confirm("Are you sure?"))
-          return
-        fetch("/api/queue/skipevent").then(x => {
-          window.location=window.location;
-        })
+        if (!confirm("Skip current event and advance the queue?")) {
+          this.skipping = false;
+          return;
+        }
+        fetch("/api/queue/skipevent").then(x => { window.location = window.location; });
       },
       clear_completed: function() {
-        if (!confirm("Are you sure?"))
-          return
-        fetch("/api/queue/clearcompleted").then(x => {
-          window.location=window.location;
-        })
+        if (!confirm("Remove all completed events from the queue?")) return;
+        fetch("/api/queue/clearcompleted").then(x => { window.location = window.location; });
       }
-    }
+    };
   }
 </script>
-<h1 class="text-3xl text-black pb-6">Queue</h1>
-<form id="frm" class="w-full overflow-x-hidden flex flex-col" x-data="queue()" method="POST">
-  <main class="w-full flex-grow">
-    <div class="flex flex-wrap mt-6">
-      <div class="w-full pr-0">
-        <table class="min-w-full bg-white">
-          <thead>
-            <tr class="bg-gray-800 text-white">
-              <th colspan="8" class="text-center py-4 uppercase pl-4 font-semibold text-sm">
-                Server Queue
-              </th>
-            </tr>
-            <tr class="bg-gray-700 text-white">
-              <th class="text-left py-3 uppercase pl-4 font-semibold text-sm"> # </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Category </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Track </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Difficulty </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Session </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Class </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Time and Weather </th>
-              <th class="text-left py-3 uppercase font-semibold text-sm"> Action </th>
-            </tr>
-          </thead>
-          <tbody class="text-gray-700">
-            {{ $i := 1 }}
-            {{ $s := .status.Status }}
-            {{ $len := .server_events | len }}
-            {{ $hasNonFinished := 0 }}
-            {{range $idx, $val := .server_events }}
-            <tr class="even:bg-gray-200 {{ if (eq (derefInt $val.Finished ) "1") }}text-gray-400{{ end }}{{ if (and (and (gt (derefInt64 $val.StartedAt ) "0") (eq (derefInt $val.Finished ) "0")) $s) }}font-semibold{{end}}">
-              <td class="py-2 pl-4">
-                {{ if (and (and (gt (derefInt64 $val.StartedAt ) "0") (eq (derefInt $val.Finished ) "0")) $s) }}
-                <i class="fas fa-play"></i>
-                {{ else if (eq (derefInt $val.Finished ) "0") }}
-                  {{ $i }}
-                  {{ $i = (inc $i) }}
-                {{ end }}
-              </td>
-              <td class="py-2">{{ $val.UserEvent.CategoryName }}</td>
-              <td class="py-2">{{ $val.UserEvent.TrackName }}</td>
-              <td class="py-2">{{ $val.UserEvent.DifficultyName }}</td>
-              <td class="py-2">{{ $val.UserEvent.SessionName }}</td>
-              <td class="py-2">{{ $val.UserEvent.ClassName }}</td>
-              <td class="py-2">{{ $val.UserEvent.TimeName }}</td>
-              <td class="py-2">
-                {{ if (and (and (gt (derefInt64 $val.StartedAt ) "0") (eq (derefInt $val.Finished ) "0")) $s) }}
-                {{ if (not (eq (inc $idx) $len)) }}
-                <button @click="skip_event()" :disabled="skipping" x-show="!skipping">Skip Event</button>
-                <span x-show="skipping">Skipping...</span>
-                {{ end }}
-                {{ else if (eq (derefInt $val.Finished ) "0") }}
-                {{ $hasNonFinished = (inc $hasNonFinished) }}
-                <button class="mr-4" @click="move_up({{ $val.Id }})" {{ if (eq $i 2 )}}disabled{{ end }}>Up</button>
-                <button class="mr-4" @click="move_down({{ $val.Id }})" {{ if (eq (inc $idx) $len )}}disabled{{ end }}>Down</button>
-                <a href="/queue/delete/{{ $val.Id }}" onclick="return confirm('Are you sure?')" >Remove</a>
-                {{ end }}
-              </td>
-            </tr>
+
+<h1 class="pw-page-title">Queue</h1>
+
+<form id="frm" x-data="queue()" method="POST">
+
+  <!-- Queue table -->
+  <div class="pw-table-wrap">
+    <table class="pw-table">
+      <caption class="pw-table__caption">Server Queue</caption>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Category</th>
+          <th>Track</th>
+          <th>Difficulty</th>
+          <th>Session</th>
+          <th>Class</th>
+          <th>Time &amp; Weather</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ $i := 1 }}
+        {{ $s := .status.Status }}
+        {{ $len := .server_events | len }}
+        {{ $hasNonFinished := 0 }}
+        {{range $idx, $val := .server_events }}
+        <tr class="{{ if (eq (derefInt $val.Finished) "1") }}pw-row--done{{ else if (and (and (gt (derefInt64 $val.StartedAt) "0") (eq (derefInt $val.Finished) "0")) $s) }}pw-row--active{{ end }}">
+          <td>
+            {{ if (and (and (gt (derefInt64 $val.StartedAt) "0") (eq (derefInt $val.Finished) "0")) $s) }}
+              <i class="fas fa-play" style="font-size: 10px; color: var(--c-amber);"></i>
+            {{ else if (eq (derefInt $val.Finished) "0") }}
+              {{ $i }}
+              {{ $i = (inc $i) }}
+            {{ else }}
+              <i class="fas fa-check" style="font-size: 10px; color: var(--c-text-dim);"></i>
             {{ end }}
-            {{ if (eq (len .server_events) 0) }}
-            <tr class="text-center">
-              <td colspan="8" class="py-6">
-                <i class="fas fa-info-circle"></i>
-                Add events to the queue to begin
-              </td>
-            </tr>
-            {{ end}}
-          </tbody>
-          {{ if (gt (len .server_events) 0) }}
-          <tfoot class="bg-gray-700 text-white">
-            <tr>
-              <td colspan="4" class="py-3 uppercase px-4 font-semibold text-sm">
-                <div class="flex flex-row">
-                  <button class="bg-blue-700 text-white rounded py-1 px-2 text-sm flex flex-row" style="align-items: center"
-                    type="button" @click="clear_completed()" :disabled="loading">
-                    <i class="fas fa-trash"></i>
-                    <span class="px-4">Clear Completed</span>
-                  </button>
-                </div>
-              </td>
-              <td colspan="4" class="py-3 uppercase px-4 font-semibold text-sm">
-                <div class="flex flex-row justify-end">
-                  {{ if (and (not .status.Status) $hasNonFinished) }}
-                    <button class="bg-green-700 text-white rounded py-1 px-2 text-sm flex flex-row" style="align-items: center"
-                      type="button" @click="server_start()" :disabled="loading">
-                      <i class="fas fa-play"></i>
-                      <span class="px-4">Start Server</span>
-                      <div class="w-5 h-5 border-2 border-white-600 rounded-full loader" x-show="loading"></div>
-                    </button>
-                  {{ end }}
-                  {{ if .status.Status }}
-                    <button class="bg-red-700 text-white rounded py-1 px-2 text-sm flex flex-row" style="align-items: center"
-                      type="button" @click="server_stop()" :disabled="loading">
-                      <i class="fas fa-stop"></i>
-                      <span class="px-4">Stop Server</span>
-                      <div class="w-5 h-5 border-2 border-white-600 rounded-full loader" x-show="loading"></div>
-                    </button>
-                  {{ end }}
-                </div>
-              </td>
-            </tr>
-          </tfoot>
-          {{ end }}
-        </table>
-
-
-
-        <div class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto">
-          <div class="w-full mt-6">
-            <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-              <p class="text-xl flex items-center">
-                <i class="fas fa-list mr-3"></i> Add to Queue
-              </p>
-              <hr class="pb-6" />
-
-              <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                <label class="block text-sm text-gray-600 group relative" for="category">
-                  Category
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      # TODO: caption
-                    </div>
-                  </div>
-                </label>
-                <div class="flex flex-row">
-                  <select class="w-full text-gray-700 bg-gray-200 rounded-l py-1 px-4 pr-8" id="category" name="category" 
-                    x-model="category" @change="category_changed($event.target.value)" required="">
-                    <option value="">Select...</option>
-                    {{range $val := .event_cat }}
-                    <option value="{{  $val.Id }}">{{ $val.Name }}</option>
-                    {{ end }}
-                  </select>
-                  <button class="px-4 py-1 tracking-wider bg-gray-200 rounded-r" type="button" @click="random_category()">
-                    <i class="fas fa-random"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-l rounded-r" type="button" @click="submit_category()">
-                  Add all from Category
+          </td>
+          <td>{{ $val.UserEvent.CategoryName }}</td>
+          <td>{{ $val.UserEvent.TrackName }}</td>
+          <td>{{ $val.UserEvent.DifficultyName }}</td>
+          <td>{{ $val.UserEvent.SessionName }}</td>
+          <td>{{ $val.UserEvent.ClassName }}</td>
+          <td>{{ $val.UserEvent.TimeName }}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              {{ if (and (and (gt (derefInt64 $val.StartedAt) "0") (eq (derefInt $val.Finished) "0")) $s) }}
+                {{ if (not (eq (inc $idx) $len)) }}
+                  <button class="pw-btn pw-btn--ghost pw-btn--sm" type="button" @click="skip_event()" :disabled="skipping" x-show="!skipping">Skip</button>
+                  <span x-show="skipping" style="font-size: 12px; color: var(--c-text-dim); font-family: var(--font-mono);">Skipping…</span>
+                {{ end }}
+              {{ else if (eq (derefInt $val.Finished) "0") }}
+                {{ $hasNonFinished = (inc $hasNonFinished) }}
+                <button class="pw-btn pw-btn--ghost pw-btn--sm" type="button" @click="move_up({{ $val.Id }})" {{ if (eq $i 2) }}disabled{{ end }}>
+                  <i class="fas fa-arrow-up"></i>
                 </button>
-              </div>
-
-              <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                <label class="block text-sm text-gray-600 group relative" for="evnt">
-                  Event
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      # TODO: caption
-                    </div>
-                  </div>
-                </label>
-                <div class="flex flex-row">
-                  <select class="w-full text-gray-700 bg-gray-200 rounded-l py-1 px-4 pr-8" id="event" name="event"
-                    x-model="evnt" required="">
-                    <option value="" :selected="evnt == ''">Select...</option>
-                    <template x-for="evt in get_events()">
-                      <option x-bind:value="evt.id" x-text="evt.track_name" :selected="evt.id == evnt"></option>
-                    </template>
-                  </select>
-                  <button class="px-4 py-1 tracking-wider bg-gray-200 rounded-r" type="button" @click="random_event()">
-                    <i class="fas fa-random"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                <button class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-l rounded-r" type="submit">
-                  Add single Event
+                <button class="pw-btn pw-btn--ghost pw-btn--sm" type="button" @click="move_down({{ $val.Id }})" {{ if (eq (inc $idx) $len) }}disabled{{ end }}>
+                  <i class="fas fa-arrow-down"></i>
                 </button>
-              </div>
+                <a class="pw-btn pw-btn--danger pw-btn--sm" href="/queue/delete/{{ $val.Id }}" onclick="return confirm('Remove this event from the queue?')">
+                  <i class="fas fa-times"></i>
+                </a>
+              {{ end }}
+            </div>
+          </td>
+        </tr>
+        {{ end }}
 
+        {{ if (eq (len .server_events) 0) }}
+        <tr>
+          <td colspan="8" class="pw-table__empty">
+            <i class="fas fa-layer-group" style="font-size: 20px; display: block; margin-bottom: 8px; opacity: 0.3;"></i>
+            Add events to the queue to begin
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+
+      {{ if (gt (len .server_events) 0) }}
+      <tfoot>
+        <tr>
+          <td colspan="4">
+            <button class="pw-btn pw-btn--ghost pw-btn--sm" type="button" @click="clear_completed()">
+              <i class="fas fa-trash"></i> Clear Completed
+            </button>
+          </td>
+          <td colspan="4" style="text-align: right;">
+            {{ if (and (not .status.Status) $hasNonFinished) }}
+              <button class="pw-btn pw-btn--success" type="button" @click="server_start()" :disabled="loading">
+                <i class="fas fa-play"></i>
+                <span>Start Server</span>
+                <span class="loader w-4 h-4" x-show="loading"></span>
+              </button>
+            {{ end }}
+            {{ if .status.Status }}
+              <button class="pw-btn pw-btn--danger" type="button" @click="server_stop()" :disabled="loading">
+                <i class="fas fa-stop"></i>
+                <span>Stop Server</span>
+                <span class="loader w-4 h-4" x-show="loading"></span>
+              </button>
+            {{ end }}
+          </td>
+        </tr>
+      </tfoot>
+      {{ end }}
+    </table>
+  </div>
+
+  <!-- Add to queue form -->
+  <div style="max-width: 680px;">
+    <div class="pw-card">
+      <div class="pw-card__header">
+        <i class="pw-card__icon fas fa-plus-circle"></i>
+        <div>
+          <div class="pw-card__title">Add to Queue</div>
+        </div>
+      </div>
+      <div class="pw-card__body">
+        <!-- Category row -->
+        <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
+          <div style="flex: 1; min-width: 200px;">
+            <label class="pw-label" for="category">Category</label>
+            <div style="display: flex;">
+              <select
+                class="pw-select"
+                style="flex: 1; border-radius: var(--radius) 0 0 var(--radius);"
+                id="category"
+                name="category"
+                x-model="category"
+                @change="category_changed($event.target.value)"
+                required=""
+              >
+                <option value="">Select…</option>
+                {{range $val := .event_cat}}
+                <option value="{{ $val.Id }}">{{ $val.Name }}</option>
+                {{ end }}
+              </select>
+              <button class="pw-btn pw-btn--ghost" type="button" @click="random_category()"
+                style="border-radius: 0 var(--radius) var(--radius) 0; border-left: none;">
+                <i class="fas fa-random"></i>
+              </button>
             </div>
           </div>
+          <button class="pw-btn pw-btn--dark" type="button" @click="submit_category()">
+            Add all from Category
+          </button>
         </div>
 
-
+        <!-- Event row -->
+        <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 200px;">
+            <label class="pw-label" for="event">Event</label>
+            <div style="display: flex;">
+              <select
+                class="pw-select"
+                style="flex: 1; border-radius: var(--radius) 0 0 var(--radius);"
+                id="event"
+                name="event"
+                x-model="evnt"
+                required=""
+              >
+                <option value="" :selected="evnt == ''">Select…</option>
+                <template x-for="evt in get_events()">
+                  <option :value="evt.id" x-text="evt.track_name" :selected="evt.id == evnt"></option>
+                </template>
+              </select>
+              <button class="pw-btn pw-btn--ghost" type="button" @click="random_event()"
+                style="border-radius: 0 var(--radius) var(--radius) 0; border-left: none;">
+                <i class="fas fa-random"></i>
+              </button>
+            </div>
+          </div>
+          <button class="pw-btn pw-btn--primary" type="submit">
+            <i class="fas fa-plus"></i> Add Event
+          </button>
+        </div>
       </div>
     </div>
-  </main>
+  </div>
+
 </form>
 
 {{template "/htm/footer.htm"}}

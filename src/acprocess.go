@@ -61,7 +61,7 @@ func start() {
 	if err != nil {
 		log.Print("Could not capture acServer stderr: ", err)
 	}
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		log.Print("Could not start executable: ", fpath, err)
 		return

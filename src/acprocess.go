@@ -53,6 +53,7 @@ func start() {
 	}
 
 	cmd.Dir = TempFolder
+	Udp.online = false
 	stdOut, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Print("Could not capture acServer stdout: ", err)
@@ -70,16 +71,6 @@ func start() {
 	lines = ""
 	go appendOutput(stdOut, "stdout")
 	go appendOutput(stdErr, "stderr")
-	go func(currentCmd *exec.Cmd) {
-		err := currentCmd.Wait()
-		if err != nil {
-			log.Print("acServer exited: ", err)
-		}
-		if cmd == currentCmd {
-			cmd = nil
-			Status.Players = 0
-		}
-	}(cmd)
 }
 
 func getContent() string {
@@ -87,7 +78,7 @@ func getContent() string {
 }
 
 func isRunning() bool {
-	return cmd != nil && cmd.Process != nil && (cmd.ProcessState == nil || !cmd.ProcessState.Exited())
+	return cmd != nil
 }
 
 func stop() {
@@ -98,6 +89,7 @@ func stop() {
 			log.Print("Error killing acServer process: ", err)
 		}
 		cmd = nil
+		Udp.online = false
 		Status.Players = 0
 	}
 }

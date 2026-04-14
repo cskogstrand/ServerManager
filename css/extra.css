@@ -1196,3 +1196,481 @@ select {
 .server-metric__label, .server-metric__value,
 .server-eyebrow, .server-hero__title, .server-hero__subtitle,
 .server-hero__actions, .server-log, .server-log__line, .server-log__empty { }
+
+/* ============================================================
+   SHARED COMPONENT EXTENSIONS
+   ============================================================ */
+
+/* ── Preset list ──────────────────────────────────────────── */
+.pw-list { display: flex; flex-direction: column; }
+
+.pw-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px;
+  font-size: 13.5px;
+  color: var(--c-text-muted);
+  text-decoration: none !important;
+  border-bottom: 1px solid var(--c-border);
+  transition: color 0.1s, background 0.1s;
+  cursor: pointer;
+}
+
+.pw-list__item:last-child { border-bottom: none; }
+.pw-list__item:hover { background: rgba(255,255,255,0.02); color: var(--c-text); }
+
+.pw-list__item i {
+  font-size: 11px;
+  color: var(--c-text-dim);
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.pw-list__item--add { color: var(--c-accent) !important; }
+.pw-list__item--add i { color: var(--c-accent) !important; }
+.pw-list__item--add:hover { background: var(--c-accent-dim) !important; }
+
+/* ── Form actions ─────────────────────────────────────────── */
+.pw-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* ── Toggle row ───────────────────────────────────────────── */
+.pw-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pw-toggle-label-text {
+  font-size: 13.5px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Form grid ────────────────────────────────────────────── */
+.pw-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+}
+
+.pw-form-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ── Input group (joined input+button) ───────────────────── */
+.pw-input-group { display: flex; }
+
+.pw-input-group > .pw-input,
+.pw-input-group > .pw-select {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm) !important;
+  flex: 1;
+  min-width: 0;
+}
+
+.pw-input-group > .pw-btn {
+  border-radius: 0 !important;
+  border-left: none !important;
+  flex-shrink: 0;
+}
+
+.pw-input-group > .pw-btn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important;
+}
+
+/* ── Sub-panel (looped items inside a card) ──────────────── */
+.pw-sub-panel {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.pw-sub-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.pw-sub-panel__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+/* ── Modal ────────────────────────────────────────────────── */
+.pw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 12, 20, 0.78);
+  backdrop-filter: blur(3px);
+  z-index: 490;
+}
+
+.pw-modal-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  pointer-events: none;
+  padding: 20px;
+}
+
+.pw-modal-wrapper > * { pointer-events: all; }
+
+.pw-modal {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: modal-in 0.2s cubic-bezier(0.2,0,0,1) both;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.pw-modal--wide  { max-width: 800px; }
+.pw-modal--wider { max-width: 1100px; max-height: 92vh; }
+
+.pw-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  background: var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  flex-shrink: 0;
+}
+
+.pw-modal__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+  letter-spacing: -0.01em;
+}
+
+.pw-modal__close {
+  background: none;
+  border: none;
+  color: var(--c-text-dim);
+  font-size: 17px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.pw-modal__close:hover { color: var(--c-text); background: rgba(255,255,255,0.07); }
+
+.pw-modal__body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.pw-modal__footer {
+  padding: 13px 20px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* ── Sortable table inside modals ────────────────────────── */
+.pw-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pw-modal-table th {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-text-dim);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+}
+
+.pw-sort-btn {
+  background: none;
+  border: none;
+  color: var(--c-text-dim);
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 9px;
+  transition: color 0.1s;
+}
+
+.pw-sort-btn.active,
+.pw-sort-btn:hover { color: var(--c-accent); }
+
+.pw-modal-table td {
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--c-text-muted);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.pw-modal-table tbody tr:hover td { background: rgba(255,255,255,0.025); }
+.pw-modal-table tbody tr.is-selected td { color: var(--c-accent); background: var(--c-accent-dim); }
+.pw-modal-table td a { color: inherit; text-decoration: none; }
+.pw-modal-table td a:hover { color: var(--c-accent); }
+
+/* ── Visual track/skin picker grid ──────────────────────── */
+.pw-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+}
+
+.pw-picker-item {
+  position: relative;
+  cursor: pointer;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.pw-picker-item:hover { border-color: var(--c-border-hi); }
+.pw-picker-item.is-selected { border-color: var(--c-accent); }
+.pw-picker-item img { display: block; height: 120px; width: auto; }
+
+.pw-picker-item__label {
+  font-size: 10.5px;
+  color: var(--c-text-dim);
+  padding: 4px 6px;
+  margin: 0;
+  background: var(--c-surface);
+  text-align: center;
+}
+
+/* ── Car entry card (class.htm) ──────────────────────────── */
+.pw-entry-card {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  display: flex;
+}
+
+.pw-entry-card__thumb {
+  width: 180px;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--c-surface-2);
+}
+
+.pw-entry-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  min-height: 90px;
+}
+
+.pw-entry-card__num {
+  position: absolute;
+  top: 6px; left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  z-index: 1;
+}
+
+.pw-entry-card__fields {
+  flex: 1;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pw-entry-card__actions {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--c-border);
+  flex-shrink: 0;
+  width: 54px;
+}
+
+.pw-entry-card__actions .pw-btn {
+  flex: 1;
+  justify-content: center;
+  border-radius: 0 !important;
+  border: none !important;
+  border-bottom: 1px solid var(--c-border) !important;
+  padding: 0;
+  font-size: 11px;
+}
+
+.pw-entry-card__actions .pw-btn:last-child { border-bottom: none !important; }
+
+/* ── Setup guide (welcome screen) ────────────────────────── */
+.pw-setup-guide {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+
+.pw-setup-guide__head {
+  background: var(--c-surface-2);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pw-setup-guide__info { flex: 1; }
+
+.pw-setup-guide__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-accent);
+  letter-spacing: -0.01em;
+}
+
+.pw-setup-guide__sub {
+  font-size: 12px;
+  color: var(--c-text-dim);
+  margin-top: 2px;
+}
+
+.pw-setup-steps {
+  display: flex;
+  align-items: flex-start;
+  padding: 24px 20px;
+  gap: 0;
+  overflow-x: auto;
+}
+
+.pw-setup-step {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  padding: 0 10px;
+}
+
+.pw-setup-step::before {
+  content: '';
+  position: absolute;
+  top: 17px;
+  left: 0; right: 50%;
+  height: 1px;
+  background: var(--c-border);
+}
+
+.pw-setup-step::after {
+  content: '';
+  position: absolute;
+  top: 17px;
+  left: 50%; right: 0;
+  height: 1px;
+  background: var(--c-border);
+}
+
+.pw-setup-step:first-child::before { display: none; }
+.pw-setup-step:last-child::after   { display: none; }
+
+.pw-setup-step__num {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--c-surface-2);
+  border: 2px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.pw-setup-step--done .pw-setup-step__num {
+  background: var(--c-green-glow);
+  border-color: var(--c-green);
+  color: var(--c-green);
+}
+
+.pw-setup-step--active .pw-setup-step__num {
+  background: var(--c-accent-dim);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.pw-setup-step__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-dim);
+  line-height: 1.3;
+}
+
+.pw-setup-step--done .pw-setup-step__label { color: var(--c-green); }
+.pw-setup-step--active .pw-setup-step__label { color: var(--c-accent); }
+
+.pw-setup-step__desc {
+  font-size: 11px;
+  color: var(--c-text-dim);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+.pw-setup-step a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--c-accent);
+  text-decoration: none !important;
+  font-weight: 600;
+  border: 1px solid rgba(74,158,214,0.3);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  background: var(--c-accent-dim);
+  transition: background 0.12s;
+}
+
+.pw-setup-step a:hover { background: var(--c-accent-glow); }

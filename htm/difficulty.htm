@@ -1,607 +1,373 @@
 {{ template "/htm/header.htm" . }}
 
-<div class="flex flex-wrap">
-  <div class="w-full">
-    <div class="text-black">
+{{ if not .form.Id }}
+<div x-data="{ showModal: false }">
 
+  <!-- Add modal overlay -->
+  <div x-show="showModal" class="pw-modal-overlay" @click="showModal = false" x-cloak></div>
+  <div x-show="showModal" class="pw-modal-wrapper" x-cloak>
+    <form class="pw-modal" method="POST">
+      <div class="pw-modal__head">
+        <span class="pw-modal__title">Add Difficulty Preset</span>
+        <button class="pw-modal__close" type="button" @click="showModal = false">&times;</button>
+      </div>
+      <div class="pw-modal__body">
+        <div class="pw-form-row">
+          <label class="pw-label" for="difficulty_name">Name</label>
+          <input class="pw-input pw-input--full" id="difficulty_name" name="difficulty_name"
+            type="text" required placeholder="Difficulty preset name" aria-label="Difficulty Name" />
+        </div>
+      </div>
+      <div class="pw-modal__footer">
+        <button class="pw-btn pw-btn--ghost" type="button" @click="showModal = false">Cancel</button>
+        <button class="pw-btn pw-btn--primary" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
 
-      {{ if not .form.Id }}
-      <div class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" x-data="{ showModal: false, email: '' }">
-        <h1 class="text-3xl text-black pb-6">Difficulty Presets</h1>
-        <form method="POST">
-          <!-- Background overlay -->
-          <div x-show="showModal" class="fixed inset-0 transition-opacity" aria-hidden="true"
-            @click="showModal = false">
-            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+  <div class="pw-page-title">Difficulty Presets</div>
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-road"></i></span>
+      <span class="pw-card__title">Difficulty Presets</span>
+    </div>
+    <div class="pw-list">
+      {{range $val := .list}}
+      <a class="pw-list__item" href="/difficulty/{{ $val.Id }}">
+        <i class="fas fa-edit"></i>{{ $val.Name }}
+      </a>
+      {{end}}
+      <a class="pw-list__item pw-list__item--add" href="#" @click.prevent="showModal = true">
+        <i class="fas fa-plus"></i>Add new Difficulty
+      </a>
+    </div>
+  </div>
+
+</div>
+{{ end }}
+
+{{ if .form.Id }}
+<script>
+  function dynamic_track() {
+    return {
+      open: {{ .form.DynamicTrack }},
+      dynamic_track_preset: {{ .form.DynamicTrackPreset }},
+      session_start: {{ .form.SessionStart }},
+      randomness: {{ .form.Randomness }},
+      session_transfer: {{ .form.SessionTransfer }},
+      lap_gain: {{ .form.LapGain }},
+
+      set_open: function (val) {
+        this.open = val;
+        if (val) {
+          this.dynamic_track_preset = '';
+          this.session_start = '';
+          this.randomness = '';
+          this.session_transfer = '';
+          this.lap_gain = '';
+        }
+      },
+      preset_changed: function () {
+        if (this.dynamic_track_preset == 1) {
+          this.session_start = 86; this.randomness = 1; this.session_transfer = 50; this.lap_gain = 30;
+        } else if (this.dynamic_track_preset == 2) {
+          this.session_start = 89; this.randomness = 3; this.session_transfer = 80; this.lap_gain = 50;
+        } else if (this.dynamic_track_preset == 3) {
+          this.session_start = 96; this.randomness = 1; this.session_transfer = 80; this.lap_gain = 300;
+        } else if (this.dynamic_track_preset == 4) {
+          this.session_start = 95; this.randomness = 2; this.session_transfer = 90; this.lap_gain = 132;
+        } else if (this.dynamic_track_preset == 5) {
+          this.session_start = 98; this.randomness = 2; this.session_transfer = 80; this.lap_gain = 700;
+        } else if (this.dynamic_track_preset == 6) {
+          this.session_start = 100; this.randomness = 0; this.session_transfer = 100; this.lap_gain = 1;
+        }
+      }
+    }
+  }
+</script>
+
+<form method="POST">
+  <div class="pw-page-title">Edit Difficulty Preset</div>
+
+  <!-- Name -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-tag"></i></span>
+      <span class="pw-card__title">Preset Name</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <label class="pw-label" for="name">Name</label>
+        <input class="pw-input pw-input--full" id="name" name="name"
+          type="text" required placeholder="Difficulty preset name"
+          value="{{ .form.Name }}" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Assists -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-sliders-h"></i></span>
+      <span class="pw-card__title">Driving Assists</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-grid">
+        <div class="pw-form-row">
+          <label class="pw-label" for="abs_allowed">ABS</label>
+          <select class="pw-select" id="abs_allowed" name="abs_allowed">
+            <option value="0" {{ if (eq (derefInt .form.AbsAllowed) "0") }} selected {{ end }}>Denied</option>
+            <option value="1" {{ if (eq (derefInt .form.AbsAllowed) "1") }} selected {{ end }}>Factory</option>
+            <option value="2" {{ if (eq (derefInt .form.AbsAllowed) "2") }} selected {{ end }}>Force</option>
+          </select>
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="tc_allowed">Traction Control</label>
+          <select class="pw-select" id="tc_allowed" name="tc_allowed">
+            <option value="0" {{ if (eq (derefInt .form.TcAllowed) "0") }} selected {{ end }}>Denied</option>
+            <option value="1" {{ if (eq (derefInt .form.TcAllowed) "1") }} selected {{ end }}>Factory</option>
+            <option value="2" {{ if (eq (derefInt .form.TcAllowed) "2") }} selected {{ end }}>Force</option>
+          </select>
+        </div>
+      </div>
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="stability_allowed" name="stability_allowed"
+              value="1" {{ if (eq (derefInt .form.StabilityAllowed) "1") }} checked {{ end }} />
+            <label class="toggle-label" for="stability_allowed"></label>
+            <input type="hidden" value="0" name="stability_allowed" />
           </div>
-          <!-- Modal -->
-          <div x-show="showModal" x-transition:enter="transition ease-out duration-300 transform"
-            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-            x-transition:leave="transition ease-in duration-200 transform"
-            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <!-- Modal panel -->
-              <div
-                class="w-full inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
-                role="dialog" aria-modal="true" aria-labelledby="modal-headline">
-                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <!-- Modal content -->
-                  <div class="sm:flex sm:items-start">
-                    <div class="w-full mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                      <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-headline">
-                        Add a new Difficulty
-                      </h3>
-                      <div class="mt-2">
-                        <p class="text-sm text-gray-500">
-                          Enter the name of the difficulty
-                        </p>
-                        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="difficulty_name"
-                          name="difficulty_name" type="text" required="" placeholder="Difficulty Name"
-                          aria-label="Difficulty Name" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex">
-                  <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-l-md" type="submit">
-                    Save
-                  </button>
-                  <button @click="showModal = false"
-                    class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-r-md" type="button">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
+          <label class="pw-toggle-label-text" for="stability_allowed">Stability Control — helps keep control of the car</label>
+        </div>
+      </div>
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="autoclutch_allowed" name="autoclutch_allowed"
+              value="1" {{ if (eq (derefInt .form.AutoclutchAllowed) "1") }} checked {{ end }} />
+            <label class="toggle-label" for="autoclutch_allowed"></label>
+            <input type="hidden" value="0" name="autoclutch_allowed" />
           </div>
-        </form>
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Difficulties
-            </p>
-            <hr class="pb-6" />
-            <div class="flex">
-              <ul class="bg-white w-96 text-gray-900">
-                {{ $g := . }}
-                {{range $val := .list }}
-                <li class="w-full hover:bg-gray-200 rounded-lg">
-                  <a class="px-5 py-2 inline-block w-full" href="/difficulty/{{ $val.Id }}">
-                    <i class="fas fa-edit mr-3"></i>{{ $val.Name }}
-                  </a>
-                </li>
-                {{ end }}
-                <li class="w-full hover:bg-gray-200 rounded-lg">
-                  <a class="px-5 py-2 inline-block w-full" href="#" @click="showModal = true">
-                    <i class="fas fa-plus mr-3"></i>Add new Difficulty
-                  </a>
-                </li>
-              </ul>
-            </div>
+          <label class="pw-toggle-label-text" for="autoclutch_allowed">Auto Clutch — automatically pressed when stopped</label>
+        </div>
+      </div>
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="tyre_blankets_allowed" name="tyre_blankets_allowed"
+              value="1" {{ if (eq (derefInt .form.TyreBlanketsAllowed) "1") }} checked {{ end }} />
+            <label class="toggle-label" for="tyre_blankets_allowed"></label>
+            <input type="hidden" value="0" name="tyre_blankets_allowed" />
+          </div>
+          <label class="pw-toggle-label-text" for="tyre_blankets_allowed">Tyre Blankets — car leaves pit with warmed tyres</label>
+        </div>
+      </div>
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="force_virtual_mirror" name="force_virtual_mirror"
+              value="1" {{ if (eq (derefInt .form.ForceVirtualMirror) "1") }} checked {{ end }} />
+            <label class="toggle-label" for="force_virtual_mirror"></label>
+            <input type="hidden" value="0" name="force_virtual_mirror" />
+          </div>
+          <label class="pw-toggle-label-text" for="force_virtual_mirror">Force Virtual Mirrors — clients must enable</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Realism -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-tachometer-alt"></i></span>
+      <span class="pw-card__title">Realism</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-grid">
+        <div class="pw-form-row">
+          <label class="pw-label" for="fuel_rate">Fuel Rate (%)</label>
+          <input class="pw-input pw-input--full" id="fuel_rate" name="fuel_rate"
+            type="number" min="0" max="500" required placeholder="0 = no fuel use"
+            value="{{ .form.FuelRate }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="damage_multiplier">Damage Rate (%)</label>
+          <input class="pw-input pw-input--full" id="damage_multiplier" name="damage_multiplier"
+            type="number" min="0" max="400" required placeholder="0 = no damage"
+            value="{{ .form.DamageMultiplier }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="tyre_wear_rate">Tyre Wear (%)</label>
+          <input class="pw-input pw-input--full" id="tyre_wear_rate" name="tyre_wear_rate"
+            type="number" min="0" max="500" required placeholder="0 = no wear"
+            value="{{ .form.TyreWearRate }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="allowed_tyres_out">Allowed Tyres Out</label>
+          <select class="pw-select" id="allowed_tyres_out" name="allowed_tyres_out">
+            <option value="0" {{ if (eq (derefInt .form.AllowedTyresOut) "0") }} selected {{ end }}>0</option>
+            <option value="1" {{ if (eq (derefInt .form.AllowedTyresOut) "1") }} selected {{ end }}>1</option>
+            <option value="2" {{ if (eq (derefInt .form.AllowedTyresOut) "2") }} selected {{ end }}>2</option>
+            <option value="3" {{ if (eq (derefInt .form.AllowedTyresOut) "3") }} selected {{ end }}>3</option>
+            <option value="4" {{ if (eq (derefInt .form.AllowedTyresOut) "4") }} selected {{ end }}>4</option>
+          </select>
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="max_ballast_kg">Max Ballast (KG)</label>
+          <input class="pw-input pw-input--full" id="max_ballast_kg" name="max_ballast_kg"
+            type="number" min="0" max="300" required placeholder="Max ballast"
+            value="{{ .form.MaxBallastKg }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="start_rule">Jump Start Rule</label>
+          <select class="pw-select" id="start_rule" name="start_rule">
+            <option value="0" {{ if (eq (derefInt .form.StartRule) "0") }} selected {{ end }}>Car Locked</option>
+            <option value="1" {{ if (eq (derefInt .form.StartRule) "1") }} selected {{ end }}>Teleport to Pit</option>
+            <option value="2" {{ if (eq (derefInt .form.StartRule) "2") }} selected {{ end }}>Drive Through</option>
+          </select>
+        </div>
+      </div>
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="race_gas_penality_disabled" name="race_gas_penality_disabled"
+              value="1" {{ if (eq (derefInt .form.RaceGasPenalityDisabled) "1") }} checked {{ end }} />
+            <label class="toggle-label" for="race_gas_penality_disabled"></label>
+            <input type="hidden" value="0" name="race_gas_penality_disabled" />
+          </div>
+          <label class="pw-toggle-label-text" for="race_gas_penality_disabled">Disable Race Gas Penalty (cuts still recorded)</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Track -->
+  <div class="pw-card" x-data="dynamic_track()">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-grip-lines"></i></span>
+      <span class="pw-card__title">Dynamic Track</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="dynamic_track" name="dynamic_track"
+              value="1" {{ if (eq (derefInt .form.DynamicTrack) "1") }} checked {{ end }}
+              @click="set_open($event.target.checked)" />
+            <label class="toggle-label" for="dynamic_track"></label>
+            <input type="hidden" value="0" name="dynamic_track" />
+          </div>
+          <label class="pw-toggle-label-text" for="dynamic_track">Enable dynamic track surface improvement</label>
+        </div>
+      </div>
+      <div x-show="open">
+        <div class="pw-form-grid">
+          <div class="pw-form-row">
+            <label class="pw-label" for="dynamic_track_preset">Preset</label>
+            <select class="pw-select" id="dynamic_track_preset" name="dynamic_track_preset"
+              x-model="dynamic_track_preset" :required="open" :disabled="!open"
+              @change="preset_changed()">
+              <option value="0" {{ if (eq (derefInt .form.DynamicTrackPreset) "0") }} selected {{ end }}>Custom</option>
+              <option value="1" {{ if (eq (derefInt .form.DynamicTrackPreset) "1") }} selected {{ end }}>Dusty</option>
+              <option value="2" {{ if (eq (derefInt .form.DynamicTrackPreset) "2") }} selected {{ end }}>Old</option>
+              <option value="3" {{ if (eq (derefInt .form.DynamicTrackPreset) "3") }} selected {{ end }}>Slow</option>
+              <option value="4" {{ if (eq (derefInt .form.DynamicTrackPreset) "4") }} selected {{ end }}>Green</option>
+              <option value="5" {{ if (eq (derefInt .form.DynamicTrackPreset) "5") }} selected {{ end }}>Fast</option>
+              <option value="6" {{ if (eq (derefInt .form.DynamicTrackPreset) "6") }} selected {{ end }}>Optimum</option>
+            </select>
+          </div>
+          <div class="pw-form-row">
+            <label class="pw-label" for="session_start">Start grip (%)</label>
+            <input class="pw-input pw-input--full" id="session_start" name="session_start"
+              x-model="session_start" type="number" min="80" max="100"
+              :required="open" :disabled="dynamic_track_preset != 0 || !open"
+              placeholder="80–100" />
+            <input type="hidden" name="session_start" x-model="session_start" />
+          </div>
+          <div class="pw-form-row">
+            <label class="pw-label" for="randomness">Randomness</label>
+            <input class="pw-input pw-input--full" id="randomness" name="randomness"
+              x-model="randomness" type="number" min="0" max="10"
+              :required="open" :disabled="dynamic_track_preset != 0 || !open"
+              placeholder="Alteration %" />
+            <input type="hidden" name="randomness" x-model="randomness" />
+          </div>
+          <div class="pw-form-row">
+            <label class="pw-label" for="session_transfer">Transfer grip (%)</label>
+            <input class="pw-input pw-input--full" id="session_transfer" name="session_transfer"
+              x-model="session_transfer" type="number" min="0" max="100"
+              :required="open" :disabled="dynamic_track_preset != 0 || !open"
+              placeholder="Between sessions" />
+            <input type="hidden" name="session_transfer" x-model="session_transfer" />
+          </div>
+          <div class="pw-form-row">
+            <label class="pw-label" for="lap_gain">Laps to improve grip</label>
+            <input class="pw-input pw-input--full" id="lap_gain" name="lap_gain"
+              x-model="lap_gain" type="number" min="0" max="1000"
+              :required="open" :disabled="dynamic_track_preset != 0 || !open"
+              placeholder="Combined laps per 1%" />
+            <input type="hidden" name="lap_gain" x-model="lap_gain" />
           </div>
         </div>
       </div>
-      {{ end }}
-
-      {{ if .form.Id }}
-      <script>
-        function dynamic_track() {
-          return {
-            open: {{ .form.DynamicTrack }},
-            dynamic_track_preset: {{ .form.DynamicTrackPreset }},
-            session_start: {{ .form.SessionStart }},
-            randomness: {{ .form.Randomness }},
-            session_transfer: {{ .form.SessionTransfer }},
-            lap_gain: {{ .form.LapGain }},
-
-            set_open: function (val) {
-              this.open = val;
-              if (val) {
-                this.dynamic_track_preset = '';
-                this.session_start = '';
-                this.randomness = '';
-                this.session_transfer = '';
-                this.lap_gain = '';
-              }
-            },
-            preset_changed: function () {
-              if (this.dynamic_track_preset == 1) {
-                this.session_start = 86;
-                this.randomness = 1;
-                this.session_transfer = 50;
-                this.lap_gain = 30;
-              } else if (this.dynamic_track_preset == 2) {
-                this.session_start = 89;
-                this.randomness = 3;
-                this.session_transfer = 80;
-                this.lap_gain = 50;
-              } else if (this.dynamic_track_preset == 3) {
-                this.session_start = 96;
-                this.randomness = 1;
-                this.session_transfer = 80;
-                this.lap_gain = 300;
-              } else if (this.dynamic_track_preset == 4) {
-                this.session_start = 95;
-                this.randomness = 2;
-                this.session_transfer = 90;
-                this.lap_gain = 132;
-              } else if (this.dynamic_track_preset == 5) {
-                this.session_start = 98;
-                this.randomness = 2;
-                this.session_transfer = 80;
-                this.lap_gain = 700;
-              } else if (this.dynamic_track_preset == 6) {
-                this.session_start = 100;
-                this.randomness = 0;
-                this.session_transfer = 100;
-                this.lap_gain = 1;
-              }
-            }
-          }
-        }
-      </script>
-
-
-      <form class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" method="POST">
-        <h1 class="text-3xl text-black pb-6">Difficulty Presets</h1>
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Difficulty Name
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="name">
-                Name
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Name of this preset
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="name" name="name"
-                type="text" required="" placeholder="Name" aria-label="Name"
-                value="{{ .form.Name }}" />
-            </div>
-          </div>
-        </div>
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Assists
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="abs_allowed">
-                ABS
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    # TODO: caption
-                  </div>
-                </div>
-              </label>
-              <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="abs_allowed"
-                name="abs_allowed">
-                <option value="0" {{ if (eq (derefInt .form.AbsAllowed) "0") }} selected {{ end }}>Denied</option>
-                <option value="1" {{ if (eq (derefInt .form.AbsAllowed) "1") }} selected {{ end }}>Factory</option>
-                <option value="2" {{ if (eq (derefInt .form.AbsAllowed) "2") }} selected {{ end }}>Force</option>
-              </select>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="tc_allowed">
-                Traction Control
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    # TODO: caption
-                  </div>
-                </div>
-              </label>
-              <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="tc_allowed" name="tc_allowed">
-                <option value="0" {{ if (eq (derefInt .form.TcAllowed) "0") }} selected {{ end }}>Denied</option>
-                <option value="1" {{ if (eq (derefInt .form.TcAllowed) "1") }} selected {{ end }}>Factory</option>
-                <option value="2" {{ if (eq (derefInt .form.TcAllowed) "2") }} selected {{ end }}>Force</option>
-              </select>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="stability_allowed">
-                Stability Control
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    If flagged the AI will help you to keep control of the car
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="stability_allowed" id="stability_allowed" value="1" {{ if (eq (derefInt
-                  .form.StabilityAllowed) "1") }} checked {{ end }}
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="stability_allowed"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='stability_allowed'>
-              </div>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="autoclutch_allowed">
-                Auto Clutch
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    If flagged the clutch is automatically pressed when the car is stopped
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="autoclutch_allowed" id="autoclutch_allowed" value="1" {{ if (eq (derefInt
-                  .form.AutoclutchAllowed) "1") }} checked {{ end }}
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="autoclutch_allowed"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='autoclutch_allowed'>
-              </div>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="tyre_blankets_allowed">
-                Tyre Blankets
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    If flagged the car will leave the box with warmed up tires
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="tyre_blankets_allowed" id="tyre_blankets_allowed" value="1" {{ if (eq
-                  (derefInt .form.TyreBlanketsAllowed) "1") }} checked {{ end }}
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="tyre_blankets_allowed"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='tyre_blankets_allowed'>
-              </div>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="force_virtual_mirror">
-                Force Virtual Mirrors
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    If flagged the client will be force to have virtual mirrors enabled
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="force_virtual_mirror" id="force_virtual_mirror" value="1" {{ if (eq
-                  (derefInt .form.ForceVirtualMirror) "1") }} checked {{ end }}
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="force_virtual_mirror"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='force_virtual_mirror'>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Realism
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="fuel_rate">
-                Fuel Rate
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Percentage of fuel usage: 0 = no fuel usage
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="fuel_rate" name="fuel_rate" min="0"
-                max="500" type="number" required="" placeholder="Fuel Rate" aria-label="Fuel Rate"
-                value="{{ .form.FuelRate }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="damage_multiplier">
-                Damage Rate
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Percentage of damage: 0 = no damage
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="damage_multiplier" min="0" max="400"
-                name="damage_multiplier" type="number" required="" placeholder="Damage Rate" aria-label="Damage Rate"
-                value="{{ .form.DamageMultiplier }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="tyre_wear_rate">
-                Tyre Wear
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Percentage of tyre wear rate: 0 = no damage
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="tyre_wear_rate" min="0" max="500"
-                name="tyre_wear_rate" type="number" required="" placeholder="Tyre Wear" aria-label="Tyre Wear"
-                value="{{ .form.TyreWearRate }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="allowed_tyres_out">
-                Allowed Tyres Out
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    #TODO: caption
-                  </div>
-                </div>
-              </label>
-              <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="allowed_tyres_out"
-                name="allowed_tyres_out">
-                <option value="0" {{ if (eq (derefInt .form.AllowedTyresOut) "0") }} selected {{ end }}>0</option>
-                <option value="1" {{ if (eq (derefInt .form.AllowedTyresOut) "1") }} selected {{ end }}>1</option>
-                <option value="2" {{ if (eq (derefInt .form.AllowedTyresOut) "2") }} selected {{ end }}>2</option>
-                <option value="3" {{ if (eq (derefInt .form.AllowedTyresOut) "3") }} selected {{ end }}>3</option>
-                <option value="4" {{ if (eq (derefInt .form.AllowedTyresOut) "4") }} selected {{ end }}>4</option>
-              </select>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="max_ballast_kg">
-                Max Ballast (KG)
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Max ballast allowed on server
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="max_ballast_kg" min="0" max="300"
-                name="max_ballast_kg" type="number" required="" placeholder="Max Balast (KG)"
-                aria-label="Max Ballast (KG)" value="{{ .form.MaxBallastKg }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="start_rule">
-                Jump Start
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    DriveThrough is not valid if race has 3 laps or less: Teleport will be used
-                  </div>
-                </div>
-              </label>
-              <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="start_rule" name="start_rule">
-                <option value="0" {{ if (eq (derefInt .form.StartRule) "0") }} selected {{ end }}>Car Locked</option>
-                <option value="1" {{ if (eq (derefInt .form.StartRule) "1") }} selected {{ end }}>Teleport To Pit
-                </option>
-                <option value="2" {{ if (eq (derefInt .form.StartRule) "2") }} selected {{ end }}>DriveThrough</option>
-              </select>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="race_gas_penality_disabled">
-                Race Gas Penality
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Flag it if you want to disable race Gas Penality. Cuts will be registered on result jsons
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="race_gas_penality_disabled" id="race_gas_penality_disabled" value="1" {{ if
-                  (eq (derefInt .form.RaceGasPenalityDisabled) "1") }} checked {{ end }}
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="race_gas_penality_disabled"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='race_gas_penality_disabled'>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="w-full mt-6" x-data="dynamic_track()">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Dynamic Track
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="dynamic_track">
-                Enabled
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Flag it to use the dynamic improvement of the track surface
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="dynamic_track" id="dynamic_track" value="1" {{ if (eq (derefInt
-                  .form.DynamicTrack) "1") }} checked {{ end }} @click="set_open($event.target.checked)"
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="dynamic_track"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type="hidden" value="0" name="dynamic_track" />
-              </div>
-            </div>
-
-            <div x-show="open">
-              <div class="mt-2">
-                <label class="block text-sm text-gray-600 group relative" for="dynamic_track_preset">
-                  Preset
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      # TODO: caption
-                    </div>
-                  </div>
-                </label>
-                <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="dynamic_track_preset"
-                  :required="open" name="dynamic_track_preset" x-model="dynamic_track_preset" :disabled="!open"
-                  @change="preset_changed()">
-                  <option value="0" {{ if (eq (derefInt .form.DynamicTrackPreset) "0") }} selected {{ end }}>Custom
-                  </option>
-                  <option value="1" {{ if (eq (derefInt .form.DynamicTrackPreset) "1") }} selected {{ end }}>Dusty
-                  </option>
-                  <option value="2" {{ if (eq (derefInt .form.DynamicTrackPreset) "2") }} selected {{ end }}>Old
-                  </option>
-                  <option value="3" {{ if (eq (derefInt .form.DynamicTrackPreset) "3") }} selected {{ end }}>Slow
-                  </option>
-                  <option value="4" {{ if (eq (derefInt .form.DynamicTrackPreset) "4") }} selected {{ end }}>Green
-                  </option>
-                  <option value="5" {{ if (eq (derefInt .form.DynamicTrackPreset) "5") }} selected {{ end }}>Fast
-                  </option>
-                  <option value="6" {{ if (eq (derefInt .form.DynamicTrackPreset) "6") }} selected {{ end }}>Optimum
-                  </option>
-                </select>
-              </div>
-              <div class="mt-2">
-                <label class="block text-sm text-gray-600 group relative" for="session_start">
-                  Start Value
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      Percentage of track grip
-                    </div>
-                  </div>
-                </label>
-                <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="session_start"
-                  x-model="session_start" min="80" max="100" name="session_start" type="number" :required="open"
-                  :disabled="dynamic_track_preset != 0 || !open" placeholder="Start Value" aria-label="Start Value" />
-                <input type="hidden" name="session_start" x-model="session_start" />
-              </div>
-              <div class="mt-2">
-                <label class="block text-sm text-gray-600 group relative" for="randomness">
-                  Randomness
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      Alteration percentage of the start value
-                    </div>
-                  </div>
-                </label>
-                <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="randomness" name="randomness"
-                  min="0" max="10" type="number" :required="open" :disabled="dynamic_track_preset != 0 || !open"
-                  placeholder="Randomness" aria-label="Randomness" x-model="randomness" />
-                <input type="hidden" name="randomness" x-model="randomness" />
-              </div>
-              <div class="mt-2">
-                <label class="block text-sm text-gray-600 group relative" for="session_transfer">
-                  Transfer Grip
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      Percentage of transferred grip between sessions
-                    </div>
-                  </div>
-                </label>
-                <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="session_transfer"
-                  x-model="session_transfer" min="0" max="100" name="session_transfer" type="number" :required="open"
-                  :disabled="dynamic_track_preset != 0 || !open" placeholder="Transfer Grip" aria-label="Transfer Grip" />
-                <input type="hidden" name="session_transfer" x-model="session_transfer" />
-              </div>
-              <div class="mt-2">
-                <label class="block text-sm text-gray-600 group relative" for="lap_gain">
-                  Laps to Improve Grip
-                  <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                    <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                      How many combined laps are needed to increase grip of 1%
-                    </div>
-                  </div>
-                </label>
-                <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="lap_gain" name="lap_gain"
-                  x-model="lap_gain" min="0" max="1000" type="number" :required="open"
-                  :disabled="dynamic_track_preset != 0 || !open" placeholder="Laps to Improve Grip"
-                  aria-label="Laps to Improve Grip" />
-                <input type="hidden" name="lap_gain" x-model="lap_gain" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Voting and Banning
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="kick_quorum">
-                Kick Vote Quorum
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Percentage of 'Yes' needed to kick a player
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="kick_quorum" name="kick_quorum"
-                min="0" max="101" type="number" required="" placeholder="Kick Vote Quorum" aria-label="Kick Vote Quorum"
-                value="{{ .form.KickQuorum }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="voting_quorum">
-                Session Vote Quorum
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Percentage of 'Yes' needed to restart or skip a session
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="voting_quorum" name="voting_quorum"
-                min="0" max="101" type="number" required="" placeholder="Session Vote Quorum"
-                aria-label="Session Vote Quorum" value="{{ .form.VotingQuorum }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="vote_duration">
-                Vote Duration
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Seconds needed to close the voting session
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="vote_duration" name="vote_duration"
-                min="10" max="30" type="number" required="" placeholder="Vote Duration" aria-label="Vote Duration"
-                value="{{ .form.VoteDuration }}" />
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="blacklist_mode">
-                Blacklist
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    # TODO: caption
-                  </div>
-                </div>
-              </label>
-              <select class="w-full text-gray-700 bg-gray-200 rounded py-1 px-4 pr-8" id="blacklist_mode"
-                name="blacklist_mode">
-                <option value="0" {{ if (eq (derefInt .form.BlacklistMode) "0") }} selected {{ end }}>Kick Player
-                </option>
-                <option value="1" {{ if (eq (derefInt .form.BlacklistMode) "1") }} selected {{ end }}>Kick Until Restart
-                </option>
-              </select>
-            </div>
-            <div class="mt-2">
-              <label class="block text-sm text-gray-600 group relative" for="max_contacts_per_km">
-                Max Collisions x KM
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    The player will be kicked if he hits X different cars dfuring the same Km (-1 to disable it)
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="max_contacts_per_km" min="-1"
-                max="128" name="max_contacts_per_km" type="number" required="" placeholder="Max Collision per KM"
-                aria-label="Max Collision per KM" value="{{ .form.MaxContactsPerKm }}" />
-            </div>
-          </div>
-        </div>
-
-        <div class="w-full mt-6" x-data=" { btnClick : true }">
-          <p class="text-xl flex justify-center items-center">
-            <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-l-md" type="submit">
-              Save
-            </button>
-            <button class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-r-md" type="button"
-              @click="confirm('Are you sure?') && document.getElementById('frmDelete').submit()">
-              Delete
-            </button>
-          </p>
-        </div>
     </div>
-    </form>
-    <form id="frmDelete" action="/difficulty/delete/{{ .form.Id }}" method="POST"></form>
-    {{ end }}
   </div>
-</div>
+
+  <!-- Voting & Banning -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-gavel"></i></span>
+      <span class="pw-card__title">Voting &amp; Banning</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-grid">
+        <div class="pw-form-row">
+          <label class="pw-label" for="kick_quorum">Kick vote quorum (%)</label>
+          <input class="pw-input pw-input--full" id="kick_quorum" name="kick_quorum"
+            type="number" min="0" max="101" required placeholder="% Yes needed"
+            value="{{ .form.KickQuorum }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="voting_quorum">Session vote quorum (%)</label>
+          <input class="pw-input pw-input--full" id="voting_quorum" name="voting_quorum"
+            type="number" min="0" max="101" required placeholder="% Yes needed"
+            value="{{ .form.VotingQuorum }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="vote_duration">Vote duration (s)</label>
+          <input class="pw-input pw-input--full" id="vote_duration" name="vote_duration"
+            type="number" min="10" max="30" required placeholder="Seconds"
+            value="{{ .form.VoteDuration }}" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="blacklist_mode">Blacklist mode</label>
+          <select class="pw-select" id="blacklist_mode" name="blacklist_mode">
+            <option value="0" {{ if (eq (derefInt .form.BlacklistMode) "0") }} selected {{ end }}>Kick Player</option>
+            <option value="1" {{ if (eq (derefInt .form.BlacklistMode) "1") }} selected {{ end }}>Kick Until Restart</option>
+          </select>
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="max_contacts_per_km">Max collisions per km</label>
+          <input class="pw-input pw-input--full" id="max_contacts_per_km" name="max_contacts_per_km"
+            type="number" min="-1" max="128" required placeholder="-1 = disabled"
+            value="{{ .form.MaxContactsPerKm }}" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pw-form-actions">
+    <button class="pw-btn pw-btn--primary" type="submit">
+      <i class="fas fa-save"></i> Save
+    </button>
+    <button class="pw-btn pw-btn--danger" type="button"
+      @click="confirm('Are you sure?') && document.getElementById('frmDelete').submit()">
+      <i class="fas fa-trash"></i> Delete
+    </button>
+  </div>
+</form>
+<form id="frmDelete" action="/difficulty/delete/{{ .form.Id }}" method="POST"></form>
+{{ end }}
 
 {{ template "/htm/footer.htm" }}

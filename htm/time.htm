@@ -1,429 +1,275 @@
 {{ template "/htm/header.htm" . }}
 
-<div class="flex flex-wrap">
-  <div class="w-full">
-    <div class="">
-      {{ if not .form.Id }}
-      <div class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" x-data="{ showModal: false, email: '' }">
-        <h1 class="text-3xl text-black pb-6">Time and Weather</h1>
-        <form method="POST">
-          <!-- Background overlay -->
-          <div x-show="showModal" class="fixed inset-0 transition-opacity" aria-hidden="true"
-            @click="showModal = false">
-            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
-          </div>
-          <!-- Modal -->
-          <div x-show="showModal" x-transition:enter="transition ease-out duration-300 transform"
-            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-            x-transition:leave="transition ease-in duration-200 transform"
-            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <!-- Modal panel -->
-              <div
-                class="w-full inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
-                role="dialog" aria-modal="true" aria-labelledby="modal-headline">
-                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <!-- Modal content -->
-                  <div class="sm:flex sm:items-start">
-                    <div class="w-full mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                      <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-headline">
-                        Add a new Time and Weather
-                      </h3>
-                      <div class="mt-2">
-                        <p class="text-sm text-gray-500">
-                          Enter the name of the time and weather
-                        </p>
-                        <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="time_name"
-                          name="time_name" type="text" required="" placeholder="Time and Weather Name"
-                          aria-label="Time and Weather Name" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex">
-                  <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-l-md" type="submit">
-                    Save
-                  </button>
-                  <button @click="showModal = false"
-                    class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-r-md" type="button">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-        <div class="w-full mt-6">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Time and Weather
-            </p>
-            <hr class="pb-6" />
-            <div class="flex">
-              <ul class="bg-white w-96 text-gray-900">
-                {{ $g := . }}
-                {{range $val := .list }}
-                <li class="w-full hover:bg-gray-200 rounded-lg">
-                  <a class="px-5 py-2 inline-block w-full" href="/time/{{ $val.Id }}">
-                    <i class="fas fa-edit mr-3"></i>{{ $val.Name }}
-                  </a>
-                </li>
-                {{ end }}
-                <li class="w-full hover:bg-gray-200 rounded-lg">
-                  <a class="px-5 py-2 inline-block w-full" href="#" @click="showModal = true">
-                    <i class="fas fa-plus mr-3"></i>Add new Time and Weather
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
+{{ if not .form.Id }}
+<div x-data="{ showModal: false }">
+
+  <!-- Add modal overlay -->
+  <div x-show="showModal" class="pw-modal-overlay" @click="showModal = false" x-cloak></div>
+  <div x-show="showModal" class="pw-modal-wrapper" x-cloak>
+    <form class="pw-modal" method="POST">
+      <div class="pw-modal__head">
+        <span class="pw-modal__title">Add Time &amp; Weather Preset</span>
+        <button class="pw-modal__close" type="button" @click="showModal = false">&times;</button>
+      </div>
+      <div class="pw-modal__body">
+        <div class="pw-form-row">
+          <label class="pw-label" for="time_name">Name</label>
+          <input class="pw-input pw-input--full" id="time_name" name="time_name"
+            type="text" required placeholder="Time and Weather preset name" aria-label="Time and Weather Name" />
         </div>
       </div>
-      {{ end }}
+      <div class="pw-modal__footer">
+        <button class="pw-btn pw-btn--ghost" type="button" @click="showModal = false">Cancel</button>
+        <button class="pw-btn pw-btn--primary" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
 
-      {{ if .form.Id }}
-      <script>
-        function csp_timeweather() {
-          return {
-            weatherlist: {{ .weatherlist }},
-            time_of_day_multi: {{ .form.TimeOfDayMulti | derefInt }},
-            time_of_day: {{ .form.Time | derefStr }},
-            csp_enabled: {{ .form.CspEnabled | toJsBool }},
-            csp_changed: function(val) {
-              this.items.forEach(x => {
-                x.csp_time = "";
-                x.csp_time_of_day_multi = "";
-                x.csp_date = "";
-              });
-              this.time_of_day_multi = "";
-              this.time_of_day = "";
-            },
-            items: {{ .form.Weathers }},
-            add_panel() {
-              this.items.push({});
-            },
-            remove_panel(index) {
-              this.items = this.items.filter((item, idx) => {
-                return index !== idx
-              })
-            },
-            random_weather: function(time) {
-              let rand = Math.floor(Math.random()*this.weatherlist.length);
-              time.graphics = this.weatherlist[rand].key;
-            },
-          }
-        }
-      </script>
-      <form class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" method="POST" x-data="csp_timeweather()">
-        <div class="w-full mt-6 pl-0 lg:pl-2">
-          <div class="p-4 lg:p-10 leading-loose bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Time and Weather Name
-            </p>
-            <hr class="pb-6" />
-            <div class="">
-              <label class="block text-sm text-gray-600 group relative" for="name">
-                Name
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Name of this preset
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="name" name="name"
-                type="text" required="" placeholder="Name" aria-label="Name"
-                value="{{ .form.Name }}" />
+  <div class="pw-page-title">Time &amp; Weather Presets</div>
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-cloud-moon-rain"></i></span>
+      <span class="pw-card__title">Time &amp; Weather Presets</span>
+    </div>
+    <div class="pw-list">
+      {{range $val := .list}}
+      <a class="pw-list__item" href="/time/{{ $val.Id }}">
+        <i class="fas fa-edit"></i>{{ $val.Name }}
+      </a>
+      {{end}}
+      <a class="pw-list__item pw-list__item--add" href="#" @click.prevent="showModal = true">
+        <i class="fas fa-plus"></i>Add new Time and Weather
+      </a>
+    </div>
+  </div>
+
+</div>
+{{ end }}
+
+{{ if .form.Id }}
+<script>
+  function csp_timeweather() {
+    return {
+      weatherlist: {{ .weatherlist }},
+      time_of_day_multi: {{ .form.TimeOfDayMulti | derefInt }},
+      time_of_day: {{ .form.Time | derefStr }},
+      csp_enabled: {{ .form.CspEnabled | toJsBool }},
+      csp_changed: function(val) {
+        this.items.forEach(x => {
+          x.csp_time = "";
+          x.csp_time_of_day_multi = "";
+          x.csp_date = "";
+        });
+        this.time_of_day_multi = "";
+        this.time_of_day = "";
+      },
+      items: {{ .form.Weathers }},
+      add_panel() {
+        this.items.push({});
+      },
+      remove_panel(index) {
+        this.items = this.items.filter((item, idx) => {
+          return index !== idx
+        })
+      },
+      random_weather: function(time) {
+        let rand = Math.floor(Math.random()*this.weatherlist.length);
+        time.graphics = this.weatherlist[rand].key;
+      },
+    }
+  }
+</script>
+
+<form method="POST" x-data="csp_timeweather()">
+  <div class="pw-page-title">Edit Time &amp; Weather Preset</div>
+
+  <!-- Name -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-tag"></i></span>
+      <span class="pw-card__title">Preset Name</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <label class="pw-label" for="name">Name</label>
+        <input class="pw-input pw-input--full" id="name" name="name"
+          type="text" required placeholder="Preset name"
+          value="{{ .form.Name }}" />
+      </div>
+    </div>
+  </div>
+
+  <!-- CSP enable -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-paint-brush"></i></span>
+      <span class="pw-card__title">Custom Shaders Patch</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="csp_enabled" name="csp_enabled"
+              value="1" x-model="csp_enabled" @click="csp_changed($event.target.checked)" />
+            <label class="toggle-label" for="csp_enabled"></label>
+            <input type="hidden" value="0" name="csp_enabled" />
+          </div>
+          <label class="pw-toggle-label-text" for="csp_enabled">
+            Enable CSP Time &amp; Weather
+            <span class="pw-hint" style="display:inline; margin-left:6px;">Only shown in Events when CSP is enabled in Content &amp; Mods</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Standard time (shown when CSP disabled) -->
+  <div class="pw-card" x-show="!csp_enabled">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-sun"></i></span>
+      <span class="pw-card__title">Time of Day</span>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-grid">
+        <div class="pw-form-row">
+          <label class="pw-label" for="time">Time of Day</label>
+          <input class="pw-input pw-input--full" type="time" id="time" name="time"
+            min="08:00" max="18:00" x-model="time_of_day"
+            :required="!csp_enabled" :disabled="csp_enabled" />
+        </div>
+        <div class="pw-form-row">
+          <label class="pw-label" for="time_of_day_multi">Time Multiplier</label>
+          <input class="pw-input pw-input--full" type="number" id="time_of_day_multi" name="time_of_day_multi"
+            min="1" max="10" placeholder="1–10" x-model="time_of_day_multi"
+            :required="!csp_enabled" :disabled="csp_enabled" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Weather panels -->
+  <div class="pw-card">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-cloud-sun-rain"></i></span>
+      <span x-show="!csp_enabled" class="pw-card__title">Weather</span>
+      <span x-show="csp_enabled"  class="pw-card__title">Time &amp; Weather Panels</span>
+    </div>
+    <div class="pw-card__body">
+
+      <template x-for="(time, index) in items">
+        <div class="pw-sub-panel">
+          <div class="pw-sub-panel__head">
+            <span class="pw-sub-panel__title">
+              <span x-show="csp_enabled">Time &amp; </span>Weather Panel
+              <span x-html="index + 1"></span>
+            </span>
+            <button class="pw-btn pw-btn--danger pw-btn--sm" type="button"
+              @click="remove_panel(index)" :disabled="items.length == 1">
+              <i class="fas fa-times"></i> Remove
+            </button>
+          </div>
+
+          <!-- CSP time fields -->
+          <div class="pw-form-grid" x-show="csp_enabled">
+            <div class="pw-form-row">
+              <label class="pw-label">Time of Day (CSP)</label>
+              <input class="pw-input pw-input--full" type="time"
+                :required="csp_enabled" :disabled="!csp_enabled"
+                x-model="time.csp_time" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Multiplier (CSP)</label>
+              <input class="pw-input pw-input--full" type="number" min="1" max="60"
+                :required="csp_enabled" :disabled="!csp_enabled"
+                placeholder="1–60" x-model="time.csp_time_of_day_multi" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Date (optional)</label>
+              <input class="pw-input pw-input--full" type="date"
+                x-model="time.csp_date" />
             </div>
           </div>
-        </div>
-        <div class="w-full mt-6 pl-0 lg:pl-2">
-          <div class="p-4 lg:p-10 leading-loose flex-row bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> CSP Time &amp; Weather
-            </p>
-            <hr class="pb-6" />
-            <div class="inline-block pr-1 w-1/2">
-              <label class="block text-sm text-gray-600 group relative" for="csp_enabled">
-                Enable CSP Time &amp; Weather
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Note: this preset will only show up in Events when CSP is enabled in the Content &amp; Mods page
-                  </div>
-                </div>
-              </label>
-              <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                <input type="checkbox" name="csp_enabled" id="csp_enabled" value="1" x-model="csp_enabled"
-                   @click="csp_changed($event.target.checked)"
-                  class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <label for="csp_enabled"
-                  class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                <input type='hidden' value='0' name='csp_enabled'>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="w-full mt-6 pl-0 lg:pl-2" x-show="!csp_enabled">
-          <div class="p-4 lg:p-10 leading-loose flex-row bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center">
-              <i class="fas fa-list mr-3"></i> Time
-            </p>
-            <hr class="pb-6" />
-            <div class="inline-block pr-1 md:w-1/2 sm:w-full">
-              <label class="block text-sm text-gray-600 group relative" for="time">
-                Time of Day
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    # TODO
-                  </div>
-                </div>
-              </label>
-              <div class="flex">
-                <input type="time" id="time" class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" name="time" min="08:00" max="18:00" x-model="time_of_day"
-                  :required="!csp_enabled" :disabled="csp_enabled">
-              </div>
-            </div>
-            <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-              <label class="block text-sm text-gray-600 group relative" for="time_of_day_multi">
-                Multiplier
-                <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                  <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                    Multiplier of time of day
-                  </div>
-                </div>
-              </label>
-              <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="time_of_day_multi" min="1" max="10" :disabled="csp_enabled"
-                name="time_of_day_multi" type="number" :required="!csp_enabled" placeholder="Multiplier" aria-label="Multiplier" x-model="time_of_day_multi" />
-            </div>
-          </div>
-        </div>
-        <div class="w-full mt-6 pl-0 lg:pl-2">
-          <div class="p-4 lg:p-10 leading-loose flex-row bg-white rounded shadow-xl">
-            <p class="text-xl flex items-center" x-show="!csp_enabled">
-              <i class="fas fa-list mr-3"></i>Weather
-            </p>
-            <p class="text-xl flex items-center" x-show="csp_enabled">
-              <i class="fas fa-list mr-3"></i>Time and Weather
-            </p>
-            <hr class="pb-6" />
 
-            <div class="flex flex-wrap flex-col sm:flex-row">
-              <template x-for="(time, index) in items">
-                <div class="w-full mt-6 pl-0 lg:pl-2">
-                  <div
-                    class="p-4 lg:p-10 m-2 leading-loose font-regular rounded-lg bg-gray-100">
-                    <h2 class="text-black"><span x-show="csp_enabled">Time &amp; </span> Weather Panel <span x-html="index+1"></span></h2>
-                    <hr class="pb-6" />
-                    <div class="inline-block mt-2 w-1/2 pr-1" x-show="csp_enabled">
-                      <label class="block text-sm text-gray-600 group relative" for="csp_time">
-                        Time of Day
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            CSP Time of Day
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0"
-                        type="time" :required="csp_enabled" :disabled="!csp_enabled" placeholder="Time of Day" aria-label="Time of Day"
-                        x-model="time.csp_time" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full" x-show="csp_enabled">
-                      <label class="block text-sm text-gray-600 group relative" for="csp_time_of_day_multi">
-                        Multiplier
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            CSP Multiplier of time of day
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="1" max="60"
-                        type="number" :required="csp_enabled" :disabled="!csp_enabled" placeholder="Multiplier" aria-label="Multiplier"
-                        x-model="time.csp_time_of_day_multi" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full" x-show="csp_enabled">
-                      <label class="block text-sm text-gray-600 group relative" for="csp_date">
-                        Date (optional)
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            CSP Date
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded"
-                        type="date" placeholder="CSP Date" aria-label="CSP Date"
-                        x-model="time.csp_date" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full" x-show="csp_enabled"></div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                      <label class="block text-sm text-gray-600 group relative" for="graphics">
-                        Weather
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            # TODO:
-                          </div>
-                        </div>
-                      </label>
-                      <div class="flex flex-row multi-input">
-                        <select class="w-full text-gray-700 bg-gray-200 rounded-l py-1 px-4 pr-8"
-                          x-model="time.graphics" required>
-                          <option value="">Select ...</option>
-                          {{range $val := .weatherlist }}
-                          <option value="{{  $val.Key }}">{{ $val.Name }}</option>
-                          {{ end }}
-                        </select>
-                        <button class="px-4 py-1 tracking-wider bg-gray-200 rounded-r" type="button" @click="random_weather(time)">
-                          <i class="fas fa-random"></i>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full"></div>
-                    <div class="inline-block mt-2 md:w-1/2 sm:w-full pr-1">
-                      <label class="block text-sm text-gray-600 group relative" for="base_temperature_ambient">
-                        Base Ambient Temp 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Ambient Temperature
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0"
-                        type="number" required="" placeholder="Base Ambient Temp" aria-label="Base Ambient Temp"
-                        x-model="time.base_temperature_ambient" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                      <label class="block text-sm text-gray-600 group relative" for="wind_base_speed_min">
-                        Base Wind Min Speed 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Wind minimum speed
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0" max="40"
-                        type="number" required="" placeholder="Base Wind Min Speed" aria-label="Base Wind Min Speed"
-                        x-model="time.wind_base_speed_min" />
-                    </div>
-                    <div class="inline-block mt-2 md:w-1/2 sm:w-full pr-1">
-                      <label class="block text-sm text-gray-600 group relative" for="base_temperature_road">
-                        Base Road Temp 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Road Differential Temperature
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0"
-                        type="number" required="" placeholder="Base Road Temp" aria-label="Base Road Temp"
-                        x-model="time.base_temperature_road" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                      <label class="block text-sm text-gray-600 group relative" for="wind_base_speed_max">
-                        Base Wind Max Speed 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Wind maximum speed
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0" max="40"
-                        type="number" required="" placeholder="Base Wind Max Speed" aria-label="Base Wind Max Speed"
-                        x-model="time.wind_base_speed_max" />
-                    </div>
-                    <div class="inline-block mt-2 md:w-1/2 sm:w-full pr-1">
-                      <label class="block text-sm text-gray-600 group relative" for="variation_ambient">
-                        Ambient Variation 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Ambient Variation +/-
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" type="number" min="0"
-                        required="" placeholder="Ambient Variation" aria-label="Ambient Variation"
-                        x-model="time.variation_ambient" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                      <label class="block text-sm text-gray-600 group relative" for="wind_base_direction">
-                        Base Wind Direction 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Wind base direction
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0" max="359"
-                        type="number" required="" placeholder="Base Wind Direction" aria-label="Base Wind Direction"
-                        x-model="time.wind_base_direction" />
-                    </div>
-                    <div class="inline-block mt-2 md:w-1/2 sm:w-full pr-1">
-                      <label class="block text-sm text-gray-600 group relative" for="variation_road">
-                        Road Variation 
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Road Variation +/-
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" type="number" min="0"
-                        required="" placeholder="Road Variation" aria-label="Road Variation"
-                        x-model="time.variation_road" />
-                    </div>
-                    <div class="inline-block mt-2 -mx-1 pl-1 md:w-1/2 sm:w-full">
-                      <label class="block text-sm text-gray-600 group relative" for="wind_variation_direction">
-                        Wind Direction Variation
-                        <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-                          <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                            Wind direction variation
-                          </div>
-                        </div>
-                      </label>
-                      <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" min="0" max="359"
-                        type="number" required="" placeholder="Wind Direction Variation" aria-label="Wind Direction Variation"
-                        x-model="time.wind_variation_direction" />
-                    </div>
-                    <div class="inline-block mt-2 w-full pr-1">
-                      <button class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-md" type="button"
-                        @click="remove_panel(index)" x-bind:disabled="items.length == 1">
-                        Remove Weather Panel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </template>
-
-              <div class="w-full mt-6 pl-0 lg:pl-2 flex justify-center items-center">
-                <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-md" type="button"
-                  @click="add_panel()">
-                  Add Weather Panel
+          <!-- Weather fields -->
+          <div class="pw-form-grid">
+            <div class="pw-form-row">
+              <label class="pw-label">Weather</label>
+              <div class="pw-input-group">
+                <select class="pw-select" x-model="time.graphics" required style="flex:1;">
+                  <option value="">Select...</option>
+                  {{range $val := .weatherlist}}
+                  <option value="{{ $val.Key }}">{{ $val.Name }}</option>
+                  {{end}}
+                </select>
+                <button class="pw-btn pw-btn--dark" type="button" @click="random_weather(time)"
+                  title="Random weather">
+                  <i class="fas fa-random"></i>
                 </button>
               </div>
-
-              <input type="hidden" x-model="JSON.stringify(items)" name="weather" />
             </div>
-
+            <div class="pw-form-row">
+              <label class="pw-label">Base Ambient Temp (°C)</label>
+              <input class="pw-input pw-input--full" type="number" min="0"
+                required placeholder="°C" x-model="time.base_temperature_ambient" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Base Road Temp (°C)</label>
+              <input class="pw-input pw-input--full" type="number" min="0"
+                required placeholder="Road differential" x-model="time.base_temperature_road" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Ambient Variation (±°C)</label>
+              <input class="pw-input pw-input--full" type="number" min="0"
+                required placeholder="Variation ±" x-model="time.variation_ambient" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Road Variation (±°C)</label>
+              <input class="pw-input pw-input--full" type="number" min="0"
+                required placeholder="Variation ±" x-model="time.variation_road" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Wind Min Speed (km/h)</label>
+              <input class="pw-input pw-input--full" type="number" min="0" max="40"
+                required placeholder="0–40" x-model="time.wind_base_speed_min" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Wind Max Speed (km/h)</label>
+              <input class="pw-input pw-input--full" type="number" min="0" max="40"
+                required placeholder="0–40" x-model="time.wind_base_speed_max" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Wind Direction (°)</label>
+              <input class="pw-input pw-input--full" type="number" min="0" max="359"
+                required placeholder="0–359" x-model="time.wind_base_direction" />
+            </div>
+            <div class="pw-form-row">
+              <label class="pw-label">Wind Direction Variation (°)</label>
+              <input class="pw-input pw-input--full" type="number" min="0" max="359"
+                required placeholder="0–359" x-model="time.wind_variation_direction" />
+            </div>
           </div>
         </div>
+      </template>
 
+      <button class="pw-btn pw-btn--ghost" type="button" @click="add_panel()" style="margin-top:8px;">
+        <i class="fas fa-plus"></i> Add Weather Panel
+      </button>
 
-        <div class="w-full mt-6 pl-0 lg:pl-2" x-data=" { btnClick : true }">
-          <p class="text-xl pb-6 flex justify-center items-center">
-            <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded-l-md" type="submit">
-              Save
-            </button>
-            <button class="px-4 py-1 text-white font-light tracking-wider bg-red-900 rounded-r-md" type="button"
-              @click="confirm('Are you sure?') && document.getElementById('frmDelete').submit()">
-              Delete
-            </button>
-          </p>
-        </div>
+      <input type="hidden" x-model="JSON.stringify(items)" name="weather" />
     </div>
-    </form>
-    <form id="frmDelete" action="/time/delete/{{ .form.Id }}" method="POST"></form>
-    {{ end }}
   </div>
-</div>
+
+  <div class="pw-form-actions">
+    <button class="pw-btn pw-btn--primary" type="submit">
+      <i class="fas fa-save"></i> Save
+    </button>
+    <button class="pw-btn pw-btn--danger" type="button"
+      @click="confirm('Are you sure?') && document.getElementById('frmDelete').submit()">
+      <i class="fas fa-trash"></i> Delete
+    </button>
+  </div>
+</form>
+<form id="frmDelete" action="/time/delete/{{ .form.Id }}" method="POST"></form>
+{{ end }}
 
 {{ template "/htm/footer.htm" }}
-

@@ -81,203 +81,159 @@
   }
 </script>
 
-<form class="2xl:w-1/2 xl:w-4/6 lg:w-5/6 md:w-full m-auto" id="frmContent" method="POST" action="/content">
-  <h1 class="text-3xl text-black pb-6">Content and Mods</h1>
-  <div class="w-full mt-6">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i> Installation
-      </p>
-      <p class="text-gray-600 leading-[1.3]">
-        This needs to point to the installed game itself so SM can pick up game files, mods and server executables.
-      </p>
-      <hr class="pb-6" />
-      <div class="" x-data="install_path()">
-        <label class="block text-sm text-gray-600 group relative" for="install_path">
-          Installation Path
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Root folder of your Assetto Corsa installation path
-            </div>
-          </div>
-        </label>
-        <div class="flex flex-row">
-          <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded-l" id="install_path" name="install_path"
-            type="text" required="" placeholder="Installation Path" aria-label="Installation Path"
+<form id="frmContent" method="POST" action="/content">
+  <div class="pw-page-title">Content &amp; Mods</div>
+
+  <!-- Installation -->
+  <div class="pw-card" x-data="install_path()">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-folder-open"></i></span>
+      <div>
+        <div class="pw-card__title">Installation Path</div>
+        <div class="pw-card__subtitle">Root folder of your Assetto Corsa installation</div>
+      </div>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <label class="pw-label" for="install_path">Path</label>
+        <div class="pw-input-group">
+          <input class="pw-input pw-input--full" id="install_path" name="install_path"
+            type="text" required placeholder="/path/to/assettocorsa"
             x-model="install_path" value="" />
-          <button class="px-4 py-1 text-white font-light tracking-wider bg-corsa rounded-r flex flex-row align-center"
-            style="align-items: center" type="button" @click="validate_path()">
-            <span class="pr-2">Test</span>
-            <div class="w-6 h-6 border-2 border-white-600 rounded-full loader" x-show="loading == true"></div>
-            <i class="fas fa-check" x-show="path_valid == true"></i>
-            <i class="fas fa-times" x-show="path_valid == false"></i>
+          <button class="pw-btn pw-btn--dark" type="button" @click="validate_path()"
+            style="min-width:80px; gap:6px;">
+            <span x-show="!loading && path_valid === null">Test</span>
+            <div class="loader" x-show="loading" style="width:14px;height:14px;border-width:2px;"></div>
+            <i class="fas fa-check" x-show="path_valid === true" style="color:var(--c-green);"></i>
+            <i class="fas fa-times" x-show="path_valid === false" style="color:var(--c-red);"></i>
           </button>
         </div>
+        <span class="pw-hint" x-show="path_valid === true" style="color:var(--c-green);">
+          <i class="fas fa-check-circle"></i> Valid installation path
+        </span>
+        <span class="pw-hint" x-show="path_valid === false" style="color:var(--c-red);">
+          <i class="fas fa-exclamation-circle"></i> Path not found or invalid
+        </span>
       </div>
     </div>
   </div>
 
-  <div class="w-full my-6" x-data="cache()">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i> Content Cache
-      </p>
-      <p class="text-gray-600 leading-[1.3]">
-        SM will scan the installation folder of your Assetto Corsa game to build it's own content cache (database) from it.
-        The installation path is only accessed when the content cache is refreshed.
-      </p>
-      <hr class="pb-6" />
-      <div class="w-full flex flex-row px-2">
-        <div class="flex-1 flex flex-col mt-2">
-          <h2 class="text-xl">Tracks</h2>
-          <p :class="tracks_total == 0 ? 'text-red-500' : ''">
-            <span x-html="tracks_total"></span> Tracks loaded
-          </p>
-        </div>
-      </div>
-      <hr />
-      <div class="w-full flex flex-row px-2">
-        <div class="flex-1 flex flex-col mt-2">
-          <h2 class="text-xl">Cars</h2>
-          <p :class="cars_total == 0 ? 'text-red-500' : ''">
-            <span x-html="cars_total"></span> Cars loaded
-          </p>
-        </div>
-      </div>
-      <hr />
-      <div class="w-full flex flex-row px-2">
-        <div class="flex-1 flex flex-col mt-2">
-          <h2 class="text-xl">Weathers</h2>
-          <p :class="weathers_total == 0 ? 'text-red-500' : ''">
-            <span x-html="weathers_total"></span> Weathers loaded
-          </p>
-        </div>
-      </div>
-      <hr />
-      <div class="w-full flex flex-row px-2 py-3">
-        <div>
-          {{ if (eq (derefInt .form.ModFilled) "1") }}
-          <button class="bg-corsa text-white rounded py-1 px-2 text-sm flex flex-row" style="align-items: center"
-            type="button" @click="load_content()" :disabled="loading">
-            <span class="pr-2">Reload Content</span>
-            <div class="w-5 h-5 border-2 border-white-600 rounded-full loader" x-show="loading == true"></div>
-            <i class="fas fa-check" x-show="content_loaded == true"></i>
-          </button>
-          {{ else }}
-          <p class="text-red-500">
-            <i class="fas fa-info-circle"></i> Fill in a valid installation path before loading content
-          </p>
-          {{ end }}
-        </div>
+  <!-- Content Cache -->
+  <div class="pw-card" x-data="cache()">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-database"></i></span>
+      <div>
+        <div class="pw-card__title">Content Cache</div>
+        <div class="pw-card__subtitle">SM scans your AC install to build a content database used when configuring events</div>
       </div>
     </div>
+    <div class="pw-card__body">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px;">
+        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
+          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
+            x-text="tracks_total"></div>
+          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Tracks</div>
+        </div>
+        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
+          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
+            x-text="cars_total"></div>
+          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Cars</div>
+        </div>
+        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
+          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
+            x-text="weathers_total"></div>
+          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Weathers</div>
+        </div>
+      </div>
+      {{ if (eq (derefInt .form.ModFilled) "1") }}
+      <button class="pw-btn pw-btn--dark" type="button" @click="load_content()" :disabled="loading">
+        <div class="loader" x-show="loading" style="width:14px;height:14px;border-width:2px;"></div>
+        <i class="fas fa-check" x-show="content_loaded && !loading" style="color:var(--c-green);"></i>
+        <i class="fas fa-sync" x-show="!loading && !content_loaded"></i>
+        <span x-show="!loading">Reload Content</span>
+        <span x-show="loading">Loading...</span>
+      </button>
+      {{ else }}
+      <p style="font-size:13px;color:var(--c-red);">
+        <i class="fas fa-info-circle"></i> Fill in a valid installation path and save before loading content
+      </p>
+      {{ end }}
+    </div>
   </div>
-  <div class="w-full my-6" x-data="csp()">
-    <div class="p-4 lg:p-10 bg-white rounded shadow-xl leading-loose">
-      <p class="text-xl flex items-center">
-        <i class="fas fa-list mr-3"></i>
-        Custom Shaders Patch
-      </p>
-      <p class="text-gray-600 leading-[1.3]">
-        <a href="https://acstuff.club/patch/" class="text-red-500">CSP</a> is an extensive and transformative third-party mod developed by Ilja Jusupov (also known as x4fab) that dramatically enhances the game's graphics, features, and overall realism.
-      </p>
-      <hr class="pb-6" />
+
+  <!-- Custom Shaders Patch -->
+  <div class="pw-card" x-data="csp()">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-magic"></i></span>
       <div>
-        <label class="block text-sm text-gray-600 group relative" for="csp_required">
-          Required to join
-          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-              Enable CSP on this server. Note: CSP <b>must</b> be installed in
-              your assetto corsa folder
-            </div>
+        <div class="pw-card__title">Custom Shaders Patch (CSP)</div>
+        <div class="pw-card__subtitle">Third-party mod by x4fab that enhances graphics, features, and realism</div>
+      </div>
+    </div>
+    <div class="pw-card__body">
+      <div class="pw-form-row">
+        <div class="pw-toggle-row">
+          <div class="pw-toggle">
+            <input type="checkbox" class="toggle-checkbox" id="csp_required" name="csp_required"
+              value="1" x-model="csp_required"
+              @click="csp_required_changed($event.target.checked)" />
+            <label class="toggle-label" for="csp_required"></label>
+            <input type="hidden" value="0" name="csp_required" />
           </div>
-        </label>
-        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-          <input type="checkbox" name="csp_required" id="csp_required" value="1" x-model="csp_required"
-            @click="csp_required_changed($event.target.checked)"
-            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-          <label for="csp_required"
-            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-          <input type="hidden" value="0" name="csp_required" />
+          <label class="pw-toggle-label-text" for="csp_required">
+            Required to join — CSP must be installed in your AC folder
+          </label>
         </div>
       </div>
 
       <div x-show="csp_required">
-        <div class="mt-2">
-          <label class="block text-sm text-gray-600 group relative" for="csp_version">
-            Minimum version
-            <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-              <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                Minimum version of CSP required to join the game
-              </div>
-            </div>
-          </label>
-          <input class="w-full px-5 py-1 text-gray-700 bg-gray-200 rounded" id="csp_version" name="csp_version"
-            type="number" :required="csp_required" min="1" placeholder="Minimum Version" aria-label="Minimum Version"
-            x-model="csp_version" :disabled="!csp_required" />
+        <div class="pw-form-row" style="margin-top:14px;">
+          <label class="pw-label" for="csp_version">Minimum CSP version</label>
+          <input class="pw-input" id="csp_version" name="csp_version"
+            type="number" min="1" :required="csp_required" :disabled="!csp_required"
+            placeholder="Version number" x-model="csp_version" />
         </div>
-        <div class="mt-2">
-          <label class="block text-sm text-gray-600 group relative" for="csp_phycars">
-            Use extended physics for cars
-            <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-              <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                # TODO: tootip
-              </div>
+        <div class="pw-form-row">
+          <div class="pw-toggle-row">
+            <div class="pw-toggle">
+              <input type="checkbox" class="toggle-checkbox" id="csp_phycars" name="csp_phycars"
+                value="1" x-model="csp_phycars" />
+              <label class="toggle-label" for="csp_phycars"></label>
+              <input type="hidden" value="0" name="csp_phycars" />
             </div>
-          </label>
-          <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-            <input type="checkbox" name="csp_phycars" id="csp_phycars" value="1" x-model="csp_phycars"
-              class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-            <label for="csp_phycars"
-              class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-            <input type="hidden" value="0" name="csp_phycars" />
+            <label class="pw-toggle-label-text" for="csp_phycars">Use extended physics for cars</label>
           </div>
         </div>
-        <div class="mt-2">
-          <label class="block text-sm text-gray-600 group relative" for="csp_phytracks">
-            Use extended physics for tracks
-            <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-              <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                # TODO: tootip
-              </div>
+        <div class="pw-form-row">
+          <div class="pw-toggle-row">
+            <div class="pw-toggle">
+              <input type="checkbox" class="toggle-checkbox" id="csp_phytracks" name="csp_phytracks"
+                value="1" x-model="csp_phytracks" />
+              <label class="toggle-label" for="csp_phytracks"></label>
+              <input type="hidden" value="0" name="csp_phytracks" />
             </div>
-          </label>
-          <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-            <input type="checkbox" name="csp_phytracks" id="csp_phytracks" value="1" x-model="csp_phytracks"
-              class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-            <label for="csp_phytracks"
-              class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-            <input type="hidden" value="0" name="csp_phytracks" />
+            <label class="pw-toggle-label-text" for="csp_phytracks">Use extended physics for tracks</label>
           </div>
         </div>
-        <div class="mt-2">
-          <label class="block text-sm text-gray-600 group relative" for="csp_hidepit">
-            Hide pit crew
-            <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
-              <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
-                Results in faster load times
-              </div>
+        <div class="pw-form-row">
+          <div class="pw-toggle-row">
+            <div class="pw-toggle">
+              <input type="checkbox" class="toggle-checkbox" id="csp_hidepit" name="csp_hidepit"
+                value="1" x-model="csp_hidepit" />
+              <label class="toggle-label" for="csp_hidepit"></label>
+              <input type="hidden" value="0" name="csp_hidepit" />
             </div>
-          </label>
-          <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-            <input type="checkbox" name="csp_hidepit" id="csp_hidepit" value="1" x-model="csp_hidepit"
-              class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-            <label for="csp_hidepit"
-              class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-            <input type="hidden" value="0" name="csp_hidepit" />
+            <label class="pw-toggle-label-text" for="csp_hidepit">Hide pit crew (faster load times)</label>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="w-full mt-6">
-    <p class="text-xl pb-6 flex">
-      <button class="px-4 py-1 text-white font-light tracking-wider bg-gray-900 rounded m-auto" onclick="return submit_form()"
-        type="submit">
-        Save
-      </button>
-    </p>
+  <div class="pw-form-actions">
+    <button class="pw-btn pw-btn--primary" type="submit" onclick="return submit_form()">
+      <i class="fas fa-save"></i> Save
+    </button>
   </div>
 </form>
 

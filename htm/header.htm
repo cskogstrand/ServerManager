@@ -57,6 +57,9 @@
     <nav class="pw-nav">
       {{ if .config_filled }}
       <div class="pw-nav__section-label">Operations</div>
+      <a href="/server"  class="pw-nav__item {{ if (eq .page "server")  }}pw-nav__item--active{{ end }}">
+        <i class="fas fa-tachometer-alt"></i> Dashboard
+      </a>
       <a href="/queue"   class="pw-nav__item {{ if (eq .page "queue")      }}pw-nav__item--active{{ end }}">
         <i class="fas fa-clipboard-list"></i> Queue
       </a>
@@ -86,11 +89,6 @@
       <a href="/content" class="pw-nav__item {{ if (eq .page "content") }}pw-nav__item--active{{ end }}">
         <i class="fas fa-cog"></i> Content &amp; Mods
       </a>
-      {{ if .config_filled }}
-      <a href="/server"  class="pw-nav__item {{ if (eq .page "server")  }}pw-nav__item--active{{ end }}">
-        <i class="fas fa-terminal"></i> Live Status
-      </a>
-      {{ end }}
     </nav>
   </aside>
 

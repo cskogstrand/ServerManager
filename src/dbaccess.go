@@ -49,6 +49,10 @@ func (dba Dbaccess) applySchema(f *assets.File) {
 	if err != nil {
 		log.Fatal("Error executing sql schema file: ", err)
 	}
+
+	if err := dba.ensureColumn("user_config", "auto_start_server", "INTEGER DEFAULT 0"); err != nil {
+		log.Fatal("Error applying database migration for user_config.auto_start_server: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -64,6 +68,52 @@ func (dba Dbaccess) tableExists(tablename string) (int, error) {
 	}
 
 	return count, nil
+}
+
+func (dba Dbaccess) columnExists(tablename string, columnName string) (bool, error) {
+	rows, err := dba.db.Query("PRAGMA table_info(" + tablename + ")")
+	if err != nil {
+		return false, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, tracerr.Wrap(err)
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return false, tracerr.Wrap(err)
+	}
+
+	return false, nil
+}
+
+func (dba Dbaccess) ensureColumn(tablename string, columnName string, definition string) error {
+	exists, err := dba.columnExists(tablename, columnName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = dba.db.Exec("ALTER TABLE " + tablename + " ADD COLUMN " + columnName + " " + definition)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+
+	return nil
 }
 
 func (dba Dbaccess) selectDropDownList(filled bool, tableName string) ([]DropDownList, error) {
@@ -198,14 +248,14 @@ func (dba Dbaccess) selectConfigFilled() (bool, error) {
 
 func (dba Dbaccess) selectConfig() (UserConfig, error) {
 	cfg := UserConfig{}
-	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, cfg_filled, mod_filled, secret_key FROM user_config")
+	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, auto_start_server, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, cfg_filled, mod_filled, secret_key FROM user_config")
 
 	err := row.Err()
 	if err != nil {
 		return cfg, err
 	}
 
-	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
+	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.AutoStartServer, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
 	if err != nil {
 		return cfg, err
 	}
@@ -214,13 +264,13 @@ func (dba Dbaccess) selectConfig() (UserConfig, error) {
 }
 
 func (dba Dbaccess) updateConfig(cfg UserConfig) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, cfg_filled = 1")
+	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, auto_start_server = ?, cfg_filled = 1")
 
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 
-	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks)
+	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks, &cfg.AutoStartServer)
 	defer stmt.Close()
 	if err != nil {
 		return -1, tracerr.Wrap(err)

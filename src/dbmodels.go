@@ -23,6 +23,7 @@ type UserConfig struct {
 	WelcomeMessage     *string `form:"welcome_message"`
 	AppendEventname    *int    `form:"append_eventname"`
 	AppendModlinks     *int    `form:"append_modlinks"`
+	AutoStartServer    *int    `form:"auto_start_server"`
 	InstallPath        *string `form:"install_path"`
 	CspRequired        *int    `form:"csp_required"`
 	CspVersion         *int    `form:"csp_version"`

@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS user_config (
 
   append_eventname INTEGER,
   append_modlinks INTEGER,
+  auto_start_server INTEGER DEFAULT 0,
 
   install_path TEXT,
   csp_required INTEGER,
@@ -245,4 +246,3 @@ INSERT OR IGNORE INTO user_config (id, name, udp_port, tcp_port, http_port, clie
 
 -- DEFAULT USERNAME admin PASSWORD admin
 INSERT OR IGNORE INTO users (id, name, password) VALUES (1, 'admin', '$2a$08$BvgMQY6H60BhcK9wM79RBu9IlURIP26BWYcCiWJjs06L1yEdkUif2');
-

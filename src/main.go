@@ -327,6 +327,20 @@ func main() {
 
 	Status.updatePublicIp()
 
+	if cfg.AutoStartServer != nil && *cfg.AutoStartServer > 0 {
+		go func() {
+			if isRunning() {
+				return
+			}
+			if Status.serverApplyTrack() {
+				log.Print("Auto-starting server from queue on launch")
+				start()
+			} else {
+				log.Print("Auto-start enabled but no unfinished queue event was available")
+			}
+		}()
+	}
+
 	main := &http.Server{
 		Addr:    ":3030",
 		Handler: router.Handler(),

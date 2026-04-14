@@ -99,6 +99,23 @@
         </div>
       </div>
       <div class="mt-2">
+        <label class="block text-sm text-gray-600 group relative" for="auto_start_server">
+          Start Server Automatically On Launch
+          <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">
+            <div class="bg-corsa text-white text-sm rounded py-1 px-4 right-0 bottom-full">
+              Automatically starts the first unfinished event in the queue when ServerManager starts
+            </div>
+          </div>
+        </label>
+        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+          <input type="checkbox" name="auto_start_server" id="auto_start_server" value="1" {{ if (eq (derefInt .form.AutoStartServer) "1") }} checked {{ end }}
+            class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+          <label for="auto_start_server"
+            class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+          <input type="hidden" value="0" name="auto_start_server" />
+        </div>
+      </div>
+      <div class="mt-2">
         <label class="block text-sm text-gray-600 group relative" for="result_screen_time">
           Result Screen Time
           <div class="absolute mx-2 invisible group-hover:visible" style="top: -2rem; left: -1rem">

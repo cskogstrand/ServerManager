@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -17,6 +18,36 @@ type ServerStatus struct {
 }
 
 var publicIp string
+
+func cspTrackBase() string {
+	return filepath.Join(TempFolder, "content", "tracks", "csp")
+}
+
+func cspTrackFolder() string {
+	return filepath.Join(cspTrackBase(), *Cr.track.Key, *Cr.track.Config)
+}
+
+func ensureCspTrackAliases() {
+	if !Cr.cspRequired {
+		return
+	}
+
+	if err := os.MkdirAll(cspTrackFolder(), os.ModePerm); err != nil {
+		log.Print("Could not create CSP track folder: ", err)
+	}
+
+	if Cr.cspVersion != "" {
+		if err := os.MkdirAll(filepath.Join(cspTrackBase(), Cr.cspVersion), os.ModePerm); err != nil {
+			log.Print("Could not create CSP version folder: ", err)
+		}
+	}
+
+	if Cr.cspLetter != "" {
+		if err := os.MkdirAll(filepath.Join(cspTrackBase(), Cr.cspLetter), os.ModePerm); err != nil {
+			log.Print("Could not create CSP alias folder: ", err)
+		}
+	}
+}
 
 func (stats ServerStatus) refresh() {
 	Status.Status = isRunning()
@@ -105,21 +136,25 @@ func (status ServerStatus) serverApplyTrack() bool {
 
 	// Extract track
 	if *Cr.track.Config == "" {
-		Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), filepath.Join(TempFolder, "content"))
-		Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
-
 		if Cr.cspRequired {
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(TempFolder, "content", "tracks", "csp", *Cr.track.Key, *Cr.track.Config, "data"))
+			ensureCspTrackAliases()
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), cspTrackFolder())
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
 		} else {
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
 			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
 		}
 	} else {
-		Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), filepath.Join(TempFolder, "content"))
-		Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
-
 		if Cr.cspRequired {
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(TempFolder, "content", "tracks", "csp", *Cr.track.Key, *Cr.track.Config, "data"))
+			ensureCspTrackAliases()
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), cspTrackFolder())
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
 		} else {
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
 			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
 		}
 	}

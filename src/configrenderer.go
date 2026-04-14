@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	ttemplate "text/template"
 	"time"
 )
@@ -22,6 +23,8 @@ type ConfigRenderer struct {
 	class           UserClass
 	track           CacheTrack
 	cspRequired     bool
+	cspVersion      string
+	cspLetter       string
 	maxClients      int
 	serverEvent     ServerEvent
 }
@@ -117,6 +120,8 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 
 	// csp required? build a cspstr to be concat with the track name
 	cspstr := ""
+	cr.cspVersion = ""
+	cr.cspLetter = ""
 	if cfg.CspRequired != nil && *cfg.CspRequired > 0 {
 		Cr.cspRequired = true
 		cspLetter := ""
@@ -137,7 +142,11 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 			cspLetter = "/../E"
 		}
 
-		cspstr = "csp/" + strconv.Itoa(*cfg.CspVersion) + cspLetter + "/../"
+		cr.cspVersion = strconv.Itoa(*cfg.CspVersion)
+		cr.cspLetter = strings.TrimPrefix(cspLetter, "/../")
+		cspstr = "csp/" + cr.cspVersion + cspLetter + "/../"
+	} else {
+		Cr.cspRequired = false
 	}
 
 	// Weather CSP? build new graphics string

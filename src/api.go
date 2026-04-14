@@ -13,6 +13,89 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func serverStatusPayload() gin.H {
+	Status.refresh()
+
+	sessionType := "Unknown"
+	switch Status.Session.typ {
+	case 0:
+		sessionType = "Booking"
+	case 1:
+		sessionType = "Practice"
+	case 2:
+		sessionType = "Qualify"
+	case 3:
+		sessionType = "Race"
+	}
+
+	currentEvent := gin.H{
+		"id":         0,
+		"category":   "",
+		"track":      "",
+		"difficulty": "",
+		"session":    "",
+		"class":      "",
+		"time":       "",
+		"started_at": int64(0),
+		"finished":   0,
+	}
+	if Cr.serverEvent.Id != nil {
+		currentEvent["id"] = *Cr.serverEvent.Id
+	}
+	if Cr.serverEvent.UserEvent.CategoryName != nil {
+		currentEvent["category"] = *Cr.serverEvent.UserEvent.CategoryName
+	}
+	if Cr.serverEvent.UserEvent.TrackName != nil {
+		currentEvent["track"] = *Cr.serverEvent.UserEvent.TrackName
+	}
+	if Cr.serverEvent.UserEvent.DifficultyName != nil {
+		currentEvent["difficulty"] = *Cr.serverEvent.UserEvent.DifficultyName
+	}
+	if Cr.serverEvent.UserEvent.SessionName != nil {
+		currentEvent["session"] = *Cr.serverEvent.UserEvent.SessionName
+	}
+	if Cr.serverEvent.UserEvent.ClassName != nil {
+		currentEvent["class"] = *Cr.serverEvent.UserEvent.ClassName
+	}
+	if Cr.serverEvent.UserEvent.TimeName != nil {
+		currentEvent["time"] = *Cr.serverEvent.UserEvent.TimeName
+	}
+	if Cr.serverEvent.StartedAt != nil {
+		currentEvent["started_at"] = *Cr.serverEvent.StartedAt
+	}
+	if Cr.serverEvent.Finished != nil {
+		currentEvent["finished"] = *Cr.serverEvent.Finished
+	}
+
+	return gin.H{
+		"is_running": isRunning(),
+		"text":       getContent(),
+		"players":    Status.Players,
+		"public_ip":  Status.PublicIp,
+		"tmp_loc":    TempFolder,
+		"cfg_path":   filepath.Join(TempFolder, "cfg", "server_cfg.ini"),
+		"entry_path": filepath.Join(TempFolder, "cfg", "entry_list.ini"),
+		"session": gin.H{
+			"name":                 Status.Session.name,
+			"type":                 sessionType,
+			"index":                Status.Session.sessionIndex,
+			"current_session_index": Status.Session.currentSessionIndex,
+			"session_count":        Status.Session.sessionCount,
+			"track":                Status.Session.track,
+			"track_config":         Status.Session.trackConfig,
+			"server_name":          Status.Session.serverName,
+			"time":                 Status.Session.time,
+			"laps":                 Status.Session.laps,
+			"wait_time":            Status.Session.waitTime,
+			"ambient_temp":         Status.Session.ambientTemp,
+			"road_temp":            Status.Session.roadTemp,
+			"weather_graphics":     Status.Session.weatherGraphics,
+			"elapsed_ms":           Status.Session.elapsedMs,
+		},
+		"current_event": currentEvent,
+	}
+}
+
 func noRoute(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{
 		"code":    "PAGE_NOT_FOUND",
@@ -290,25 +373,16 @@ func apiServerStart(c *gin.Context) {
 			}
 		}
 	}
-	c.PureJSON(http.StatusOK, gin.H{
-		"is_running": isRunning(),
-		"text":       getContent(),
-	})
+	c.PureJSON(http.StatusOK, serverStatusPayload())
 }
 
 func apiServerStop(c *gin.Context) {
 	stop()
-	c.PureJSON(http.StatusOK, gin.H{
-		"is_running": isRunning(),
-		"text":       getContent(),
-	})
+	c.PureJSON(http.StatusOK, serverStatusPayload())
 }
 
 func apiServerStatus(c *gin.Context) {
-	c.PureJSON(http.StatusOK, gin.H{
-		"is_running": isRunning(),
-		"text":       getContent(),
-	})
+	c.PureJSON(http.StatusOK, serverStatusPayload())
 }
 
 func apiServerLogfile(c *gin.Context) {

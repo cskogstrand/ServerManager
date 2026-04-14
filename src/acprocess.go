@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -12,6 +13,24 @@ import (
 
 var lines string
 var cmd *exec.Cmd
+
+func appendOutput(pipe io.ReadCloser, label string) {
+	out := bufio.NewReader(pipe)
+
+	for {
+		b, _, err := out.ReadLine()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.Printf("Error acServer process %s: %v", label, err)
+			}
+			return
+		}
+
+		if len(b) > 0 {
+			lines += string(b) + "\n"
+		}
+	}
+}
 
 func start() {
 	binary := "acServer"
@@ -34,41 +53,41 @@ func start() {
 	}
 
 	cmd.Dir = TempFolder
-	var stdOut, _ = cmd.StdoutPipe()
+	stdOut, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Print("Could not capture acServer stdout: ", err)
+	}
+	stdErr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Print("Could not capture acServer stderr: ", err)
+	}
 	err := cmd.Start()
 	if err != nil {
 		log.Print("Could not start executable: ", fpath, err)
+		return
 	}
 
-	out := bufio.NewReader(stdOut)
-
 	lines = ""
-	go func() {
-		for cmd != nil {
-			b, _, err := out.ReadLine()
-
-			if err != nil {
-				log.Print("Error acServer process stdout: ", err)
-			}
-
-			if len(b) > 0 {
-				lines += string(b) + "\n"
-			}
+	go appendOutput(stdOut, "stdout")
+	go appendOutput(stdErr, "stderr")
+	go func(currentCmd *exec.Cmd) {
+		err := currentCmd.Wait()
+		if err != nil {
+			log.Print("acServer exited: ", err)
 		}
-	}()
-
+		if cmd == currentCmd {
+			cmd = nil
+			Status.Players = 0
+		}
+	}(cmd)
 }
+
 func getContent() string {
 	return lines
 }
 
 func isRunning() bool {
-	if cmd != nil && cmd.ProcessState != nil {
-		return cmd.ProcessState.Exited()
-	} else if cmd != nil && cmd.Process != nil {
-		return true
-	}
-	return false
+	return cmd != nil && cmd.Process != nil && (cmd.ProcessState == nil || !cmd.ProcessState.Exited())
 }
 
 func stop() {

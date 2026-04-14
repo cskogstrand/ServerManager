@@ -118,6 +118,20 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		session.QualifyMaxWaitPerc = &val
 	}
 
+	sessionCount := 0
+	if session.BookingEnabled != nil && *session.BookingEnabled > 0 {
+		sessionCount++
+	}
+	if session.PracticeEnabled != nil && *session.PracticeEnabled > 0 {
+		sessionCount++
+	}
+	if session.QualifyEnabled != nil && *session.QualifyEnabled > 0 {
+		sessionCount++
+	}
+	if session.RaceEnabled != nil && *session.RaceEnabled > 0 {
+		sessionCount++
+	}
+
 	// csp required? build a cspstr to be concat with the track name
 	cspstr := ""
 	cr.cspVersion = ""
@@ -243,6 +257,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		"config":      cfg,
 		"diff":        diff,
 		"session":     session,
+		"session_count": sessionCount,
 		"time":        tm,
 		"class":       class,
 		"track":       track,

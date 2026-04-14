@@ -58,6 +58,25 @@ type SessionInfo struct {
 	elapsedMs           int32
 }
 
+func (s SessionInfo) sameAs(other SessionInfo) bool {
+	return s.version == other.version &&
+		s.sessionIndex == other.sessionIndex &&
+		s.currentSessionIndex == other.currentSessionIndex &&
+		s.sessionCount == other.sessionCount &&
+		s.serverName == other.serverName &&
+		s.track == other.track &&
+		s.trackConfig == other.trackConfig &&
+		s.name == other.name &&
+		s.typ == other.typ &&
+		s.time == other.time &&
+		s.laps == other.laps &&
+		s.waitTime == other.waitTime &&
+		s.ambientTemp == other.ambientTemp &&
+		s.roadTemp == other.roadTemp &&
+		s.weatherGraphics == other.weatherGraphics &&
+		s.elapsedMs == other.elapsedMs
+}
+
 type ClientEvent struct {
 	carId       int
 	otherCarId  int
@@ -224,6 +243,23 @@ type UdpPlugin struct {
 	online bool
 }
 
+func logSession(prefix string, sess SessionInfo) {
+	log.Printf("%s index=%d/%d current=%d name=%q type=%d track=%q config=%q time=%d laps=%d openWait=%d elapsed_ms=%d",
+		prefix,
+		sess.sessionIndex,
+		sess.sessionCount,
+		sess.currentSessionIndex,
+		sess.name,
+		sess.typ,
+		sess.track,
+		sess.trackConfig,
+		sess.time,
+		sess.laps,
+		sess.waitTime,
+		sess.elapsedMs,
+	)
+}
+
 func udpListen() UdpPlugin {
 	var udp UdpPlugin
 	udpClient, err := net.ResolveUDPAddr("udp", ":5001")
@@ -274,14 +310,16 @@ func (udp UdpPlugin) Receive() {
 
 	case acspNewSession:
 		sess := readSessionInfo(r)
-		log.Print("ACSP_NEW_SESSION: ")
-		PrintInterface(sess)
+		if !sess.sameAs(Status.Session) {
+			logSession("ACSP_NEW_SESSION", sess)
+		}
 		Status.Session = sess
 
 	case acspSessionInfo:
 		sess := readSessionInfo(r)
-		log.Print("ACSP_SESSION_INFO: ")
-		PrintInterface(sess)
+		if !sess.sameAs(Status.Session) {
+			logSession("ACSP_SESSION_INFO", sess)
+		}
 		Status.Session = sess
 
 	case acspEndSession:

@@ -168,13 +168,12 @@ func main() {
 		}
 	}()
 
-	var router *gin.Engine
+	router := gin.New()
 	if debug {
-		router = gin.Default()
-	} else {
-		router = gin.New()
+		router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+			SkipPaths: []string{"/api/server/status"},
+		}))
 	}
-
 	router.Use(gin.Recovery())
 
 	funcMap := template.FuncMap{

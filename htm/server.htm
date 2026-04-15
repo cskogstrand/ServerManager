@@ -229,6 +229,16 @@
         return track.name || track.key;
       },
 
+      car_name(car) {
+        if (!car) return "Unknown car";
+        return car.name || car.key || "Unknown car";
+      },
+
+      weather_name(weather) {
+        if (!weather) return "Unknown weather";
+        return weather.name || weather.key || "Unknown weather";
+      },
+
       selected_weather() {
         return this.weathers.find((weather) => weather.key === this.edit.weather_key) || null;
       },
@@ -335,7 +345,7 @@
             if (!car) return null;
             return {
               key: car.key,
-              name: car.name,
+              name: this.car_name(car),
               brand: car.brand,
               skin_key: entry.skin_key,
             };
@@ -488,10 +498,10 @@
               :class="car_selected(car.key) ? 'is-selected' : ''"
               @click="toggle_class_car(car)">
               <div class="srv-car-card__media">
-                <img class="srv-car-card__preview" :src="car_preview(car.key, (entry_for_car(car.key) || {}).skin_key)" :alt="car.name" />
+                <img class="srv-car-card__preview" :src="car_preview(car.key, (entry_for_car(car.key) || {}).skin_key)" :alt="car_name(car)" />
               </div>
               <div class="srv-car-card__body">
-                <div class="srv-car-card__name" x-text="car.name || car.key"></div>
+                <div class="srv-car-card__name" x-text="car_name(car)"></div>
                 <div class="srv-car-card__meta" x-text="(car.brand || 'Unknown brand') + ' · ' + (car.class || 'Unclassified')"></div>
                 <div class="srv-car-card__meta" x-text="car.key"></div>
               </div>
@@ -528,13 +538,13 @@
               :class="edit.weather_key === weather.key ? 'is-selected' : ''"
               @click="edit.weather_key = weather.key">
               <div class="srv-weather-card__media" x-data="{ broken: false }">
-                <img x-show="!broken" class="srv-weather-card__preview" :src="weather_preview(weather.key)" :alt="weather.name" @error="broken = true" />
+                <img x-show="!broken" class="srv-weather-card__preview" :src="weather_preview(weather.key)" :alt="weather_name(weather)" @error="broken = true" />
                 <div x-show="broken" class="srv-weather-card__fallback">
                   <i class="fas fa-cloud-sun-rain"></i>
                 </div>
               </div>
               <div class="srv-weather-card__body">
-                <div class="srv-weather-card__name" x-text="weather.name || weather.key"></div>
+                <div class="srv-weather-card__name" x-text="weather_name(weather)"></div>
                 <div class="srv-weather-card__meta" x-text="weather.key"></div>
               </div>
             </button>
@@ -575,12 +585,21 @@
       </div>
     </div>
 
-    <div class="srv-strip__ctrl">
+    <div class="srv-strip__actions">
       <button class="srv-btn srv-btn--start" type="button" @click="start_server()" x-show="!is_running">
         <i class="fas fa-play"></i> Start Server
       </button>
       <button class="srv-btn srv-btn--stop" type="button" @click="stop_server()" x-show="is_running">
         <i class="fas fa-stop"></i> Stop Server
+      </button>
+      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('track')">
+        <i class="fas fa-map"></i> Change track
+      </button>
+      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('cars')">
+        <i class="fas fa-car-side"></i> Change cars
+      </button>
+      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('weather')">
+        <i class="fas fa-cloud-sun-rain"></i> Change weather
       </button>
     </div>
   </div>
@@ -678,48 +697,6 @@
 
     <div class="srv-card">
       <div class="srv-card__head">
-        <span class="srv-card__eyebrow srv-card__eyebrow--accent">Live Controls</span>
-        <span class="srv-card__eyebrow">Restart prompt on apply</span>
-      </div>
-      <div class="srv-card__body">
-        <div class="srv-action-grid">
-          <button class="srv-action-card" type="button" @click="open_modal('track')">
-            <div class="srv-action-card__top">
-              <span class="srv-action-card__label">Change track</span>
-              <i class="fas fa-map"></i>
-            </div>
-            <div class="srv-action-card__value" x-text="selected_track_name()"></div>
-            <div class="srv-action-card__hint">Open visual track selector</div>
-          </button>
-
-          <button class="srv-action-card" type="button" @click="open_modal('cars')">
-            <div class="srv-action-card__top">
-              <span class="srv-action-card__label">Change cars</span>
-              <i class="fas fa-car-side"></i>
-            </div>
-            <div class="srv-action-card__value" x-text="edit.class_entries.length + ' entries'"></div>
-            <div class="srv-action-card__hint">Edit the current class entries</div>
-          </button>
-
-          <button class="srv-action-card" type="button" @click="open_modal('weather')">
-            <div class="srv-action-card__top">
-              <span class="srv-action-card__label">Change weather</span>
-              <i class="fas fa-cloud-sun-rain"></i>
-            </div>
-            <div class="srv-action-card__value" x-text="selected_weather_name()"></div>
-            <div class="srv-action-card__hint">Choose from weather thumbnails</div>
-          </button>
-        </div>
-
-        <p class="srv-edit-hint">Saving updates the current queue event. If the server is running, you will be asked whether it should restart immediately to apply the new track, car entries, or weather.</p>
-        <template x-if="notice">
-          <div class="srv-notice" x-text="notice"></div>
-        </template>
-      </div>
-    </div>
-
-    <div class="srv-card">
-      <div class="srv-card__head">
         <span class="srv-card__eyebrow srv-card__eyebrow--accent">Infrastructure</span>
       </div>
       <div class="srv-card__body">
@@ -761,6 +738,10 @@
       </div>
     </div>
   </div>
+
+  <template x-if="notice">
+    <div class="srv-notice srv-notice--top" x-text="notice"></div>
+  </template>
 
   <div class="srv-card srv-card--console">
     <div class="srv-card__head">

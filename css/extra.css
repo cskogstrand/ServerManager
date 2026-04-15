@@ -821,6 +821,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: calc(100vh - var(--topbar-h) - 100px);
 }
 
 /* ── Status strip ──────────────────────────────────────── */
@@ -1589,7 +1590,7 @@ select {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 500px;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 48px - 250px);
   display: flex;
   flex-direction: column;
   overflow: hidden;

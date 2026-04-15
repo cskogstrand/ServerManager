@@ -35,6 +35,27 @@ var Version = "development"
 // TODO: checksuming is failing when CSP is enabled
 var debug bool = false
 
+func currentUserFromRequest(c *gin.Context) (string, bool) {
+	tokenString, err := c.Cookie("token")
+	if err != nil {
+		return "", false
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return SecretKey, nil
+	})
+	if err != nil || !token.Valid {
+		return "", false
+	}
+
+	user, err := token.Claims.GetSubject()
+	if err != nil || user == "" {
+		return "", false
+	}
+
+	return user, true
+}
+
 func ConfigCompletedMiddlware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		configfilled, err := Dba.selectConfigFilled()
@@ -43,6 +64,13 @@ func ConfigCompletedMiddlware() gin.HandlerFunc {
 			configfilled = false
 		}
 		if !configfilled && c.Request.URL.Path != "/config" && c.Request.URL.Path != "/content" {
+			if debug {
+				if user, ok := currentUserFromRequest(c); ok && user == "demo" {
+					c.Set("user", user)
+					c.Next()
+					return
+				}
+			}
 			c.Redirect(http.StatusFound, "/config")
 			return
 		}
@@ -52,27 +80,11 @@ func ConfigCompletedMiddlware() gin.HandlerFunc {
 }
 
 func AuthenticateMiddleware(c *gin.Context) {
-	tokenString, err := c.Cookie("token")
-	if err != nil {
+	user, ok := currentUserFromRequest(c)
+	if !ok {
 		c.Redirect(http.StatusFound, "/login")
 		c.Abort()
 		return
-	}
-
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return SecretKey, nil
-	})
-
-	if err != nil || !token.Valid {
-		c.Redirect(http.StatusFound, "/login")
-		c.Abort()
-		return
-	}
-
-	user, err := token.Claims.GetSubject()
-
-	if err != nil {
-		log.Print(err)
 	}
 
 	c.Set("user", user)

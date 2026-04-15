@@ -13,8 +13,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func routeConfigFilled(c *gin.Context) (bool, error) {
+	if debug {
+		if user, ok := currentUserFromRequest(c); ok && user == "demo" {
+			return true, nil
+		}
+	}
+	return Dba.selectConfigFilled()
+}
+
 func routeAbout(c *gin.Context) {
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -49,7 +58,7 @@ func routeConfig(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -97,7 +106,7 @@ func routeContent(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -120,7 +129,7 @@ func routeIndex(c *gin.Context) {
 }
 
 func routeServer(c *gin.Context) {
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -189,7 +198,7 @@ func routeQueue(c *gin.Context) {
 		}
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -276,7 +285,7 @@ func routeDifficulty(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -349,7 +358,7 @@ func routeClass(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -416,7 +425,7 @@ func routeSession(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -493,7 +502,7 @@ func routeTime(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -603,7 +612,7 @@ func routeEventCategory(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -640,6 +649,28 @@ func routeLogin(c *gin.Context) {
 		usr := c.PostForm("name")
 		pwd := c.PostForm("password")
 
+		if debug && usr == "demo" && pwd == "demo" {
+			claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"sub": "demo",
+				"iss": "servermanager",
+				"aud": "demo",
+				"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
+				"iat": time.Now().Unix(),
+			})
+
+			tokenString, err := claims.SignedString(SecretKey)
+			if err != nil {
+				c.String(http.StatusInternalServerError, "Error creating token")
+				return
+			}
+			c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
+
+			log.Print("Debug demo login successful")
+
+			c.Redirect(http.StatusFound, "/")
+			return
+		}
+
 		user, err := Dba.selectUser(usr)
 		if err != nil {
 			routeDbError(c, err)
@@ -675,7 +706,9 @@ func routeLogin(c *gin.Context) {
 		}
 	}
 
-	c.HTML(http.StatusOK, "/htm/login.htm", gin.H{})
+	c.HTML(http.StatusOK, "/htm/login.htm", gin.H{
+		"debug": debug,
+	})
 }
 
 func routeLogout(c *gin.Context) {
@@ -693,7 +726,24 @@ func routeUser(c *gin.Context) {
 
 	form, err := Dba.selectUser(user.(string))
 	if err != nil {
-		routeDbError(c, err)
+		if debug && user.(string) == "demo" {
+			name := "demo"
+			form = Users{
+				Name: &name,
+			}
+		} else {
+			routeDbError(c, err)
+			return
+		}
+	}
+
+	if user.(string) == "demo" {
+		c.HTML(http.StatusOK, "/htm/user.htm", gin.H{
+			"page":          "user",
+			"form":          form,
+			"config_filled": true,
+			"status":        Status,
+		})
 		return
 	}
 
@@ -705,7 +755,7 @@ func routeUser(c *gin.Context) {
 		}
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -731,7 +781,7 @@ func routeAdmin(c *gin.Context) {
 		return
 	}
 
-	cfgFilled, err := Dba.selectConfigFilled()
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return

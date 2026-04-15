@@ -56,6 +56,14 @@
             </button>
           </div>
         </form>
+        {{ if .debug }}
+        <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <div class="pw-label" style="margin-bottom: 6px;">Debug Demo Account</div>
+          <div style="font-size: 12px; color: var(--c-text-dim); line-height: 1.5;">
+            Use <strong>demo</strong> / <strong>demo</strong> to browse the full UI even when the server setup is incomplete.
+          </div>
+        </div>
+        {{ end }}
       </div>
     </div>
   </div>

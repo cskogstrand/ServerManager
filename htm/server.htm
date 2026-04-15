@@ -55,8 +55,8 @@
       active_modal: "",
       notice: "",
       saving: false,
-      last_class_id: 0,
-      last_time_id: 0,
+      last_class_id: -1,
+      last_time_id: -1,
 
       apply(json) {
         const prevClassId = this.current_event.class_id || 0;
@@ -75,10 +75,12 @@
         if (!this.has_open_modal()) {
           this.sync_editors();
         }
-        if ((this.current_event.class_id || 0) !== prevClassId || this.last_class_id === 0) {
+        const newClassId = this.current_event.class_id || 0;
+        const newTimeId = this.current_event.time_id || 0;
+        if (this.active_modal !== 'cars' && newClassId !== this.last_class_id) {
           this.load_current_class();
         }
-        if ((this.current_event.time_id || 0) !== prevTimeId || this.last_time_id === 0) {
+        if (this.active_modal !== 'weather' && newTimeId !== this.last_time_id) {
           this.load_current_time();
         }
       },
@@ -99,8 +101,8 @@
       },
 
       sync_editors() {
-        const trackKey = this.current_event.track_key || "";
-        const trackConfig = this.current_event.track_config || "";
+        const trackKey = this.current_event.track_key || this.session.track || "";
+        const trackConfig = this.current_event.track_config || this.session.track_config || "";
         this.edit.track = trackKey ? trackKey + ":" + trackConfig : "";
       },
 
@@ -125,17 +127,7 @@
       load_current_time() {
         const timeId = this.current_event.time_id || 0;
         this.last_time_id = timeId;
-        if (!timeId) {
-          this.edit.weather_key = "";
-          return;
-        }
-        fetch("/api/time/" + timeId)
-          .then(r => r.json())
-          .then(j => {
-            const time = j.data || {};
-            const weather = (time.weathers || [])[0] || {};
-            this.edit.weather_key = weather.graphics || "";
-          });
+        this.edit.weather_key = this.session.weather_graphics || "";
       },
 
       open_modal(name) {
@@ -146,11 +138,13 @@
         }
         if (name === "cars") {
           this.car_search = "";
-          this.load_current_class();
+          if ((this.current_event.class_id || 0) !== this.last_class_id) {
+            this.load_current_class();
+          }
         }
         if (name === "weather") {
           this.weather_search = "";
-          this.load_current_time();
+          this.edit.weather_key = this.session.weather_graphics || this.edit.weather_key || "";
         }
         this.active_modal = name;
       },

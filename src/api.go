@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +29,18 @@ type DashboardEventUpdate struct {
 type DashboardClassEntryUpdate struct {
 	CacheCarKey string `json:"cache_car_key"`
 	SkinKey     string `json:"skin_key"`
+}
+
+func serveDemoSvg(c *gin.Context, label string, subtitle string) {
+	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+<rect width="640" height="360" fill="#0f172a"/>
+<rect x="18" y="18" width="604" height="324" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+<text x="36" y="86" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="30" font-weight="700">%s</text>
+<text x="36" y="122" fill="#94a3b8" font-family="Arial, sans-serif" font-size="18">%s</text>
+<rect x="36" y="258" width="180" height="14" rx="7" fill="#1e293b"/>
+<rect x="36" y="286" width="280" height="14" rx="7" fill="#1e293b"/>
+</svg>`, label, subtitle)
+	c.Data(http.StatusOK, "image/svg+xml", []byte(svg))
 }
 
 func serverStatusPayload() gin.H {
@@ -199,6 +212,11 @@ func apiCarImage(c *gin.Context) {
 	car := c.Param("car")
 	skin := c.Param("skin")
 
+	if strings.HasPrefix(car, "demo_") {
+		serveDemoSvg(c, car, skin)
+		return
+	}
+
 	var zf ZipFile
 	zi := zf.FindZipFile("cars/" + car + "/skins/" + skin + "/preview.jpg")
 	if zi != nil {
@@ -254,6 +272,15 @@ func apiTrackPreviewImage(c *gin.Context) {
 	track := c.Param("track")
 	config := c.Param("config")
 
+	if strings.HasPrefix(track, "demo_") {
+		subtitle := "Track preview"
+		if config != "" {
+			subtitle = "Layout: " + config
+		}
+		serveDemoSvg(c, track, subtitle)
+		return
+	}
+
 	filePath := "tracks/" + track + "/preview.png"
 	if config != "" {
 		filePath = "tracks/" + track + "/" + config + "/preview.png"
@@ -278,6 +305,11 @@ func apiTrackOutlineImage(c *gin.Context) {
 	track := c.Param("track")
 	config := c.Param("config")
 
+	if strings.HasPrefix(track, "demo_") {
+		serveDemoSvg(c, track, "Outline")
+		return
+	}
+
 	filePath := "tracks/" + track + "/outline.png"
 	if config != "" {
 		filePath = "tracks/" + track + "/" + config + "/outline.png"
@@ -300,6 +332,11 @@ func apiTrackOutlineImage(c *gin.Context) {
 
 func apiWeatherPreviewImage(c *gin.Context) {
 	weather := c.Param("weather")
+
+	if strings.HasPrefix(weather, "demo_") {
+		serveDemoSvg(c, weather, "Weather preview")
+		return
+	}
 
 	var zf ZipFile
 	zi := zf.FindZipFile("weather/" + weather + "/preview.jpg")

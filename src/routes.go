@@ -13,13 +13,143 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func sref(v string) *string { return &v }
+func iref(v int) *int       { return &v }
+
+func isDemoRequest(c *gin.Context) bool {
+	if !debug {
+		return false
+	}
+	user, ok := currentUserFromRequest(c)
+	return ok && user == "demo"
+}
+
 func routeConfigFilled(c *gin.Context) (bool, error) {
-	if debug {
-		if user, ok := currentUserFromRequest(c); ok && user == "demo" {
-			return true, nil
-		}
+	if isDemoRequest(c) {
+		return true, nil
 	}
 	return Dba.selectConfigFilled()
+}
+
+func demoTracks() []CacheTrack {
+	baseNames := []string{
+		"Neon Docks", "Boreal Ring", "Sungrid Valley", "Blackforest Pass", "Hinterland Yard",
+		"Redline Estate", "Coastline Loop", "Silver Quarry", "Northwind Circuit", "Delta Freight Park",
+	}
+	configs := []string{"layout_a", "gp", "club", "reverse", "drift"}
+	countries := []string{"Japan", "Norway", "USA", "Germany", "Sweden", "Italy", "Spain", "Canada", "France", "UK"}
+	cities := []string{"Yokohama", "Tromso", "Palm Springs", "Freiburg", "Malmo", "Modena", "Bilbao", "Calgary", "Lyon", "Leeds"}
+	tagsPool := [][]string{
+		{"drift", "night", "harbor"},
+		{"snow", "technical", "touge"},
+		{"desert", "club", "time attack"},
+		{"mountain", "reverse", "road"},
+		{"industrial", "practice", "open"},
+	}
+
+	tracks := make([]CacheTrack, 0, 50)
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("%s %02d", baseNames[i%len(baseNames)], i+1)
+		key := fmt.Sprintf("demo_track_%02d", i+1)
+		config := configs[i%len(configs)]
+		country := countries[i%len(countries)]
+		city := cities[i%len(cities)]
+		length := 1800 + (i * 137)
+		pitboxes := 14 + (i % 20)
+		tags := tagsPool[i%len(tagsPool)]
+
+		tracks = append(tracks, CacheTrack{
+			Key:      sref(key),
+			Config:   sref(config),
+			Name:     sref(name),
+			Country:  sref(country),
+			City:     sref(city),
+			Length:   iref(length),
+			Pitboxes: iref(pitboxes),
+			Tags:     &tags,
+		})
+	}
+	return tracks
+}
+
+func demoCars() []CacheCar {
+	baseNames := []string{
+		"Silvia S13 Demo", "E36 Street Demo", "MX-5 ND Cup Demo", "GT86 Slide Demo", "997 GT3 Touring Demo",
+		"Chaser JZX100 Demo", "Mustang Foxbody Demo", "M3 E92 Sprint Demo", "RX-7 FD Attack Demo", "Supra A90 Demo",
+	}
+	brands := []string{"Nissan", "BMW", "Mazda", "Toyota", "Porsche", "Ford", "Lexus", "Chevrolet", "Subaru", "Mercedes"}
+	classes := []string{"Drift", "Street", "Cup", "Track", "Touge"}
+	tagsPool := [][]string{
+		{"drift", "rwd", "turbo"},
+		{"street", "balanced", "rwd"},
+		{"cup", "lightweight", "beginner"},
+		{"track", "grip", "fast"},
+		{"touge", "agile", "night"},
+	}
+
+	cars := make([]CacheCar, 0, 50)
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("%s %02d", baseNames[i%len(baseNames)], i+1)
+		key := fmt.Sprintf("demo_car_%02d", i+1)
+		brand := brands[i%len(brands)]
+		class := classes[i%len(classes)]
+		tags := tagsPool[i%len(tagsPool)]
+		skins := []struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
+		}{
+			{Key: fmt.Sprintf("skin_%02d_a", i+1), Name: fmt.Sprintf("Factory %02d", i+1)},
+			{Key: fmt.Sprintf("skin_%02d_b", i+1), Name: fmt.Sprintf("Livery %02d", i+1)},
+		}
+
+		cars = append(cars, CacheCar{
+			Key:   sref(key),
+			Name:  sref(name),
+			Brand: sref(brand),
+			Class: sref(class),
+			Tags:  &tags,
+			Skins: skins,
+		})
+	}
+	return cars
+}
+
+func demoWeathers() []CacheWeather {
+	baseNames := []string{
+		"Clear Cold Morning", "Golden Hour", "Soft Overcast", "Neon Rain", "Blue Dusk",
+		"Late Summer Haze", "Dense Fog", "Coastal Storm", "Dry Heat", "Moonlit Clear",
+	}
+	weathers := make([]CacheWeather, 0, 50)
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("%s %02d", baseNames[i%len(baseNames)], i+1)
+		key := fmt.Sprintf("demo_weather_%02d", i+1)
+		weathers = append(weathers, CacheWeather{
+			Key:  sref(key),
+			Name: sref(name),
+		})
+	}
+	return weathers
+}
+
+func withDemoTracks(c *gin.Context, tracks []CacheTrack) []CacheTrack {
+	if isDemoRequest(c) {
+		return append(tracks, demoTracks()...)
+	}
+	return tracks
+}
+
+func withDemoCars(c *gin.Context, cars []CacheCar) []CacheCar {
+	if isDemoRequest(c) {
+		return append(cars, demoCars()...)
+	}
+	return cars
+}
+
+func withDemoWeathers(c *gin.Context, weathers []CacheWeather) []CacheWeather {
+	if isDemoRequest(c) {
+		return append(weathers, demoWeathers()...)
+	}
+	return weathers
 }
 
 func routeAbout(c *gin.Context) {
@@ -105,6 +235,9 @@ func routeContent(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	trackData = withDemoTracks(c, trackData)
+	carData = withDemoCars(c, carData)
+	weatherData = withDemoWeathers(c, weatherData)
 
 	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
@@ -149,6 +282,9 @@ func routeServer(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	trackData = withDemoTracks(c, trackData)
+	carData = withDemoCars(c, carData)
+	weatherData = withDemoWeathers(c, weatherData)
 	classes, err := Dba.selectClassList(true)
 	if err != nil {
 		routeDbError(c, err)
@@ -357,6 +493,7 @@ func routeClass(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	carData = withDemoCars(c, carData)
 
 	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
@@ -501,6 +638,7 @@ func routeTime(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	weatherList = withDemoWeathers(c, weatherList)
 
 	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
@@ -611,6 +749,7 @@ func routeEventCategory(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	tracksData = withDemoTracks(c, tracksData)
 
 	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {

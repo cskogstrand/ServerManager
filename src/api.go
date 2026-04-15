@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,64 @@ type DashboardEventUpdate struct {
 type DashboardClassEntryUpdate struct {
 	CacheCarKey string `json:"cache_car_key"`
 	SkinKey     string `json:"skin_key"`
+}
+
+func parseEntryListFile(path string) ([]DashboardClassEntryUpdate, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	entries := make([]DashboardClassEntryUpdate, 0)
+	current := DashboardClassEntryUpdate{}
+	inCarSection := false
+
+	flush := func() {
+		if current.CacheCarKey != "" {
+			entries = append(entries, current)
+		}
+		current = DashboardClassEntryUpdate{}
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			if inCarSection {
+				flush()
+			}
+			section := strings.Trim(line, "[]")
+			inCarSection = strings.HasPrefix(section, "CAR_")
+			continue
+		}
+		if !inCarSection {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		switch key {
+		case "MODEL":
+			current.CacheCarKey = val
+		case "SKIN":
+			current.SkinKey = val
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if inCarSection {
+		flush()
+	}
+	return entries, nil
 }
 
 func serveDemoSvg(c *gin.Context, label string, subtitle string) {
@@ -139,6 +198,13 @@ func serverStatusPayload() gin.H {
 			"elapsed_ms":           Status.Session.elapsedMs,
 		},
 		"current_event": currentEvent,
+		"current_cars": func() []DashboardClassEntryUpdate {
+			entries, err := parseEntryListFile(filepath.Join(TempFolder, "cfg", "entry_list.ini"))
+			if err != nil {
+				return []DashboardClassEntryUpdate{}
+			}
+			return entries
+		}(),
 	}
 }
 

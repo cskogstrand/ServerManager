@@ -49,6 +49,7 @@
         weather_key: "",
         class_entries: []
       },
+      current_cars: [],
       track_search: "",
       car_search: "",
       weather_search: "",
@@ -71,13 +72,17 @@
         this.entry_path = json.entry_path || this.entry_path;
         this.session = json.session || this.session;
         this.current_event = json.current_event || this.current_event;
+        this.current_cars = json.current_cars || [];
 
         if (!this.has_open_modal()) {
           this.sync_editors();
         }
         const newClassId = this.current_event.class_id || 0;
         const newTimeId = this.current_event.time_id || 0;
-        if (this.active_modal !== 'cars' && newClassId !== this.last_class_id) {
+        if (this.current_cars.length > 0 && this.active_modal !== 'cars') {
+          this.edit.class_entries = this.current_cars;
+          this.last_class_id = newClassId;
+        } else if (this.active_modal !== 'cars' && newClassId !== this.last_class_id) {
           this.load_current_class();
         }
         if (this.active_modal !== 'weather' && newTimeId !== this.last_time_id) {
@@ -138,7 +143,11 @@
         }
         if (name === "cars") {
           this.car_search = "";
-          this.load_current_class();
+          if (this.current_cars.length > 0) {
+            this.edit.class_entries = this.current_cars;
+          } else {
+            this.load_current_class();
+          }
         }
         if (name === "weather") {
           this.weather_search = "";

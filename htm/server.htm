@@ -350,6 +350,14 @@
           .filter(Boolean);
       },
 
+      topbar_car_cards() {
+        return this.selected_car_cards().slice(0, 6);
+      },
+
+      extra_cars_count() {
+        return Math.max(0, this.selected_car_cards().length - 6);
+      },
+
       save_current_event(payload, successMessage) {
         if (!this.current_event.id) {
           this.notice = "No running event available to update.";
@@ -576,46 +584,81 @@
   </div>
 
   <div class="srv-strip" :class="is_running ? 'srv-strip--live' : 'srv-strip--idle'">
-    <div class="srv-strip__info">
-      <div class="srv-strip__badge">
-        <span class="srv-strip__badge-dot"></span>
-        <span x-text="is_running ? 'Live' : 'Idle'"></span>
+    <div class="srv-strip__top">
+      <div class="srv-strip__info">
+        <div class="srv-strip__badge">
+          <span class="srv-strip__badge-dot"></span>
+          <span x-text="is_running ? 'Live' : 'Idle'"></span>
+        </div>
+        <div class="srv-strip__track" x-text="track_label()"></div>
+        <div class="srv-strip__category" x-text="category_label()"></div>
       </div>
-      <div class="srv-strip__track" x-text="track_label()"></div>
-      <div class="srv-strip__category" x-text="category_label()"></div>
+
+      <div class="srv-strip__meta">
+        <div class="srv-stat">
+          <span class="srv-stat__n" x-text="players"></span>
+          <span class="srv-stat__l">Players</span>
+        </div>
+        <div class="srv-stat">
+          <span class="srv-stat__n" x-text="uptime_label()"></span>
+          <span class="srv-stat__l">Uptime</span>
+        </div>
+        <div class="srv-stat">
+          <span class="srv-stat__n" x-text="elapsed_label()"></span>
+          <span class="srv-stat__l">Session</span>
+        </div>
+      </div>
+
+      <div class="srv-strip__actions">
+        <button class="srv-btn srv-btn--start" type="button" @click="start_server()" x-show="!is_running">
+          <i class="fas fa-play"></i> Start Server
+        </button>
+        <button class="srv-btn srv-btn--stop" type="button" @click="stop_server()" x-show="is_running">
+          <i class="fas fa-stop"></i> Stop Server
+        </button>
+      </div>
     </div>
 
-    <div class="srv-strip__meta">
-      <div class="srv-stat">
-        <span class="srv-stat__n" x-text="players"></span>
-        <span class="srv-stat__l">Players</span>
+    <div class="srv-strip__summary">
+      <div class="srv-strip-panel">
+        <div class="srv-strip-panel__head">
+          <span class="srv-strip-panel__label">Current Weather</span>
+          <button class="srv-btn srv-btn--ghost srv-btn--mini" type="button" @click="open_modal('weather')">
+            <i class="fas fa-pen"></i> Change
+          </button>
+        </div>
+        <div class="srv-strip-panel__value" x-text="selected_weather_name()"></div>
       </div>
-      <div class="srv-stat">
-        <span class="srv-stat__n" x-text="uptime_label()"></span>
-        <span class="srv-stat__l">Uptime</span>
+      <div class="srv-strip-panel">
+        <div class="srv-strip-panel__head">
+          <span class="srv-strip-panel__label">Current Track</span>
+          <button class="srv-btn srv-btn--ghost srv-btn--mini" type="button" @click="open_modal('track')">
+            <i class="fas fa-pen"></i> Change
+          </button>
+        </div>
+        <div class="srv-strip-panel__value" x-text="selected_track_name()"></div>
       </div>
-      <div class="srv-stat">
-        <span class="srv-stat__n" x-text="elapsed_label()"></span>
-        <span class="srv-stat__l">Session</span>
+      <div class="srv-strip-panel srv-strip-panel--cars">
+        <div class="srv-strip-panel__head">
+          <span class="srv-strip-panel__label">Current Cars</span>
+          <div class="srv-strip-panel__head-actions">
+            <span class="srv-strip-panel__meta" x-text="selected_car_cards().length + ' loaded'"></span>
+            <button class="srv-btn srv-btn--ghost srv-btn--mini" type="button" @click="open_modal('cars')">
+              <i class="fas fa-pen"></i> Change
+            </button>
+          </div>
+        </div>
+        <div class="srv-strip-cars">
+          <template x-for="car in topbar_car_cards()" :key="'top-' + car.key">
+            <div class="srv-strip-car">
+              <span class="srv-strip-car__name" x-text="car.name"></span>
+            </div>
+          </template>
+          <template x-if="extra_cars_count() > 0">
+            <div class="srv-strip-car srv-strip-car--more" x-text="'+' + extra_cars_count() + ' more'"></div>
+          </template>
+        </div>
       </div>
-    </div>
-
-    <div class="srv-strip__actions">
-      <button class="srv-btn srv-btn--start" type="button" @click="start_server()" x-show="!is_running">
-        <i class="fas fa-play"></i> Start Server
-      </button>
-      <button class="srv-btn srv-btn--stop" type="button" @click="stop_server()" x-show="is_running">
-        <i class="fas fa-stop"></i> Stop Server
-      </button>
-      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('track')">
-        <i class="fas fa-map"></i> Change track
-      </button>
-      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('cars')">
-        <i class="fas fa-car-side"></i> Change cars
-      </button>
-      <button class="srv-btn srv-btn--ghost" type="button" @click="open_modal('weather')">
-        <i class="fas fa-cloud-sun-rain"></i> Change weather
-      </button>
     </div>
   </div>
 

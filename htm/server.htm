@@ -54,10 +54,36 @@
       car_search: "",
       weather_search: "",
       active_modal: "",
+      modal_baselines: {
+        track: "",
+        weather: "",
+        cars: "[]"
+      },
+      confirm_modal_open: false,
+      pending_action: null,
       notice: "",
       saving: false,
       last_class_id: -1,
       last_time_id: -1,
+
+      init_dashboard() {
+        const self = this;
+        window.addEventListener("beforeunload", function (event) {
+          if (!self.has_unsaved_modal_changes()) return;
+          event.preventDefault();
+          event.returnValue = "";
+        });
+        document.addEventListener("click", function (event) {
+          const link = event.target.closest("a[href]");
+          if (!link) return;
+          const href = link.getAttribute("href");
+          if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+          if (link.target && link.target !== "_self") return;
+          if (!self.has_unsaved_modal_changes()) return;
+          event.preventDefault();
+          self.prompt_unsaved_changes({ type: "navigate", href: href });
+        }, true);
+      },
 
       apply(json) {
         const prevClassId = this.current_event.class_id || 0;
@@ -105,6 +131,102 @@
         return this.active_modal !== "";
       },
 
+      snapshot_class_entries(entries) {
+        return JSON.stringify((entries || []).map((entry) => ({
+          cache_car_key: entry.cache_car_key || "",
+          skin_key: entry.skin_key || ""
+        })));
+      },
+
+      capture_modal_baseline(name) {
+        if (name === "track") {
+          this.modal_baselines.track = this.edit.track || "";
+        }
+        if (name === "weather") {
+          this.modal_baselines.weather = this.edit.weather_key || "";
+        }
+        if (name === "cars") {
+          this.modal_baselines.cars = this.snapshot_class_entries(this.edit.class_entries);
+        }
+      },
+
+      modal_is_dirty(name) {
+        if (!name) return false;
+        if (name === "track") {
+          return (this.edit.track || "") !== (this.modal_baselines.track || "");
+        }
+        if (name === "weather") {
+          return (this.edit.weather_key || "") !== (this.modal_baselines.weather || "");
+        }
+        if (name === "cars") {
+          return this.snapshot_class_entries(this.edit.class_entries) !== (this.modal_baselines.cars || "[]");
+        }
+        return false;
+      },
+
+      has_unsaved_modal_changes() {
+        return this.has_open_modal() && this.modal_is_dirty(this.active_modal);
+      },
+
+      modal_title(name) {
+        if (name === "track") return "track changes";
+        if (name === "cars") return "car changes";
+        if (name === "weather") return "weather changes";
+        return "changes";
+      },
+
+      prompt_unsaved_changes(action) {
+        this.pending_action = action;
+        this.confirm_modal_open = true;
+      },
+
+      clear_pending_action() {
+        this.pending_action = null;
+        this.confirm_modal_open = false;
+      },
+
+      execute_pending_action() {
+        const action = this.pending_action;
+        this.clear_pending_action();
+        if (!action) return;
+        if (action.type === "close") {
+          this.force_close_modal();
+        }
+        if (action.type === "open") {
+          this.force_close_modal();
+          this.prepare_modal(action.modal);
+          this.active_modal = action.modal;
+        }
+        if (action.type === "navigate" && action.href) {
+          this.force_close_modal();
+          window.location.href = action.href;
+        }
+      },
+
+      discard_and_continue() {
+        this.execute_pending_action();
+      },
+
+      keep_editing() {
+        this.clear_pending_action();
+      },
+
+      apply_and_continue() {
+        if (!this.active_modal) {
+          this.clear_pending_action();
+          return;
+        }
+        if (this.active_modal === "track") {
+          this.save_track_change();
+        }
+        if (this.active_modal === "cars") {
+          this.save_cars_change();
+        }
+        if (this.active_modal === "weather") {
+          this.save_weather_change();
+        }
+      },
+
       sync_editors() {
         const trackKey = this.current_event.track_key || this.session.track || "";
         const trackConfig = this.current_event.track_config || this.session.track_config || "";
@@ -126,6 +248,9 @@
               skin_key: entry.skin_key || this.first_skin_key(entry.cache_car_key),
             }));
             this.edit.class_entries = entries.filter((entry) => entry.cache_car_key && entry.skin_key);
+            if (this.active_modal === "cars") {
+              this.capture_modal_baseline("cars");
+            }
           });
       },
 
@@ -135,11 +260,12 @@
         this.edit.weather_key = this.session.weather_graphics || "";
       },
 
-      open_modal(name) {
+      prepare_modal(name) {
         this.notice = "";
         if (name === "track") {
           this.sync_editors();
           this.track_search = "";
+          this.capture_modal_baseline("track");
         }
         if (name === "cars") {
           this.car_search = "";
@@ -148,16 +274,36 @@
           } else {
             this.load_current_class();
           }
+          this.capture_modal_baseline("cars");
         }
         if (name === "weather") {
           this.weather_search = "";
           this.edit.weather_key = this.session.weather_graphics || this.edit.weather_key || "";
+          this.capture_modal_baseline("weather");
         }
+      },
+
+      open_modal(name) {
+        if (this.has_unsaved_modal_changes()) {
+          this.prompt_unsaved_changes({ type: "open", modal: name });
+          return;
+        }
+        this.prepare_modal(name);
         this.active_modal = name;
       },
 
-      close_modal() {
+      request_close_modal() {
+        if (this.has_unsaved_modal_changes()) {
+          this.prompt_unsaved_changes({ type: "close" });
+          return;
+        }
+        this.force_close_modal();
+      },
+
+      force_close_modal() {
         this.active_modal = "";
+        this.confirm_modal_open = false;
+        this.pending_action = null;
       },
 
       start_server() {
@@ -412,7 +558,12 @@
             } else {
               this.notice = successMessage;
             }
-            this.close_modal();
+            this.capture_modal_baseline(this.active_modal);
+            if (this.pending_action) {
+              this.execute_pending_action();
+            } else {
+              this.force_close_modal();
+            }
           })
           .catch(() => {
             this.saving = false;
@@ -447,9 +598,32 @@
   }
 </script>
 
-<div class="server-dashboard" x-data="dashboard()" x-init="start_loop()">
+<div class="server-dashboard" x-data="dashboard()" x-init="init_dashboard(); start_loop()">
 
-  <div x-show="active_modal" class="pw-modal-overlay" @click="close_modal()" x-cloak></div>
+  <div x-show="active_modal" class="pw-modal-overlay" @click="request_close_modal()" x-cloak></div>
+
+  <div x-show="confirm_modal_open" class="pw-modal-overlay pw-modal-overlay--confirm" x-cloak></div>
+  <div x-show="confirm_modal_open" class="pw-modal-wrapper pw-modal-wrapper--confirm" x-cloak>
+    <div class="pw-modal srv-confirm-modal">
+      <div class="pw-modal__head">
+        <div>
+          <span class="pw-modal__title">Apply Changes Before Closing?</span>
+          <div class="srv-modal__sub">
+            You have unapplied <span x-text="modal_title(active_modal)"></span>. Do you want to apply them before leaving this modal?
+          </div>
+        </div>
+      </div>
+      <div class="pw-modal__body">
+        <div class="srv-confirm-modal__actions">
+          <button class="pw-btn pw-btn--primary" type="button" @click="apply_and_continue()" :disabled="saving">
+            <span x-text="saving ? 'Applying…' : 'Apply Changes'"></span>
+          </button>
+          <button class="pw-btn pw-btn--ghost" type="button" @click="discard_and_continue()">Discard Changes</button>
+          <button class="pw-btn pw-btn--ghost" type="button" @click="keep_editing()">Keep Editing</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div x-show="active_modal === 'track'" class="pw-modal-wrapper" x-cloak>
     <div class="pw-modal pw-modal--wider srv-modal">
@@ -458,7 +632,7 @@
           <span class="pw-modal__title">Change Track</span>
           <div class="srv-modal__sub">Select the layout to load for the currently running queue event.</div>
         </div>
-        <button class="pw-modal__close" type="button" @click="close_modal()">&times;</button>
+        <button class="pw-modal__close" type="button" @click="request_close_modal()">&times;</button>
       </div>
       <div class="pw-modal__body srv-modal__body">
         <div class="srv-modal__toolbar">
@@ -484,7 +658,7 @@
         </div>
       </div>
       <div class="pw-modal__footer">
-        <button class="pw-btn pw-btn--ghost" type="button" @click="close_modal()">Cancel</button>
+        <button class="pw-btn pw-btn--ghost" type="button" @click="request_close_modal()">Cancel</button>
         <button class="pw-btn pw-btn--primary" type="button" @click="save_track_change()" :disabled="saving">
           <span x-text="saving ? 'Saving…' : 'Apply Track'"></span>
         </button>
@@ -499,7 +673,7 @@
           <span class="pw-modal__title">Change Cars</span>
           <div class="srv-modal__sub">Update the car entries in the currently running class. Newly added cars use their first available skin.</div>
         </div>
-        <button class="pw-modal__close" type="button" @click="close_modal()">&times;</button>
+        <button class="pw-modal__close" type="button" @click="request_close_modal()">&times;</button>
       </div>
       <div class="pw-modal__body srv-modal__body">
         <div class="srv-modal__toolbar">
@@ -548,7 +722,7 @@
         </div>
       </div>
       <div class="pw-modal__footer">
-        <button class="pw-btn pw-btn--ghost" type="button" @click="close_modal()">Cancel</button>
+        <button class="pw-btn pw-btn--ghost" type="button" @click="request_close_modal()">Cancel</button>
         <button class="pw-btn pw-btn--primary" type="button" @click="save_cars_change()" :disabled="saving">
           <span x-text="saving ? 'Saving…' : 'Apply Cars'"></span>
         </button>
@@ -563,7 +737,7 @@
           <span class="pw-modal__title">Change Weather</span>
           <div class="srv-modal__sub">Pick the weather graphics used by the active time and weather preset.</div>
         </div>
-        <button class="pw-modal__close" type="button" @click="close_modal()">&times;</button>
+        <button class="pw-modal__close" type="button" @click="request_close_modal()">&times;</button>
       </div>
       <div class="pw-modal__body srv-modal__body">
         <div class="srv-modal__toolbar">
@@ -590,7 +764,7 @@
         </div>
       </div>
       <div class="pw-modal__footer">
-        <button class="pw-btn pw-btn--ghost" type="button" @click="close_modal()">Cancel</button>
+        <button class="pw-btn pw-btn--ghost" type="button" @click="request_close_modal()">Cancel</button>
         <button class="pw-btn pw-btn--primary" type="button" @click="save_weather_change()" :disabled="saving">
           <span x-text="saving ? 'Saving…' : 'Apply Weather'"></span>
         </button>

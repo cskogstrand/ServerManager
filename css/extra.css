@@ -1331,6 +1331,15 @@ select {
   letter-spacing: 0.06em;
 }
 
+.srv-confirm-modal {
+  max-width: 520px;
+}
+
+.srv-confirm-modal__actions {
+  display: grid;
+  gap: 10px;
+}
+
 .srv-track-grid,
 .srv-car-grid,
 .srv-weather-grid {
@@ -1669,6 +1678,10 @@ select {
   z-index: 490;
 }
 
+.pw-modal-overlay--confirm {
+  z-index: 590;
+}
+
 .pw-modal-wrapper {
   position: fixed;
   inset: 0;
@@ -1679,6 +1692,10 @@ select {
   pointer-events: none;
   padding: 24px 20px;
   overflow-y: auto;
+}
+
+.pw-modal-wrapper--confirm {
+  z-index: 600;
 }
 
 .pw-modal-wrapper > * { pointer-events: all; }

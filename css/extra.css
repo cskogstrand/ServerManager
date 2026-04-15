@@ -1195,6 +1195,7 @@ select {
   max-height: min(92vh, 980px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  align-self: flex-start;
 }
 
 .srv-modal__body {
@@ -1235,6 +1236,7 @@ select {
   max-height: 62vh;
   overflow-y: auto;
   padding-right: 4px;
+  grid-auto-rows: max-content;
 }
 
 .srv-track-grid {
@@ -1253,7 +1255,7 @@ select {
 .srv-car-card,
 .srv-weather-card {
   display: grid;
-  grid-template-rows: 148px minmax(0, 1fr);
+  grid-template-rows: 148px 108px;
   overflow: hidden;
   padding: 0;
   border-radius: var(--radius-sm);
@@ -1311,6 +1313,8 @@ select {
   gap: 4px;
   padding: 12px;
   min-height: 108px;
+  max-height: 108px;
+  overflow: hidden;
 }
 
 .srv-track-card__name,
@@ -1322,6 +1326,32 @@ select {
   line-height: 1.25;
   min-height: 36px;
   overflow: hidden;
+}
+
+.srv-selected-block {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+
+.srv-selected-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.srv-car-grid--selected {
+  max-height: 240px;
+}
+
+.srv-car-card--selected {
+  border-color: rgba(214, 60, 60, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(214, 60, 60, 0.2);
+}
+
+.srv-car-card--selected:hover {
+  border-color: var(--c-accent);
 }
 
 .srv-track-card__meta,
@@ -1383,6 +1413,19 @@ select {
 
 @media (max-width: 580px) {
   .srv-strip__actions { grid-template-columns: 1fr; }
+}
+
+@media (max-height: 820px) {
+  .pw-modal-wrapper {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .srv-track-grid,
+  .srv-car-grid,
+  .srv-weather-grid {
+    max-height: 54vh;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1530,11 +1573,12 @@ select {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 500;
   pointer-events: none;
-  padding: 20px;
+  padding: 24px 20px;
+  overflow-y: auto;
 }
 
 .pw-modal-wrapper > * { pointer-events: all; }
@@ -1548,6 +1592,7 @@ select {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
+  margin: auto 0;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
   animation: modal-in 0.2s cubic-bezier(0.2,0,0,1) both;
 }

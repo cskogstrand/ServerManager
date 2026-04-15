@@ -282,6 +282,10 @@
         });
       },
 
+      filtered_available_cars() {
+        return this.filtered_cars().filter((car) => !this.car_selected(car.key));
+      },
+
       filtered_weathers() {
         const q = this.weather_search.trim().toLowerCase();
         if (!q) return this.weathers;
@@ -347,6 +351,7 @@
               key: car.key,
               name: this.car_name(car),
               brand: car.brand,
+              class: car.class,
               skin_key: entry.skin_key,
             };
           })
@@ -482,20 +487,37 @@
         </div>
 
         <template x-if="selected_car_cards().length > 0">
-          <div class="srv-chipbar">
-            <template x-for="car in selected_car_cards()" :key="car.key">
-              <button class="srv-chip" type="button" @click="edit.class_entries = edit.class_entries.filter((entry) => entry.cache_car_key !== car.key)">
-                <span x-text="car.name"></span>
-                <i class="fas fa-times"></i>
-              </button>
-            </template>
+          <div class="srv-selected-block">
+            <div class="srv-selected-block__head">
+              <span class="srv-card__eyebrow srv-card__eyebrow--accent">Selected Cars</span>
+              <span class="srv-card__eyebrow" x-text="selected_car_cards().length + ' active entries'"></span>
+            </div>
+            <div class="srv-car-grid srv-car-grid--selected">
+              <template x-for="car in selected_car_cards()" :key="'selected-' + car.key">
+                <button class="srv-car-card srv-car-card--selected" type="button"
+                  @click="edit.class_entries = edit.class_entries.filter((entry) => entry.cache_car_key !== car.key)">
+                  <div class="srv-car-card__media">
+                    <img class="srv-car-card__preview" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
+                  </div>
+                  <div class="srv-car-card__body">
+                    <div class="srv-car-card__name" x-text="car.name"></div>
+                    <div class="srv-car-card__meta" x-text="(car.brand || 'Unknown brand') + ' · ' + (car.class || 'Unclassified')"></div>
+                    <div class="srv-car-card__meta">Tap to remove from running class</div>
+                  </div>
+                </button>
+              </template>
+            </div>
           </div>
         </template>
 
-        <div class="srv-car-grid">
-          <template x-for="car in filtered_cars()" :key="car.key">
+        <div class="srv-selected-block">
+          <div class="srv-selected-block__head">
+            <span class="srv-card__eyebrow">Available Cars</span>
+            <span class="srv-card__eyebrow" x-text="filtered_available_cars().length + ' results'"></span>
+          </div>
+          <div class="srv-car-grid">
+          <template x-for="car in filtered_available_cars()" :key="car.key">
             <button class="srv-car-card" type="button"
-              :class="car_selected(car.key) ? 'is-selected' : ''"
               @click="toggle_class_car(car)">
               <div class="srv-car-card__media">
                 <img class="srv-car-card__preview" :src="car_preview(car.key, (entry_for_car(car.key) || {}).skin_key)" :alt="car_name(car)" />
@@ -507,6 +529,7 @@
               </div>
             </button>
           </template>
+          </div>
         </div>
       </div>
       <div class="pw-modal__footer">

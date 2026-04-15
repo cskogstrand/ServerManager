@@ -1642,6 +1642,7 @@ select {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .pw-modal__footer {

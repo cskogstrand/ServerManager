@@ -372,6 +372,19 @@ JOIN user_time tw
 	return list, nil
 }
 
+func (dba Dbaccess) selectServerEvent(id int) (ServerEvent, error) {
+	events, err := dba.selectServerEvents(false)
+	if err != nil {
+		return ServerEvent{}, err
+	}
+	for _, event := range events {
+		if event.Id != nil && *event.Id == id {
+			return event, nil
+		}
+	}
+	return ServerEvent{}, sql.ErrNoRows
+}
+
 func (dba Dbaccess) insertServerEvent(event int) (int64, error) {
 	sql := "INSERT INTO server_event (user_event_id, orderby) SELECT ?, (SELECT ifnull(MAX(orderby)+1, 1) FROM server_event)"
 

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 )
 
@@ -108,61 +107,5 @@ func (status ServerStatus) serverApplyTrack() bool {
 		log.Print("No events in queue")
 		return false
 	}
-	nextevent := nextevents[0]
-
-	Cr.serverEvent = nextevent
-	Cr.renderIni(*nextevent.UserEvent.Id)
-	Cr.writeIni()
-
-	tm := time.Now().Unix()
-	nextevent.StartedAt = &tm
-
-	nextevent.ServerCfg = &Cr.serverCfgResult
-	nextevent.EntryList = &Cr.entryListResult
-
-	Dba.updateServerEvent(nextevent)
-
-	// Populate TempFolder
-	exec := "acServer"
-	if runtime.GOOS == "windows" {
-		exec = "acServer.exe"
-	}
-	Zf.ExtractFile(Zf.FindZipFile(exec), TempFolder)
-
-	// Extract cars
-	for _, e := range Cr.class.Entries {
-		Zf.ExtractFiles(Zf.FindZipFiles("cars/"+*e.CacheCarKey+"/"), filepath.Join(TempFolder, "content"))
-	}
-
-	// Extract track
-	if *Cr.track.Config == "" {
-		if Cr.cspRequired {
-			ensureCspTrackAliases()
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), cspTrackFolder())
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
-		} else {
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), filepath.Join(TempFolder, "content"))
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
-		}
-	} else {
-		if Cr.cspRequired {
-			ensureCspTrackAliases()
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), cspTrackFolder())
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
-			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
-		} else {
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), filepath.Join(TempFolder, "content"))
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
-			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
-		}
-	}
-
-	// Extract surfaces.ini
-	Zf.ExtractFile(Zf.FindZipFile("system/data/surfaces.ini"), filepath.Join(TempFolder))
-
-	Zf.Close()
-
-	return true
+	return applyServerEvent(nextevents[0])
 }

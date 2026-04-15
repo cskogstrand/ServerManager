@@ -311,6 +311,7 @@ func main() {
 		api.GET("/server/start", apiServerStart)
 		api.GET("/server/stop", apiServerStop)
 		api.GET("/server/status", apiServerStatus)
+		api.POST("/server/current-event", apiServerUpdateCurrentEvent)
 		api.GET("/server/logfile", apiServerLogfile)
 		api.GET("/server/smdata", apiServerSmdata)
 		api.GET("/server/smcontent", apiServerSmcontent)

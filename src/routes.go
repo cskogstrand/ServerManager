@@ -125,10 +125,28 @@ func routeServer(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	trackData, err := Dba.selectCacheTracks()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	classes, err := Dba.selectClassList(true)
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	times, err := Dba.selectTimeList(true)
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
 	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/server.htm", gin.H{
 		"page":          "server",
 		"config_filled": cfgFilled,
+		"track_data":    trackData,
+		"classes":       classes,
+		"times":         times,
 		"tmpLoc":        TempFolder,
 		"status":        Status,
 	})

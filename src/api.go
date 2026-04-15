@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -8,10 +9,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+type DashboardEventUpdate struct {
+	EventID    int    `json:"event_id"`
+	Track      string `json:"track"`
+	ClassID    int    `json:"class_id"`
+	TimeID     int    `json:"time_id"`
+	RestartNow bool   `json:"restart_now"`
+}
 
 func serverStatusPayload() gin.H {
 	Status.refresh()
@@ -32,10 +42,14 @@ func serverStatusPayload() gin.H {
 		"id":         0,
 		"category":   "",
 		"track":      "",
+		"track_key":  "",
+		"track_config": "",
 		"difficulty": "",
 		"session":    "",
 		"class":      "",
+		"class_id":   0,
 		"time":       "",
+		"time_id":    0,
 		"started_at": int64(0),
 		"finished":   0,
 	}
@@ -51,14 +65,26 @@ func serverStatusPayload() gin.H {
 	if Cr.serverEvent.UserEvent.DifficultyName != nil {
 		currentEvent["difficulty"] = *Cr.serverEvent.UserEvent.DifficultyName
 	}
+	if Cr.serverEvent.UserEvent.CacheTrackKey != nil {
+		currentEvent["track_key"] = *Cr.serverEvent.UserEvent.CacheTrackKey
+	}
+	if Cr.serverEvent.UserEvent.CacheTrackConfig != nil {
+		currentEvent["track_config"] = *Cr.serverEvent.UserEvent.CacheTrackConfig
+	}
 	if Cr.serverEvent.UserEvent.SessionName != nil {
 		currentEvent["session"] = *Cr.serverEvent.UserEvent.SessionName
 	}
 	if Cr.serverEvent.UserEvent.ClassName != nil {
 		currentEvent["class"] = *Cr.serverEvent.UserEvent.ClassName
 	}
+	if Cr.serverEvent.UserEvent.ClassId != nil {
+		currentEvent["class_id"] = *Cr.serverEvent.UserEvent.ClassId
+	}
 	if Cr.serverEvent.UserEvent.TimeName != nil {
 		currentEvent["time"] = *Cr.serverEvent.UserEvent.TimeName
+	}
+	if Cr.serverEvent.UserEvent.TimeId != nil {
+		currentEvent["time_id"] = *Cr.serverEvent.UserEvent.TimeId
 	}
 	if Cr.serverEvent.StartedAt != nil {
 		currentEvent["started_at"] = *Cr.serverEvent.StartedAt
@@ -94,6 +120,65 @@ func serverStatusPayload() gin.H {
 		},
 		"current_event": currentEvent,
 	}
+}
+
+func applyServerEvent(serverEvent ServerEvent) bool {
+	if serverEvent.UserEvent.Id == nil {
+		log.Print("Cannot apply server event without event id")
+		return false
+	}
+
+	Cr.serverEvent = serverEvent
+	Cr.renderIni(*serverEvent.UserEvent.Id)
+	Cr.writeIni()
+
+	tm := time.Now().Unix()
+	serverEvent.StartedAt = &tm
+	serverEvent.ServerCfg = &Cr.serverCfgResult
+	serverEvent.EntryList = &Cr.entryListResult
+
+	if _, err := Dba.updateServerEvent(serverEvent); err != nil {
+		log.Print("Could not update server event: ", err)
+	}
+
+	exec := "acServer"
+	if runtime.GOOS == "windows" {
+		exec = "acServer.exe"
+	}
+	Zf.ExtractFile(Zf.FindZipFile(exec), TempFolder)
+
+	for _, e := range Cr.class.Entries {
+		Zf.ExtractFiles(Zf.FindZipFiles("cars/"+*e.CacheCarKey+"/"), filepath.Join(TempFolder, "content"))
+	}
+
+	if *Cr.track.Config == "" {
+		if Cr.cspRequired {
+			ensureCspTrackAliases()
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), cspTrackFolder())
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
+		} else {
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models.ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
+		}
+	} else {
+		if Cr.cspRequired {
+			ensureCspTrackAliases()
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), cspTrackFolder())
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(cspTrackFolder(), "data"))
+			Zf.ExtractFileToSubfolder(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(cspTrackFolder(), "data"))
+		} else {
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/models_"+*Cr.track.Config+".ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/drs_zones.ini"), filepath.Join(TempFolder, "content"))
+			Zf.ExtractFile(Zf.FindZipFile("tracks/"+*Cr.track.Key+"/"+*Cr.track.Config+"/data/surfaces.ini"), filepath.Join(TempFolder, "content"))
+		}
+	}
+
+	Zf.ExtractFile(Zf.FindZipFile("system/data/surfaces.ini"), filepath.Join(TempFolder))
+	Zf.Close()
+
+	return true
 }
 
 func noRoute(c *gin.Context) {
@@ -383,6 +468,73 @@ func apiServerStop(c *gin.Context) {
 
 func apiServerStatus(c *gin.Context) {
 	c.PureJSON(http.StatusOK, serverStatusPayload())
+}
+
+func apiServerUpdateCurrentEvent(c *gin.Context) {
+	var payload DashboardEventUpdate
+	if err := json.NewDecoder(c.Request.Body).Decode(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request payload",
+		})
+		return
+	}
+
+	event, err := Dba.selectEvent(payload.EventID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	if payload.Track != "" {
+		track := strings.SplitN(payload.Track, ":", 2)
+		trackKey := track[0]
+		trackConfig := ""
+		if len(track) > 1 {
+			trackConfig = track[1]
+		}
+		event.CacheTrackKey = &trackKey
+		event.CacheTrackConfig = &trackConfig
+	}
+	if payload.ClassID > 0 {
+		event.ClassId = &payload.ClassID
+	}
+	if payload.TimeID > 0 {
+		event.TimeId = &payload.TimeID
+	}
+
+	if _, err := Dba.updateEvent(event); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	restarted := false
+	if payload.RestartNow && isRunning() && Cr.serverEvent.UserEvent.Id != nil && *Cr.serverEvent.UserEvent.Id == payload.EventID {
+		serverEvent := Cr.serverEvent
+		if serverEvent.Id != nil {
+			updatedServerEvent, err := Dba.selectServerEvent(*serverEvent.Id)
+			if err == nil {
+				serverEvent = updatedServerEvent
+			}
+		}
+		stop()
+		if applyServerEvent(serverEvent) {
+			start()
+			restarted = true
+		}
+	}
+
+	response := serverStatusPayload()
+	response["success"] = true
+	response["restart_required"] = !restarted && isRunning()
+	response["restarted"] = restarted
+	c.PureJSON(http.StatusOK, response)
 }
 
 func apiServerLogfile(c *gin.Context) {

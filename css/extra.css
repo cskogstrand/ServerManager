@@ -1128,6 +1128,49 @@ select {
   border-bottom: 1px solid var(--c-border);
 }
 
+.srv-edit-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.srv-edit-field {
+  display: grid;
+  gap: 6px;
+}
+
+.srv-edit-field select {
+  max-width: 100%;
+  width: 100%;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+}
+
+.srv-edit-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--c-text-dim);
+  line-height: 1.45;
+}
+
+.srv-edit-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.srv-notice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 190, 120, 0.24);
+  background: rgba(0, 190, 120, 0.08);
+  color: var(--c-text-muted);
+  font-size: 12px;
+}
+
 /* ── Console ───────────────────────────────────────────── */
 .srv-card--console { }
 

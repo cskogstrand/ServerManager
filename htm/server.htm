@@ -3,6 +3,9 @@
 <script>
   function dashboard() {
     return {
+      tracks: {{ .track_data }},
+      classes: {{ .classes }},
+      times: {{ .times }},
       is_running: {{ if .status.Status }}true{{ else }}false{{ end }},
       players: {{ .status.Players }},
       public_ip: "{{ .status.PublicIp }}",
@@ -28,14 +31,26 @@
         elapsed_ms: 0
       },
       current_event: {
+        id: 0,
         category: "",
         track: "",
+        track_key: "",
+        track_config: "",
         difficulty: "",
         session: "",
         class: "",
+        class_id: 0,
         time: "",
+        time_id: 0,
         started_at: 0
       },
+      edit: {
+        track: "",
+        class_id: "",
+        time_id: ""
+      },
+      notice: "",
+      saving: false,
 
       apply(json) {
         this.is_running    = json.is_running;
@@ -47,6 +62,7 @@
         this.entry_path    = json.entry_path    || this.entry_path;
         this.session       = json.session       || this.session;
         this.current_event = json.current_event || this.current_event;
+        this.sync_editors();
       },
 
       fetch_status() {
@@ -58,6 +74,19 @@
       start_loop() {
         this.fetch_status();
         setInterval(() => this.fetch_status(), 1000);
+      },
+
+      sync_editors() {
+        if (!this.current_event) return;
+        if (this.current_event.track_key !== undefined) {
+          this.edit.track = this.current_event.track_key + ":" + (this.current_event.track_config || "");
+        }
+        if (this.current_event.class_id) {
+          this.edit.class_id = String(this.current_event.class_id);
+        }
+        if (this.current_event.time_id) {
+          this.edit.time_id = String(this.current_event.time_id);
+        }
       },
 
       start_server() {
@@ -114,6 +143,49 @@
         if (laps && laps > 0) return `${laps} laps`;
         if (mins && mins > 0) return `${mins} min`;
         return "—";
+      },
+
+      save_live_changes() {
+        if (!this.current_event.id) {
+          this.notice = "No running event available to update.";
+          return;
+        }
+
+        const restartNow = this.is_running ? window.confirm("Restart now to update the running server?") : false;
+        this.saving = true;
+        this.notice = "";
+
+        fetch("/api/server/current-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: this.current_event.id,
+            track: this.edit.track,
+            class_id: Number(this.edit.class_id || 0),
+            time_id: Number(this.edit.time_id || 0),
+            restart_now: restartNow
+          })
+        })
+          .then(r => r.json())
+          .then(j => {
+            this.saving = false;
+            if (j.success === false) {
+              this.notice = j.message || "Could not update the running event.";
+              return;
+            }
+            this.apply(j);
+            if (j.restarted) {
+              this.notice = "Running server updated and restarted.";
+            } else if (j.restart_required) {
+              this.notice = "Changes saved. Restart the server to apply them.";
+            } else {
+              this.notice = "Changes saved.";
+            }
+          })
+          .catch(() => {
+            this.saving = false;
+            this.notice = "Could not update the running event.";
+          });
       }
     };
   }
@@ -255,6 +327,52 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- Quick edits -->
+    <div class="srv-card">
+      <div class="srv-card__head">
+        <span class="srv-card__eyebrow srv-card__eyebrow--accent">Live Edits</span>
+        <span class="srv-card__eyebrow">Track, cars, weather</span>
+      </div>
+      <div class="srv-card__body">
+        <div class="srv-edit-grid">
+          <label class="srv-edit-field">
+            <span class="srv-row__k">Change track</span>
+            <select x-model="edit.track">
+              <template x-for="track in tracks" :key="track.key + ':' + track.config">
+                <option :value="track.key + ':' + track.config" x-text="track.name + (track.config ? ' [' + track.config + ']' : '')"></option>
+              </template>
+            </select>
+          </label>
+          <label class="srv-edit-field">
+            <span class="srv-row__k">Change cars</span>
+            <select x-model="edit.class_id">
+              <template x-for="cls in classes" :key="cls.id">
+                <option :value="String(cls.id)" x-text="cls.name"></option>
+              </template>
+            </select>
+          </label>
+          <label class="srv-edit-field">
+            <span class="srv-row__k">Change weather</span>
+            <select x-model="edit.time_id">
+              <template x-for="time in times" :key="time.id">
+                <option :value="String(time.id)" x-text="time.name"></option>
+              </template>
+            </select>
+          </label>
+        </div>
+        <p class="srv-edit-hint">Saving updates the current queue event. If the server is running, you can restart immediately to apply the new track, cars, and weather.</p>
+        <div class="srv-edit-actions">
+          <button class="srv-btn srv-btn--start" type="button" @click="save_live_changes()" :disabled="saving">
+            <i class="fas fa-sync-alt"></i>
+            <span x-text="saving ? 'Saving…' : 'Save Changes'"></span>
+          </button>
+        </div>
+        <template x-if="notice">
+          <div class="srv-notice" x-text="notice"></div>
+        </template>
       </div>
     </div>
 

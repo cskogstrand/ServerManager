@@ -1,6 +1,6 @@
 VERSION ?= dev-build
 
-.PHONY: all build buildwin run rundebug rundebug-docker stopdebug-docker deps package clean
+.PHONY: all build buildwin run rundebug rundebug-docker rundebug-docker-cold stopdebug-docker deps package clean
 
 all: deps clean buildwin build
 
@@ -28,6 +28,10 @@ rundebug:
 	cd src; go run . -debug
 
 rundebug-docker:
+	docker compose -f docker-compose.dev.yml up --build
+
+rundebug-docker-cold:
+	docker compose -f docker-compose.dev.yml down -v
 	docker compose -f docker-compose.dev.yml up --build
 
 stopdebug-docker:

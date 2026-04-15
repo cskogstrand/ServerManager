@@ -138,9 +138,7 @@
         }
         if (name === "cars") {
           this.car_search = "";
-          if ((this.current_event.class_id || 0) !== this.last_class_id) {
-            this.load_current_class();
-          }
+          this.load_current_class();
         }
         if (name === "weather") {
           this.weather_search = "";
@@ -444,8 +442,8 @@
               :class="edit.track === track_value(track) ? 'is-selected' : ''"
               @click="edit.track = track_value(track)">
               <div class="srv-track-card__media">
-                <img class="srv-track-card__preview" :src="track_preview(track.key, track.config)" :alt="track.name" />
-                <img class="srv-track-card__outline" :src="track_outline(track.key, track.config)" alt="" />
+                <img class="srv-track-card__preview" loading="lazy" :src="track_preview(track.key, track.config)" :alt="track.name" />
+                <img class="srv-track-card__outline" loading="lazy" :src="track_outline(track.key, track.config)" alt="" />
               </div>
               <div class="srv-track-card__body">
                 <div class="srv-track-card__name" x-text="track.name || track.key"></div>
@@ -491,7 +489,7 @@
                 <button class="srv-car-card srv-car-card--selected" type="button"
                   @click="edit.class_entries = edit.class_entries.filter((entry) => entry.cache_car_key !== car.key)">
                   <div class="srv-car-card__media">
-                    <img class="srv-car-card__preview" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
+                    <img class="srv-car-card__preview" loading="lazy" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
                   </div>
                   <div class="srv-car-card__body">
                     <div class="srv-car-card__name" x-text="car.name"></div>
@@ -514,7 +512,7 @@
             <button class="srv-car-card" type="button"
               @click="toggle_class_car(car)">
               <div class="srv-car-card__media">
-                <img class="srv-car-card__preview" :src="car_preview(car.key, (entry_for_car(car.key) || {}).skin_key)" :alt="car_name(car)" />
+                <img class="srv-car-card__preview" loading="lazy" :src="car_preview(car.key, (entry_for_car(car.key) || {}).skin_key)" :alt="car_name(car)" />
               </div>
               <div class="srv-car-card__body">
                 <div class="srv-car-card__name" x-text="car_name(car)"></div>
@@ -555,7 +553,7 @@
               :class="edit.weather_key === weather.key ? 'is-selected' : ''"
               @click="edit.weather_key = weather.key">
               <div class="srv-weather-card__media" x-data="{ broken: false }">
-                <img x-show="!broken" class="srv-weather-card__preview" :src="weather_preview(weather.key)" :alt="weather_name(weather)" @error="broken = true" />
+                <img x-show="!broken" loading="lazy" class="srv-weather-card__preview" :src="weather_preview(weather.key)" :alt="weather_name(weather)" @error="broken = true" />
                 <div x-show="broken" class="srv-weather-card__fallback">
                   <i class="fas fa-cloud-sun-rain"></i>
                 </div>

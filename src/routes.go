@@ -130,6 +130,16 @@ func routeServer(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	carData, err := Dba.selectCacheCars()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	weatherData, err := Dba.selectCacheWeathers()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
 	classes, err := Dba.selectClassList(true)
 	if err != nil {
 		routeDbError(c, err)
@@ -145,6 +155,8 @@ func routeServer(c *gin.Context) {
 		"page":          "server",
 		"config_filled": cfgFilled,
 		"track_data":    trackData,
+		"car_data":      carData,
+		"weather_data":  weatherData,
 		"classes":       classes,
 		"times":         times,
 		"tmpLoc":        TempFolder,

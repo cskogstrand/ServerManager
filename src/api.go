@@ -16,11 +16,18 @@ import (
 )
 
 type DashboardEventUpdate struct {
-	EventID    int    `json:"event_id"`
-	Track      string `json:"track"`
-	ClassID    int    `json:"class_id"`
-	TimeID     int    `json:"time_id"`
-	RestartNow bool   `json:"restart_now"`
+	EventID      int                         `json:"event_id"`
+	Track        string                      `json:"track"`
+	ClassID      int                         `json:"class_id"`
+	TimeID       int                         `json:"time_id"`
+	WeatherKey   string                      `json:"weather_key"`
+	ClassEntries []DashboardClassEntryUpdate `json:"class_entries"`
+	RestartNow   bool                        `json:"restart_now"`
+}
+
+type DashboardClassEntryUpdate struct {
+	CacheCarKey string `json:"cache_car_key"`
+	SkinKey     string `json:"skin_key"`
 }
 
 func serverStatusPayload() gin.H {
@@ -291,6 +298,24 @@ func apiTrackOutlineImage(c *gin.Context) {
 	zf.Close()
 }
 
+func apiWeatherPreviewImage(c *gin.Context) {
+	weather := c.Param("weather")
+
+	var zf ZipFile
+	zi := zf.FindZipFile("weather/" + weather + "/preview.jpg")
+	if zi != nil {
+		r, err := zi.Open()
+		if err != nil {
+			log.Print("Could not open weather preview from zipfile", err)
+		}
+		defer r.Close()
+		c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), "image/jpg", r, nil)
+	} else {
+		noRoute(c)
+	}
+	zf.Close()
+}
+
 func apiDifficulty(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -512,6 +537,67 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+
+	if len(payload.ClassEntries) > 0 && event.ClassId != nil {
+		cls, err := Dba.selectClassEntries(*event.ClassId)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		entries := make([]UserClassEntry, 0, len(payload.ClassEntries))
+		for _, ent := range payload.ClassEntries {
+			if ent.CacheCarKey == "" || ent.SkinKey == "" {
+				continue
+			}
+			carKey := ent.CacheCarKey
+			skinKey := ent.SkinKey
+			entries = append(entries, UserClassEntry{
+				CacheCarKey: &carKey,
+				SkinKey:     &skinKey,
+			})
+		}
+		cls.Entries = entries
+
+		if _, err := Dba.updateClass(cls); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	}
+
+	if payload.WeatherKey != "" && event.TimeId != nil {
+		tim, err := Dba.selectTimeWeather(*event.TimeId)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		if len(tim.Weathers) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Current time preset does not contain any weather panels",
+			})
+			return
+		}
+
+		tim.Weathers[0].Graphics = &payload.WeatherKey
+		if _, err := Dba.updateTime(tim); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 
 	restarted := false

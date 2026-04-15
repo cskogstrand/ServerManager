@@ -298,6 +298,7 @@ func main() {
 		api.GET("/track/preview/:track", apiTrackPreviewImage)
 		api.GET("/track/outline/:track/:config", apiTrackOutlineImage)
 		api.GET("/track/outline/:track", apiTrackOutlineImage)
+		api.GET("/weather/preview/:weather", apiWeatherPreviewImage)
 
 		api.GET("/difficulty/:id", apiDifficulty)
 		api.GET("/session/:id", apiSession)

@@ -312,6 +312,10 @@
         return "/api/car/image/" + carKey + "/" + skin;
       },
 
+      has_car_preview(carKey, skinKey) {
+        return !!this.car_preview(carKey, skinKey);
+      },
+
       entry_for_car(carKey) {
         return this.edit.class_entries.find((entry) => entry.cache_car_key === carKey) || null;
       },
@@ -338,7 +342,15 @@
         return this.edit.class_entries
           .map((entry) => {
             const car = this.cars.find((item) => item.key === entry.cache_car_key);
-            if (!car) return null;
+            if (!car) {
+              return {
+                key: entry.cache_car_key,
+                name: entry.cache_car_key || "Unknown car",
+                brand: "Uncached car",
+                class: "",
+                skin_key: entry.skin_key,
+              };
+            }
             return {
               key: car.key,
               name: this.car_name(car),
@@ -497,7 +509,14 @@
                 <button class="srv-car-card srv-car-card--selected" type="button"
                   @click="edit.class_entries = edit.class_entries.filter((entry) => entry.cache_car_key !== car.key)">
                   <div class="srv-car-card__media">
-                    <img class="srv-car-card__preview" loading="lazy" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
+                    <template x-if="has_car_preview(car.key, car.skin_key)">
+                      <img class="srv-car-card__preview" loading="lazy" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
+                    </template>
+                    <template x-if="!has_car_preview(car.key, car.skin_key)">
+                      <div class="srv-car-card__fallback">
+                        <i class="fas fa-car-side"></i>
+                      </div>
+                    </template>
                   </div>
                   <div class="srv-car-card__body">
                     <div class="srv-car-card__name" x-text="car.name"></div>

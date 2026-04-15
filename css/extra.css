@@ -1386,6 +1386,14 @@ select {
   object-fit: cover;
 }
 
+.srv-car-card__fallback {
+  height: 148px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  color: var(--c-text-dim);
+}
+
 .srv-track-card__outline {
   position: absolute;
   inset: 0;

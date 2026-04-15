@@ -513,25 +513,12 @@
               <span class="srv-card__eyebrow srv-card__eyebrow--accent">Selected Cars</span>
               <span class="srv-card__eyebrow" x-text="selected_car_cards().length + ' active entries'"></span>
             </div>
-            <div class="srv-car-grid srv-car-grid--selected">
+            <div class="srv-strip-cars srv-strip-cars--modal">
               <template x-for="car in selected_car_cards()" :key="'selected-' + car.key">
-                <button class="srv-car-card srv-car-card--selected" type="button"
+                <button class="srv-strip-car srv-strip-car--selected" type="button"
                   @click="edit.class_entries = edit.class_entries.filter((entry) => entry.cache_car_key !== car.key)">
-                  <div class="srv-car-card__media">
-                    <template x-if="has_car_preview(car.key, car.skin_key)">
-                      <img class="srv-car-card__preview" loading="lazy" :src="car_preview(car.key, car.skin_key)" :alt="car.name" />
-                    </template>
-                    <template x-if="!has_car_preview(car.key, car.skin_key)">
-                      <div class="srv-car-card__fallback">
-                        <i class="fas fa-car-side"></i>
-                      </div>
-                    </template>
-                  </div>
-                  <div class="srv-car-card__body">
-                    <div class="srv-car-card__name" x-text="car.name"></div>
-                    <div class="srv-car-card__meta" x-text="(car.brand || 'Unknown brand') + ' · ' + (car.class || 'Unclassified')"></div>
-                    <div class="srv-car-card__meta">Tap to remove from running class</div>
-                  </div>
+                  <span class="srv-strip-car__name" x-text="car.name"></span>
+                  <i class="fas fa-times"></i>
                 </button>
               </template>
             </div>

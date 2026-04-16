@@ -142,7 +142,7 @@
           <span class="mob-choice__meta"
             x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
         </div>
-        <i class="fas fa-check mob-choice__check"></i>
+        <span class="mob-choice__check"><i class="fas fa-check"></i></span>
       </button>
     </template>
     <template x-if="filtered().length === 0">

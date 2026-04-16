@@ -30,21 +30,35 @@
             this.is_running = j.is_running || false;
             const ev = j.current_event || {};
             this.current_event_id = ev.id || 0;
-            const classId = ev.class_id || 0;
-            if (classId) {
-              fetch("/api/class/" + classId)
-                .then((r) => r.json())
-                .then((jc) => {
-                  const rawEntries = ((jc.data || {}).entries || []);
-                  this.entries = rawEntries
-                    .map((e) => ({
-                      cache_car_key: e.cache_car_key,
-                      skin_key: e.skin_key || this.first_skin(e.cache_car_key)
-                    }))
-                    .filter((e) => e.cache_car_key && e.skin_key);
-                });
+            const live = (j.current_cars || []).filter((e) => e.cache_car_key);
+            if (live.length > 0) {
+              this.entries = live.map((e) => ({
+                cache_car_key: e.cache_car_key,
+                skin_key: e.skin_key || this.first_skin(e.cache_car_key)
+              }));
+              this.$nextTick(() => this.scroll_to_first_selected());
+            } else {
+              const classId = ev.class_id || 0;
+              if (classId) {
+                fetch("/api/class/" + classId)
+                  .then((r) => r.json())
+                  .then((jc) => {
+                    this.entries = ((jc.data || {}).entries || [])
+                      .map((e) => ({
+                        cache_car_key: e.cache_car_key,
+                        skin_key: e.skin_key || this.first_skin(e.cache_car_key)
+                      }))
+                      .filter((e) => e.cache_car_key && e.skin_key);
+                    this.$nextTick(() => this.scroll_to_first_selected());
+                  });
+              }
             }
           });
+      },
+
+      scroll_to_first_selected() {
+        const el = document.querySelector(".mob-choice.is-on");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
       },
 
       first_skin(carKey) {
@@ -67,12 +81,6 @@
         this.entries.push({ cache_car_key: car.key, skin_key: skin });
       },
 
-      car_img(carKey) {
-        const skin = this.first_skin(carKey);
-        if (!carKey || !skin) return "";
-        return "/api/car/image/" + carKey + "/" + skin;
-      },
-
       car_name(carKey) {
         const car = this.cars.find((c) => c.key === carKey);
         return (car && (car.name || car.key)) || carKey;
@@ -80,6 +88,12 @@
 
       remove(carKey) {
         this.entries = this.entries.filter((e) => e.cache_car_key !== carKey);
+      },
+
+      car_img(carKey) {
+        const skin = this.first_skin(carKey);
+        if (!carKey || !skin) return "";
+        return "/api/car/image/" + carKey + "/" + skin;
       },
 
       filtered() {
@@ -135,12 +149,6 @@
     <div class="mob-page__meta" x-text="entries.length + ' selected'"></div>
   </div>
 
-  <!-- Search -->
-  <div class="mob-page__search">
-    <input class="mob-search" type="search" x-model="search"
-      placeholder="Search cars…" autocomplete="off" autofocus />
-  </div>
-
   <!-- Selected chips -->
   <div class="mob-chips" x-show="entries.length > 0">
     <template x-for="entry in entries" :key="entry.cache_car_key">
@@ -154,28 +162,30 @@
     </template>
   </div>
 
-  <!-- Grid -->
+  <!-- Search -->
+  <div class="mob-page__search">
+    <input class="mob-search" type="search" x-model="search"
+      placeholder="Search cars…" autocomplete="off" autofocus />
+  </div>
+
+  <!-- List -->
   <div class="mob-page__body">
-    <div class="mob-page__grid">
-      <template x-for="car in filtered()" :key="car.key">
-        <button class="mob-choice mob-choice--grid" type="button"
-          :class="{ 'is-on': is_selected(car.key) }"
-          @click="toggle(car)">
-          <div class="mob-choice__thumb" x-data="{ broken: false }">
-            <img loading="lazy" x-show="!broken"
-              :src="car_img(car.key)"
-              :alt="car.name || car.key"
-              @error="broken = true" />
-            <div x-show="broken" class="mob-choice__thumb-fallback">
-              <i class="fas fa-car"></i>
-            </div>
-            <i class="fas fa-check mob-choice--grid__check"></i>
-          </div>
+    <template x-for="car in filtered()" :key="car.key">
+      <button class="mob-choice" type="button"
+        :class="{ 'is-on': is_selected(car.key) }"
+        @click="toggle(car)">
+        <img class="mob-choice__img" loading="lazy"
+          :src="car_img(car.key)"
+          :alt="car.name || car.key"
+          @error="$el.style.visibility='hidden'" />
+        <div class="mob-choice__body">
           <span class="mob-choice__name" x-text="car.name || car.key"></span>
-          <span class="mob-choice__meta" x-text="car.brand || ''"></span>
-        </button>
-      </template>
-    </div>
+          <span class="mob-choice__meta"
+            x-text="[car.brand || '', car.class || ''].filter(Boolean).join(' · ')"></span>
+        </div>
+        <span class="mob-choice__check"><i class="fas fa-check"></i></span>
+      </button>
+    </template>
     <template x-if="filtered().length === 0">
       <div class="mob-page__empty">No cars match your search.</div>
     </template>

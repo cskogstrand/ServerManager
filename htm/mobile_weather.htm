@@ -17,6 +17,7 @@
     return {
       weathers: {{ .weather_data }},
       selected: "",
+      current_raw: "",
       search: "",
       saving: false,
       notice: "",
@@ -30,8 +31,52 @@
             this.is_running = j.is_running || false;
             const ev = j.current_event || {};
             this.current_event_id = ev.id || 0;
-            this.selected = (j.session || {}).weather_graphics || "";
+            this.current_raw = (j.session || {}).weather_graphics || "";
+            this.selected = this.current_raw;
+            this.$nextTick(() => {
+              const el = document.querySelector(".mob-choice.is-on");
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
           });
+      },
+
+      parse_weather(str) {
+        if (!str) return { type: str, time: "", mult: "" };
+        if (!str.includes("time=") && !str.includes("mult=")) {
+          return { type: str, time: "", mult: "" };
+        }
+        const sp = str.indexOf(" ");
+        const keyPart = sp >= 0 ? str.slice(0, sp) : str;
+        const type = sp >= 0 ? str.slice(sp + 1).trim() : "";
+        let time = "", mult = "";
+        const tm = keyPart.match(/time=(\d+)/);
+        if (tm) {
+          const s = parseInt(tm[1]);
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          time = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+        }
+        const ml = keyPart.match(/mult=(\d+(?:\.\d+)?)/);
+        if (ml) {
+          const v = parseFloat(ml[1]);
+          if (v !== 1) mult = v + "×";
+        }
+        return { type: type || keyPart, time, mult };
+      },
+
+      weather_name(w) {
+        const p = this.parse_weather(w.name || w.key);
+        return p.type || w.name || w.key;
+      },
+
+      weather_meta(w) {
+        const p = this.parse_weather(w.name || w.key);
+        return [p.time, p.mult].filter(Boolean).join(" · ");
+      },
+
+      current_label() {
+        const p = this.parse_weather(this.current_raw);
+        return [p.type, p.time, p.mult].filter(Boolean).join(" · ") || this.current_raw;
       },
 
       filtered() {
@@ -89,34 +134,36 @@
     <div class="mob-page__meta" x-text="filtered().length + ' options'"></div>
   </div>
 
+  <!-- Current selection banner -->
+  <div class="mob-page__current-banner" x-show="current_raw">
+    <i class="fas fa-cloud-sun" style="color:#2563eb;font-size:11px;flex-shrink:0;"></i>
+    <span class="mob-page__current-lbl">Current</span>
+    <span class="mob-page__current-val" x-text="current_label()"></span>
+  </div>
+
   <!-- Search -->
   <div class="mob-page__search">
     <input class="mob-search" type="search" x-model="search"
       placeholder="Search weather…" autocomplete="off" autofocus />
   </div>
 
-  <!-- Grid -->
+  <!-- List -->
   <div class="mob-page__body">
-    <div class="mob-page__grid">
-      <template x-for="weather in filtered()" :key="weather.key">
-        <button class="mob-choice mob-choice--grid" type="button"
-          :class="{ 'is-on': selected === weather.key }"
-          @click="selected = weather.key">
-          <div class="mob-choice__thumb" x-data="{ broken: false }">
-            <img loading="lazy" x-show="!broken"
-              :src="preview(weather.key)"
-              :alt="weather.name || weather.key"
-              @error="broken = true" />
-            <div x-show="broken" class="mob-choice__thumb-fallback">
-              <i class="fas fa-cloud-sun-rain"></i>
-            </div>
-            <i class="fas fa-check mob-choice--grid__check"></i>
-          </div>
-          <span class="mob-choice__name" x-text="weather.name || weather.key"></span>
-          <span class="mob-choice__meta" x-text="weather.key"></span>
-        </button>
-      </template>
-    </div>
+    <template x-for="weather in filtered()" :key="weather.key">
+      <button class="mob-choice" type="button"
+        :class="{ 'is-on': selected === weather.key }"
+        @click="selected = weather.key">
+        <img class="mob-choice__img" loading="lazy"
+          :src="preview(weather.key)"
+          :alt="weather.name || weather.key"
+          @error="$el.style.visibility='hidden'" />
+        <div class="mob-choice__body">
+          <span class="mob-choice__name" x-text="weather_name(weather)"></span>
+          <span class="mob-choice__meta" x-text="weather_meta(weather)"></span>
+        </div>
+        <span class="mob-choice__check"><i class="fas fa-check"></i></span>
+      </button>
+    </template>
     <template x-if="filtered().length === 0">
       <div class="mob-page__empty">No weather options match your search.</div>
     </template>

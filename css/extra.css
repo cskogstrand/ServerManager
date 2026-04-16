@@ -1134,6 +1134,34 @@ select {
   display: block;
 }
 
+.mob-tile__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.mob-tile__chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+
+.mob-tile__chip--more {
+  color: #64748b;
+  background: rgba(30, 41, 59, 0.4);
+  border-color: rgba(30, 41, 59, 0.6);
+}
+
 /* ── Info card */
 .mob-card {
   background: rgba(12, 20, 38, 0.96);
@@ -1575,6 +1603,35 @@ select {
   font-size: 12px;
   color: #475569;
   flex-shrink: 0;
+}
+
+.mob-page__current-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: rgba(37, 99, 235, 0.07);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.18);
+  flex-shrink: 0;
+}
+
+.mob-page__current-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+.mob-page__current-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #93c5fd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .mob-page__search {

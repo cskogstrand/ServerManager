@@ -33,11 +33,28 @@
             const key = ev.track_key || (j.session || {}).track || "";
             const cfg = ev.track_config || (j.session || {}).track_config || "";
             this.selected = key ? key + ":" + cfg : "";
+            this.$nextTick(() => {
+              const el = document.querySelector(".mob-choice.is-on");
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
           });
       },
 
       track_value(track) {
         return track.key + ":" + (track.config || "");
+      },
+
+      selected_track() {
+        return this.tracks.find((t) => this.track_value(t) === this.selected) || null;
+      },
+
+      selected_label() {
+        const t = this.selected_track();
+        if (!t) return "";
+        const parts = [t.name || t.key];
+        if (t.config) parts.push(t.config);
+        if (t.country) parts.push(t.country);
+        return parts.join(" · ");
       },
 
       filtered() {
@@ -96,6 +113,13 @@
     </a>
     <div class="mob-page__title">Change Track</div>
     <div class="mob-page__meta" x-text="filtered().length + ' tracks'"></div>
+  </div>
+
+  <!-- Current selection banner -->
+  <div class="mob-page__current-banner" x-show="selected">
+    <i class="fas fa-map-marker-alt" style="color:#2563eb;font-size:11px;flex-shrink:0;"></i>
+    <span class="mob-page__current-lbl">Current</span>
+    <span class="mob-page__current-val" x-text="selected_label()"></span>
   </div>
 
   <!-- Search -->

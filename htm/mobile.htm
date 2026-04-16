@@ -8,6 +8,7 @@
       public_ip: "{{ .status.PublicIp }}",
       console_text: "",
       tmp_loc: "{{ .tmpLoc }}",
+      current_cars: [],
       session: {
         name: "",
         type: "",
@@ -48,6 +49,7 @@
         this.tmp_loc = json.tmp_loc || this.tmp_loc;
         this.session = json.session || this.session;
         this.current_event = json.current_event || this.current_event;
+        this.current_cars = json.current_cars || [];
       },
 
       fetch_status() {
@@ -100,6 +102,35 @@
         fetch("/api/server/stop")
           .then((r) => r.json())
           .then((j) => this.apply(j));
+      },
+
+      // Format a raw car key like "ferrari_488_gt3" → "Ferrari 488 Gt3"
+      fmt_car_key(key) {
+        if (!key) return "";
+        return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      },
+
+      // Parse "05_time=36000_mult=2_start=... Day" into "Day · 10:00 · 2×"
+      fmt_weather(str) {
+        if (!str) return "—";
+        if (!str.includes("time=") && !str.includes("mult=")) return str;
+        const sp = str.indexOf(" ");
+        const key = sp >= 0 ? str.slice(0, sp) : str;
+        const name = sp >= 0 ? str.slice(sp + 1).trim() : "";
+        const parts = name ? [name] : [];
+        const tm = key.match(/time=(\d+)/);
+        if (tm) {
+          const s = parseInt(tm[1]);
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          parts.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"));
+        }
+        const ml = key.match(/mult=(\d+(?:\.\d+)?)/);
+        if (ml) {
+          const v = parseFloat(ml[1]);
+          if (v !== 1) parts.push(v + "×");
+        }
+        return parts.length ? parts.join(" · ") : str;
       },
 
       uptime_label() {
@@ -206,8 +237,18 @@
         <span class="mob-tile__lbl">Cars</span>
         <i class="fas fa-chevron-right mob-tile__arrow"></i>
       </div>
-      <span class="mob-tile__val" x-text="current_event.class || '—'"></span>
-      <span class="mob-tile__sub">Car class</span>
+      <div class="mob-tile__chips" x-show="current_cars.length > 0">
+        <template x-for="(entry, i) in current_cars.slice(0, 5)" :key="entry.cache_car_key">
+          <span class="mob-tile__chip" x-text="fmt_car_key(entry.cache_car_key)"></span>
+        </template>
+        <span class="mob-tile__chip mob-tile__chip--more"
+          x-show="current_cars.length > 5"
+          x-text="'+' + (current_cars.length - 5) + ' more'"></span>
+      </div>
+      <span class="mob-tile__val" x-show="current_cars.length === 0"
+        x-text="current_event.class || '—'"></span>
+      <span class="mob-tile__sub"
+        x-text="current_cars.length > 0 ? current_cars.length + ' cars · ' + (current_event.class || 'Car class') : 'Car class'"></span>
     </a>
     <a class="mob-tile" href="{{ if .config_filled }}/mobile/weather{{ else }}#{{ end }}"
       style="{{ if not .config_filled }}opacity:0.4;pointer-events:none;{{ end }}">
@@ -215,7 +256,7 @@
         <span class="mob-tile__lbl">Weather</span>
         <i class="fas fa-chevron-right mob-tile__arrow"></i>
       </div>
-      <span class="mob-tile__val" x-text="session.weather_graphics || current_event.time || '—'"></span>
+      <span class="mob-tile__val" x-text="fmt_weather(session.weather_graphics) || current_event.time || '—'"></span>
       <span class="mob-tile__sub" x-text="current_event.time || 'Time preset'"></span>
     </a>
   </div>

@@ -309,6 +309,43 @@ func routeServer(c *gin.Context) {
 	})
 }
 
+func routeMobile(c *gin.Context) {
+	cfgFilled, err := routeConfigFilled(c)
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	trackData, err := Dba.selectCacheTracks()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	carData, err := Dba.selectCacheCars()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	weatherData, err := Dba.selectCacheWeathers()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	trackData = withDemoTracks(c, trackData)
+	carData = withDemoCars(c, carData)
+	weatherData = withDemoWeathers(c, weatherData)
+	Status.refresh()
+	c.HTML(http.StatusOK, "/htm/mobile.htm", gin.H{
+		"page":          "mobile",
+		"title":         " · Mobile",
+		"config_filled": cfgFilled,
+		"track_data":    trackData,
+		"car_data":      carData,
+		"weather_data":  weatherData,
+		"tmpLoc":        TempFolder,
+		"status":        Status,
+	})
+}
+
 func routeQueue(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		if c.PostForm("event") != "" {

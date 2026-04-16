@@ -24,9 +24,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js" crossorigin="anonymous"></script>
 </head>
 
-<body>
+<body class="pw-body {{ if (eq .page "mobile") }}pw-body--mobile{{ end }}">
 
   <!-- ── Sidebar ────────────────────────────────────── -->
+  {{ if not (eq .page "mobile") }}
   <aside class="pw-sidebar">
     <div class="pw-sidebar__brand">
       <div class="pw-sidebar__logo-text">ServerManager</div>
@@ -91,26 +92,48 @@
       </a>
     </nav>
   </aside>
+  {{ end }}
 
   <!-- ── Topbar ─────────────────────────────────────── -->
   <header class="pw-topbar">
-    <div class="pw-topbar__user" x-data="{ isOpen: false }">
-      <button @click="isOpen = !isOpen" class="pw-topbar__user-btn">
-        <i class="fas fa-user" style="font-size: 10px; opacity: 0.55;"></i>
-        Admin
-        <i class="fas fa-chevron-down" style="font-size: 8px; opacity: 0.45;"></i>
-      </button>
-      <button
-        x-show="isOpen"
-        @click="isOpen = false"
-        x-cloak
-        style="position: fixed; inset: 0; cursor: default; z-index: 195; background: transparent;"
-      ></button>
-      <div x-show="isOpen" x-cloak class="pw-topbar__dropdown">
-        {{ if .config_filled }}
-        <a href="/user">Preferences</a>
-        {{ end }}
-        <a href="/logout">Sign Out</a>
+    <div class="pw-topbar__brandlock">
+      {{ if (eq .page "mobile") }}
+      <a href="/server" class="pw-topbar__backlink">
+        <i class="fas fa-arrow-left"></i>
+        Desktop dashboard
+      </a>
+      {{ else }}
+      <div class="pw-topbar__brandmark">
+        <span>ServerManager</span>
+        <small>Control deck</small>
+      </div>
+      {{ end }}
+    </div>
+    <div class="pw-topbar__cluster">
+      {{ if .config_filled }}
+      <a href="{{ if (eq .page "mobile") }}/server{{ else }}/mobile{{ end }}" class="pw-topbar__mode-btn">
+        <i class="fas {{ if (eq .page "mobile") }}fa-desktop{{ else }}fa-mobile-alt{{ end }}"></i>
+        {{ if (eq .page "mobile") }}Desktop view{{ else }}Mobile view{{ end }}
+      </a>
+      {{ end }}
+      <div class="pw-topbar__user" x-data="{ isOpen: false }">
+        <button @click="isOpen = !isOpen" class="pw-topbar__user-btn">
+          <i class="fas fa-user" style="font-size: 10px; opacity: 0.55;"></i>
+          Admin
+          <i class="fas fa-chevron-down" style="font-size: 8px; opacity: 0.45;"></i>
+        </button>
+        <button
+          x-show="isOpen"
+          @click="isOpen = false"
+          x-cloak
+          style="position: fixed; inset: 0; cursor: default; z-index: 195; background: transparent;"
+        ></button>
+        <div x-show="isOpen" x-cloak class="pw-topbar__dropdown">
+          {{ if .config_filled }}
+          <a href="/user">Preferences</a>
+          {{ end }}
+          <a href="/logout">Sign Out</a>
+        </div>
       </div>
     </div>
   </header>

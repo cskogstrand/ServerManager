@@ -1,0 +1,566 @@
+{{template "/htm/header.htm" . }}
+
+<script>
+  function mobileDashboard() {
+    return {
+      tracks: {{ .track_data }},
+      cars: {{ .car_data }},
+      weathers: {{ .weather_data }},
+      is_running: {{ if .status.Status }}true{{ else }}false{{ end }},
+      players: {{ .status.Players }},
+      public_ip: "{{ .status.PublicIp }}",
+      console_text: "",
+      tmp_loc: "{{ .tmpLoc }}",
+      session: {
+        name: "",
+        type: "",
+        index: 0,
+        session_count: 0,
+        track: "",
+        track_config: "",
+        server_name: "",
+        time: 0,
+        laps: 0,
+        wait_time: 0,
+        ambient_temp: 0,
+        road_temp: 0,
+        weather_graphics: "",
+        elapsed_ms: 0
+      },
+      current_event: {
+        id: 0,
+        category: "",
+        track: "",
+        track_key: "",
+        track_config: "",
+        class: "",
+        class_id: 0,
+        time: "",
+        time_id: 0,
+        started_at: 0
+      },
+      current_cars: [],
+      panel: "",
+      track_search: "",
+      car_search: "",
+      weather_search: "",
+      notice: "",
+      saving: false,
+      edit: {
+        track: "",
+        weather_key: "",
+        class_entries: []
+      },
+
+      apply(json) {
+        const prevClassId = this.current_event.class_id || 0;
+        const prevTimeId = this.current_event.time_id || 0;
+        this.is_running = json.is_running;
+        this.players = json.players;
+        this.public_ip = json.public_ip || "";
+        this.console_text = json.text || "";
+        this.tmp_loc = json.tmp_loc || this.tmp_loc;
+        this.session = json.session || this.session;
+        this.current_event = json.current_event || this.current_event;
+        this.current_cars = json.current_cars || [];
+        if (!this.panel) {
+          this.sync_editors();
+        }
+        const nextClassId = this.current_event.class_id || 0;
+        const nextTimeId = this.current_event.time_id || 0;
+        if (!this.panel && nextClassId && (this.current_cars.length === 0 || nextClassId !== prevClassId)) {
+          this.load_current_class();
+        }
+        if (!this.panel && nextTimeId && (nextTimeId !== prevTimeId || !this.edit.weather_key)) {
+          this.load_current_time();
+        }
+      },
+
+      fetch_status() {
+        fetch("/api/server/status")
+          .then((r) => r.json())
+          .then((j) => this.apply(j));
+      },
+
+      start_loop() {
+        this.fetch_status();
+        setInterval(() => this.fetch_status(), 1000);
+      },
+
+      sync_editors() {
+        const trackKey = this.current_event.track_key || this.session.track || "";
+        const trackConfig = this.current_event.track_config || this.session.track_config || "";
+        this.edit.track = trackKey ? trackKey + ":" + trackConfig : "";
+        this.edit.weather_key = this.session.weather_graphics || this.edit.weather_key || "";
+        this.edit.class_entries = this.current_cars.length > 0 ? [...this.current_cars] : [];
+      },
+
+      load_current_class() {
+        const classId = this.current_event.class_id || 0;
+        if (!classId) {
+          this.edit.class_entries = [];
+          return;
+        }
+        fetch("/api/class/" + classId)
+          .then((r) => r.json())
+          .then((j) => {
+            const entries = ((j.data || {}).entries || []).map((entry) => ({
+              cache_car_key: entry.cache_car_key,
+              skin_key: entry.skin_key || this.first_skin_key(entry.cache_car_key)
+            }));
+            this.edit.class_entries = entries.filter((entry) => entry.cache_car_key && entry.skin_key);
+          });
+      },
+
+      load_current_time() {
+        const timeId = this.current_event.time_id || 0;
+        if (!timeId) {
+          this.edit.weather_key = "";
+          return;
+        }
+        fetch("/api/time/" + timeId)
+          .then((r) => r.json())
+          .then((j) => {
+            const weather = (((j.data || {}).weathers || [])[0] || {}).graphics || "";
+            this.edit.weather_key = weather || this.edit.weather_key || "";
+          });
+      },
+
+      open_panel(name) {
+        this.panel = name;
+        this.notice = "";
+        if (name === "track") {
+          this.track_search = "";
+          this.sync_editors();
+        }
+        if (name === "cars") {
+          this.car_search = "";
+          if (this.current_cars.length > 0) {
+            this.edit.class_entries = [...this.current_cars];
+          } else {
+            this.load_current_class();
+          }
+        }
+        if (name === "weather") {
+          this.weather_search = "";
+          if (this.session.weather_graphics) {
+            this.edit.weather_key = this.session.weather_graphics;
+          } else {
+            this.load_current_time();
+          }
+        }
+      },
+
+      close_panel() {
+        this.panel = "";
+      },
+
+      start_server() {
+        fetch("/api/server/start")
+          .then((r) => r.json())
+          .then((j) => this.apply(j));
+      },
+
+      stop_server() {
+        fetch("/api/server/stop")
+          .then((r) => r.json())
+          .then((j) => this.apply(j));
+      },
+
+      save_current_event(changes, successMessage) {
+        if (!this.current_event.id) {
+          this.notice = "No running or queued event is available.";
+          return;
+        }
+        this.saving = true;
+        const payload = {
+          event_id: this.current_event.id,
+          restart_now: this.is_running
+        };
+        if (changes.track) payload.track = changes.track;
+        if (changes.weather_key) payload.weather_key = changes.weather_key;
+        if (changes.class_entries) payload.class_entries = changes.class_entries;
+
+        fetch("/api/server/current-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        })
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.saving = false;
+            if (!ok || body.success === false) {
+              this.notice = (body && body.message) || "Could not update the running event.";
+              return;
+            }
+            this.notice = successMessage;
+            this.close_panel();
+            this.fetch_status();
+          })
+          .catch(() => {
+            this.saving = false;
+            this.notice = "Could not update the running event.";
+          });
+      },
+
+      save_track_change() {
+        if (!this.edit.track) {
+          this.notice = "Select a track first.";
+          return;
+        }
+        this.save_current_event({ track: this.edit.track }, "Track updated.");
+      },
+
+      save_cars_change() {
+        if (this.edit.class_entries.length === 0) {
+          this.notice = "Select at least one car.";
+          return;
+        }
+        this.save_current_event({ class_entries: this.edit.class_entries }, "Car roster updated.");
+      },
+
+      save_weather_change() {
+        if (!this.edit.weather_key) {
+          this.notice = "Select a weather first.";
+          return;
+        }
+        this.save_current_event({ weather_key: this.edit.weather_key }, "Weather updated.");
+      },
+
+      uptime_label() {
+        if (!this.current_event.started_at) return "00:00:00";
+        const s = Math.max(0, Math.floor(Date.now() / 1000) - this.current_event.started_at);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        return [h, m, sec].map((n) => String(n).padStart(2, "0")).join(":");
+      },
+
+      elapsed_label() {
+        const total = Math.max(0, Math.floor((this.session.elapsed_ms || 0) / 1000));
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      },
+
+      format_label() {
+        if (this.session.laps && this.session.laps > 0) return this.session.laps + " laps";
+        if (this.session.time && this.session.time > 0) return this.session.time + " min";
+        return "Open";
+      },
+
+      session_index_label() {
+        const idx = (this.session.index || 0) + 1;
+        const total = this.session.session_count || 1;
+        return "Session " + idx + " / " + total;
+      },
+
+      track_value(track) {
+        return track.key + ":" + (track.config || "");
+      },
+
+      selected_track() {
+        return this.tracks.find((track) => this.track_value(track) === this.edit.track) || null;
+      },
+
+      selected_weather() {
+        return this.weathers.find((weather) => weather.key === this.edit.weather_key) || null;
+      },
+
+      first_skin_key(carKey) {
+        const car = this.cars.find((item) => item.key === carKey);
+        if (!car || !car.skins || car.skins.length === 0) return "";
+        return car.skins[0].key || "";
+      },
+
+      entry_for_car(carKey) {
+        return this.edit.class_entries.find((entry) => entry.cache_car_key === carKey) || null;
+      },
+
+      car_selected(carKey) {
+        return this.entry_for_car(carKey) !== null;
+      },
+
+      toggle_class_car(car) {
+        const existing = this.entry_for_car(car.key);
+        if (existing) {
+          this.edit.class_entries = this.edit.class_entries.filter((entry) => entry.cache_car_key !== car.key);
+          return;
+        }
+        const skinKey = this.first_skin_key(car.key);
+        if (!skinKey) return;
+        this.edit.class_entries.push({
+          cache_car_key: car.key,
+          skin_key: skinKey
+        });
+      },
+
+      filtered_tracks() {
+        const q = this.track_search.trim().toLowerCase();
+        if (!q) return this.tracks;
+        return this.tracks.filter((track) => {
+          const tags = (track.tags || []).join(" ").toLowerCase();
+          const haystack = [
+            track.name || "",
+            track.key || "",
+            track.config || "",
+            track.country || "",
+            track.city || "",
+            tags
+          ].join(" ").toLowerCase();
+          return haystack.includes(q);
+        });
+      },
+
+      filtered_cars() {
+        const q = this.car_search.trim().toLowerCase();
+        if (!q) return this.cars;
+        return this.cars.filter((car) => {
+          const tags = (car.tags || []).join(" ").toLowerCase();
+          const haystack = [
+            car.name || "",
+            car.key || "",
+            car.brand || "",
+            car.class || "",
+            tags
+          ].join(" ").toLowerCase();
+          return haystack.includes(q);
+        });
+      },
+
+      filtered_weathers() {
+        const q = this.weather_search.trim().toLowerCase();
+        if (!q) return this.weathers;
+        return this.weathers.filter((weather) => {
+          return [weather.name || "", weather.key || ""].join(" ").toLowerCase().includes(q);
+        });
+      },
+
+      track_preview(key, config) {
+        if (!config) return "/api/track/preview/" + key;
+        return "/api/track/preview/" + key + "/" + config;
+      },
+
+      car_preview(carKey, skinKey) {
+        const skin = skinKey || this.first_skin_key(carKey);
+        if (!carKey || !skin) return "";
+        return "/api/car/image/" + carKey + "/" + skin;
+      },
+
+      weather_preview(key) {
+        return "/api/weather/preview/" + key;
+      },
+
+      selected_car_cards() {
+        return this.edit.class_entries
+          .map((entry) => {
+            const car = this.cars.find((item) => item.key === entry.cache_car_key);
+            if (!car) return null;
+            return {
+              key: car.key,
+              name: car.name || car.key,
+              brand: car.brand || "",
+              class: car.class || "",
+              skin_key: entry.skin_key
+            };
+          })
+          .filter(Boolean);
+      },
+
+      quick_log_lines() {
+        if (!this.console_text) return [];
+        return this.console_text.trim().split("\n").filter(Boolean).slice(-5).reverse();
+      }
+    };
+  }
+</script>
+
+<div class="mobile-dashboard" x-data="mobileDashboard()" x-init="sync_editors(); start_loop()">
+  <div class="mobile-dashboard__halo mobile-dashboard__halo--a"></div>
+  <div class="mobile-dashboard__halo mobile-dashboard__halo--b"></div>
+
+  <section class="mobile-hero">
+    <div class="mobile-hero__head">
+      <div>
+        <div class="mobile-hero__eyebrow">Mobile control</div>
+        <h1 class="mobile-hero__title" x-text="current_event.track || session.track || 'Server standby'"></h1>
+        <p class="mobile-hero__sub" x-text="current_event.category || session.server_name || 'Ready for track, car, and weather changes'"></p>
+      </div>
+      <div class="mobile-hero__status" :class="is_running ? 'is-live' : 'is-idle'">
+        <span class="mobile-hero__status-dot"></span>
+        <span x-text="is_running ? 'Live' : 'Idle'"></span>
+      </div>
+    </div>
+
+    <div class="mobile-hero__stats">
+      <div class="mobile-mini-stat">
+        <span class="mobile-mini-stat__label">Players</span>
+        <span class="mobile-mini-stat__value" x-text="players"></span>
+      </div>
+      <div class="mobile-mini-stat">
+        <span class="mobile-mini-stat__label">Session</span>
+        <span class="mobile-mini-stat__value" x-text="session_index_label()"></span>
+      </div>
+      <div class="mobile-mini-stat">
+        <span class="mobile-mini-stat__label">Uptime</span>
+        <span class="mobile-mini-stat__value" x-text="uptime_label()"></span>
+      </div>
+    </div>
+
+    <div class="mobile-hero__actions">
+      <button class="mobile-action-btn mobile-action-btn--ghost" type="button" @click="fetch_status()">Refresh</button>
+      <button class="mobile-action-btn" type="button" x-show="!is_running" @click="start_server()">Start server</button>
+      <button class="mobile-action-btn mobile-action-btn--danger" type="button" x-show="is_running" @click="stop_server()">Stop server</button>
+    </div>
+  </section>
+
+  <section class="mobile-quick-grid">
+    <button class="mobile-control-card" type="button" @click="open_panel('track')">
+      <span class="mobile-control-card__eyebrow">Track</span>
+      <strong class="mobile-control-card__title" x-text="selected_track() ? (selected_track().name || selected_track().key) : (current_event.track || 'Choose layout')"></strong>
+      <span class="mobile-control-card__meta" x-text="selected_track() && selected_track().config ? selected_track().config : (session.track_config || 'Default layout')"></span>
+    </button>
+    <button class="mobile-control-card" type="button" @click="open_panel('cars')">
+      <span class="mobile-control-card__eyebrow">Cars</span>
+      <strong class="mobile-control-card__title" x-text="selected_car_cards().length ? selected_car_cards().length + ' selected' : 'Choose roster'"></strong>
+      <span class="mobile-control-card__meta" x-text="current_event.class || 'Running class preset'"></span>
+    </button>
+    <button class="mobile-control-card" type="button" @click="open_panel('weather')">
+      <span class="mobile-control-card__eyebrow">Weather</span>
+      <strong class="mobile-control-card__title" x-text="selected_weather() ? (selected_weather().name || selected_weather().key) : (session.weather_graphics || 'Choose weather')"></strong>
+      <span class="mobile-control-card__meta" x-text="current_event.time || 'Time preset'"></span>
+    </button>
+  </section>
+
+  <section class="mobile-surface">
+    <div class="mobile-surface__head">
+      <span>Session snapshot</span>
+      <span x-text="format_label()"></span>
+    </div>
+    <div class="mobile-detail-grid">
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Type</span>
+        <strong class="mobile-detail__value" x-text="session.type || 'Waiting'"></strong>
+      </div>
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Elapsed</span>
+        <strong class="mobile-detail__value" x-text="elapsed_label()"></strong>
+      </div>
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Ambient</span>
+        <strong class="mobile-detail__value" x-text="(session.ambient_temp || 0) + '°'"></strong>
+      </div>
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Road</span>
+        <strong class="mobile-detail__value" x-text="(session.road_temp || 0) + '°'"></strong>
+      </div>
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Public IP</span>
+        <strong class="mobile-detail__value mobile-detail__value--mono" x-text="public_ip || '—'"></strong>
+      </div>
+      <div class="mobile-detail">
+        <span class="mobile-detail__label">Time preset</span>
+        <strong class="mobile-detail__value" x-text="current_event.time || '—'"></strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="mobile-surface">
+    <div class="mobile-surface__head">
+      <span>Selected cars</span>
+      <span x-text="selected_car_cards().length + ' active'"></span>
+    </div>
+    <div class="mobile-pill-row">
+      <template x-if="selected_car_cards().length === 0">
+        <div class="mobile-empty-state">No cars loaded from the current entry list yet.</div>
+      </template>
+      <template x-for="car in selected_car_cards()" :key="car.key">
+        <div class="mobile-pill">
+          <span x-text="car.name"></span>
+          <small x-text="car.brand"></small>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="mobile-surface" x-show="notice">
+    <div class="mobile-notice" x-text="notice"></div>
+  </section>
+
+  <section class="mobile-surface">
+    <div class="mobile-surface__head">
+      <span>Live log</span>
+      <span x-text="quick_log_lines().length + ' lines'"></span>
+    </div>
+    <div class="mobile-log">
+      <template x-if="quick_log_lines().length === 0">
+        <div class="mobile-empty-state">No server output yet.</div>
+      </template>
+      <template x-for="line in quick_log_lines()" :key="line">
+        <div class="mobile-log__line" x-text="line"></div>
+      </template>
+    </div>
+  </section>
+
+  <div class="mobile-sheet-backdrop" x-show="panel" x-cloak @click="close_panel()"></div>
+
+  <section class="mobile-sheet" x-show="panel" x-cloak>
+    <div class="mobile-sheet__handle"></div>
+    <div class="mobile-sheet__head">
+      <div>
+        <div class="mobile-sheet__eyebrow" x-text="panel === 'track' ? 'Track control' : (panel === 'cars' ? 'Car control' : 'Weather control')"></div>
+        <h2 class="mobile-sheet__title" x-text="panel === 'track' ? 'Change track' : (panel === 'cars' ? 'Change cars' : 'Change weather')"></h2>
+      </div>
+      <button class="mobile-sheet__close" type="button" @click="close_panel()">&times;</button>
+    </div>
+
+    <div class="mobile-sheet__toolbar" x-show="panel === 'track'">
+      <input class="pw-input pw-input--full" type="text" x-model="track_search" placeholder="Search track, country, config or tag" />
+    </div>
+    <div class="mobile-sheet__toolbar" x-show="panel === 'cars'">
+      <input class="pw-input pw-input--full" type="text" x-model="car_search" placeholder="Search car, brand, class or tag" />
+    </div>
+    <div class="mobile-sheet__toolbar" x-show="panel === 'weather'">
+      <input class="pw-input pw-input--full" type="text" x-model="weather_search" placeholder="Search weather preset" />
+    </div>
+
+    <div class="mobile-sheet__body" x-show="panel === 'track'">
+      <template x-for="track in filtered_tracks()" :key="track_value(track)">
+        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': edit.track === track_value(track) }" @click="edit.track = track_value(track)">
+          <img class="mobile-choice-card__media" :src="track_preview(track.key, track.config)" :alt="(track.name || track.key) + ' preview'" />
+          <span class="mobile-choice-card__title" x-text="track.name || track.key"></span>
+          <span class="mobile-choice-card__meta" x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="mobile-sheet__body" x-show="panel === 'cars'">
+      <template x-for="car in filtered_cars()" :key="car.key">
+        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': car_selected(car.key) }" @click="toggle_class_car(car)">
+          <img class="mobile-choice-card__media" :src="car_preview(car.key, first_skin_key(car.key))" :alt="(car.name || car.key) + ' preview'" />
+          <span class="mobile-choice-card__title" x-text="car.name || car.key"></span>
+          <span class="mobile-choice-card__meta" x-text="[car.brand || '', car.class || ''].filter(Boolean).join(' · ')"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="mobile-sheet__body" x-show="panel === 'weather'">
+      <template x-for="weather in filtered_weathers()" :key="weather.key">
+        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': edit.weather_key === weather.key }" @click="edit.weather_key = weather.key">
+          <img class="mobile-choice-card__media" :src="weather_preview(weather.key)" :alt="(weather.name || weather.key) + ' preview'" />
+          <span class="mobile-choice-card__title" x-text="weather.name || weather.key"></span>
+          <span class="mobile-choice-card__meta" x-text="weather.key"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="mobile-sheet__footer">
+      <button class="mobile-action-btn mobile-action-btn--ghost" type="button" @click="close_panel()">Cancel</button>
+      <button class="mobile-action-btn" type="button" x-show="panel === 'track'" @click="save_track_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply track'"></button>
+      <button class="mobile-action-btn" type="button" x-show="panel === 'cars'" @click="save_cars_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply cars'"></button>
+      <button class="mobile-action-btn" type="button" x-show="panel === 'weather'" @click="save_weather_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply weather'"></button>
+    </div>
+  </section>
+</div>
+
+{{ template "/htm/footer.htm" }}

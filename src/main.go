@@ -297,6 +297,7 @@ func main() {
 		app.GET("/admin", routeAdmin)
 
 		app.GET("/server", routeServer)
+		app.GET("/mobile", routeMobile)
 	}
 
 	api := router.Group("/api")

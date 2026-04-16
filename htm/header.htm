@@ -97,23 +97,16 @@
   <!-- ── Topbar ─────────────────────────────────────── -->
   <header class="pw-topbar">
     <div class="pw-topbar__brandlock">
-      {{ if (eq .page "mobile") }}
-      <a href="/server" class="pw-topbar__backlink">
-        <i class="fas fa-arrow-left"></i>
-        Desktop dashboard
-      </a>
-      {{ else }}
       <div class="pw-topbar__brandmark">
         <span>ServerManager</span>
         <small>Control deck</small>
       </div>
-      {{ end }}
     </div>
     <div class="pw-topbar__cluster">
       {{ if .config_filled }}
       <a href="{{ if (eq .page "mobile") }}/server{{ else }}/mobile{{ end }}" class="pw-topbar__mode-btn">
-        <i class="fas {{ if (eq .page "mobile") }}fa-desktop{{ else }}fa-mobile-alt{{ end }}"></i>
-        {{ if (eq .page "mobile") }}Desktop view{{ else }}Mobile view{{ end }}
+        <i class="fas {{ if (eq .page "mobile") }}fa-th-large{{ else }}fa-mobile-alt{{ end }}"></i>
+        {{ if (eq .page "mobile") }}Desktop{{ else }}Mobile{{ end }}
       </a>
       {{ end }}
       <div class="pw-topbar__user" x-data="{ isOpen: false }">

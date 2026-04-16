@@ -115,15 +115,10 @@
       load_current_time() {
         const timeId = this.current_event.time_id || 0;
         if (!timeId) {
-          this.edit.weather_key = "";
+          this.edit.weather_key = this.session.weather_graphics || "";
           return;
         }
-        fetch("/api/time/" + timeId)
-          .then((r) => r.json())
-          .then((j) => {
-            const weather = (((j.data || {}).weathers || [])[0] || {}).graphics || "";
-            this.edit.weather_key = weather || this.edit.weather_key || "";
-          });
+        this.edit.weather_key = this.session.weather_graphics || "";
       },
 
       open_panel(name) {
@@ -143,11 +138,7 @@
         }
         if (name === "weather") {
           this.weather_search = "";
-          if (this.session.weather_graphics) {
-            this.edit.weather_key = this.session.weather_graphics;
-          } else {
-            this.load_current_time();
-          }
+          this.edit.weather_key = this.session.weather_graphics || this.edit.weather_key || "";
         }
       },
 
@@ -204,26 +195,17 @@
       },
 
       save_track_change() {
-        if (!this.edit.track) {
-          this.notice = "Select a track first.";
-          return;
-        }
+        if (!this.edit.track) { this.notice = "Select a track first."; return; }
         this.save_current_event({ track: this.edit.track }, "Track updated.");
       },
 
       save_cars_change() {
-        if (this.edit.class_entries.length === 0) {
-          this.notice = "Select at least one car.";
-          return;
-        }
+        if (this.edit.class_entries.length === 0) { this.notice = "Select at least one car."; return; }
         this.save_current_event({ class_entries: this.edit.class_entries }, "Car roster updated.");
       },
 
       save_weather_change() {
-        if (!this.edit.weather_key) {
-          this.notice = "Select a weather first.";
-          return;
-        }
+        if (!this.edit.weather_key) { this.notice = "Select a weather first."; return; }
         this.save_current_event({ weather_key: this.edit.weather_key }, "Weather updated.");
       },
 
@@ -252,7 +234,7 @@
       session_index_label() {
         const idx = (this.session.index || 0) + 1;
         const total = this.session.session_count || 1;
-        return "Session " + idx + " / " + total;
+        return idx + " / " + total;
       },
 
       track_value(track) {
@@ -289,10 +271,7 @@
         }
         const skinKey = this.first_skin_key(car.key);
         if (!skinKey) return;
-        this.edit.class_entries.push({
-          cache_car_key: car.key,
-          skin_key: skinKey
-        });
+        this.edit.class_entries.push({ cache_car_key: car.key, skin_key: skinKey });
       },
 
       filtered_tracks() {
@@ -300,15 +279,7 @@
         if (!q) return this.tracks;
         return this.tracks.filter((track) => {
           const tags = (track.tags || []).join(" ").toLowerCase();
-          const haystack = [
-            track.name || "",
-            track.key || "",
-            track.config || "",
-            track.country || "",
-            track.city || "",
-            tags
-          ].join(" ").toLowerCase();
-          return haystack.includes(q);
+          return [track.name||"", track.key||"", track.config||"", track.country||"", track.city||"", tags].join(" ").toLowerCase().includes(q);
         });
       },
 
@@ -317,23 +288,14 @@
         if (!q) return this.cars;
         return this.cars.filter((car) => {
           const tags = (car.tags || []).join(" ").toLowerCase();
-          const haystack = [
-            car.name || "",
-            car.key || "",
-            car.brand || "",
-            car.class || "",
-            tags
-          ].join(" ").toLowerCase();
-          return haystack.includes(q);
+          return [car.name||"", car.key||"", car.brand||"", car.class||"", tags].join(" ").toLowerCase().includes(q);
         });
       },
 
       filtered_weathers() {
         const q = this.weather_search.trim().toLowerCase();
         if (!q) return this.weathers;
-        return this.weathers.filter((weather) => {
-          return [weather.name || "", weather.key || ""].join(" ").toLowerCase().includes(q);
-        });
+        return this.weathers.filter((w) => [w.name||"", w.key||""].join(" ").toLowerCase().includes(q));
       },
 
       track_preview(key, config) {
@@ -351,20 +313,8 @@
         return "/api/weather/preview/" + key;
       },
 
-      selected_car_cards() {
-        return this.edit.class_entries
-          .map((entry) => {
-            const car = this.cars.find((item) => item.key === entry.cache_car_key);
-            if (!car) return null;
-            return {
-              key: car.key,
-              name: car.name || car.key,
-              brand: car.brand || "",
-              class: car.class || "",
-              skin_key: entry.skin_key
-            };
-          })
-          .filter(Boolean);
+      selected_car_count() {
+        return this.edit.class_entries.length;
       },
 
       quick_log_lines() {
@@ -375,192 +325,216 @@
   }
 </script>
 
-<div class="mobile-dashboard" x-data="mobileDashboard()" x-init="sync_editors(); start_loop()">
-  <div class="mobile-dashboard__halo mobile-dashboard__halo--a"></div>
-  <div class="mobile-dashboard__halo mobile-dashboard__halo--b"></div>
+<div class="mob" x-data="mobileDashboard()" x-init="sync_editors(); start_loop()">
 
-  <section class="mobile-hero">
-    <div class="mobile-hero__head">
-      <div>
-        <div class="mobile-hero__eyebrow">Mobile control</div>
-        <h1 class="mobile-hero__title" x-text="current_event.track || session.track || 'Server standby'"></h1>
-        <p class="mobile-hero__sub" x-text="current_event.category || session.server_name || 'Ready for track, car, and weather changes'"></p>
-      </div>
-      <div class="mobile-hero__status" :class="is_running ? 'is-live' : 'is-idle'">
-        <span class="mobile-hero__status-dot"></span>
+  <!-- ── Status ─────────────────────────────────────── -->
+  <div class="mob-status" :class="is_running ? 'mob-status--live' : ''">
+    <div class="mob-status__top">
+      <div class="mob-status__badge">
+        <span class="mob-status__dot"></span>
         <span x-text="is_running ? 'Live' : 'Idle'"></span>
       </div>
-    </div>
-
-    <div class="mobile-hero__stats">
-      <div class="mobile-mini-stat">
-        <span class="mobile-mini-stat__label">Players</span>
-        <span class="mobile-mini-stat__value" x-text="players"></span>
-      </div>
-      <div class="mobile-mini-stat">
-        <span class="mobile-mini-stat__label">Session</span>
-        <span class="mobile-mini-stat__value" x-text="session_index_label()"></span>
-      </div>
-      <div class="mobile-mini-stat">
-        <span class="mobile-mini-stat__label">Uptime</span>
-        <span class="mobile-mini-stat__value" x-text="uptime_label()"></span>
+      <div class="mob-status__players">
+        <span x-text="players"></span>
+        <i class="fas fa-circle" style="font-size:5px; opacity:0.4;"></i>
+        <span style="font-size:11px; color:#475569;">players</span>
       </div>
     </div>
 
-    <div class="mobile-hero__actions">
-      <button class="mobile-action-btn mobile-action-btn--ghost" type="button" @click="fetch_status()">Refresh</button>
-      <button class="mobile-action-btn" type="button" x-show="!is_running" @click="start_server()">Start server</button>
-      <button class="mobile-action-btn mobile-action-btn--danger" type="button" x-show="is_running" @click="stop_server()">Stop server</button>
-    </div>
-  </section>
+    <div class="mob-status__track" x-text="current_event.track || session.track || 'Server standby'"></div>
+    <div class="mob-status__sub" x-text="current_event.category || session.server_name || 'No event running'"></div>
 
-  <section class="mobile-quick-grid">
-    <button class="mobile-control-card" type="button" @click="open_panel('track')">
-      <span class="mobile-control-card__eyebrow">Track</span>
-      <strong class="mobile-control-card__title" x-text="selected_track() ? (selected_track().name || selected_track().key) : (current_event.track || 'Choose layout')"></strong>
-      <span class="mobile-control-card__meta" x-text="selected_track() && selected_track().config ? selected_track().config : (session.track_config || 'Default layout')"></span>
+    <div class="mob-status__metrics">
+      <div class="mob-metric">
+        <span class="mob-metric__val" x-text="uptime_label()"></span>
+        <span class="mob-metric__lbl">Uptime</span>
+      </div>
+      <div class="mob-metric">
+        <span class="mob-metric__val" x-text="session_index_label()"></span>
+        <span class="mob-metric__lbl">Session</span>
+      </div>
+      <div class="mob-metric">
+        <span class="mob-metric__val" x-text="format_label()"></span>
+        <span class="mob-metric__lbl">Format</span>
+      </div>
+    </div>
+
+    <div class="mob-status__actions">
+      <button class="mob-btn mob-btn--ghost mob-btn--icon" type="button" @click="fetch_status()" title="Refresh">
+        <i class="fas fa-sync-alt"></i>
+      </button>
+      <button class="mob-btn mob-btn--start" type="button" x-show="!is_running" @click="start_server()">
+        <i class="fas fa-play"></i> Start server
+      </button>
+      <button class="mob-btn mob-btn--stop" type="button" x-show="is_running" @click="stop_server()">
+        <i class="fas fa-stop"></i> Stop server
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Action tiles ───────────────────────────────── -->
+  <div class="mob-tiles">
+    <button class="mob-tile" type="button" @click="open_panel('track')">
+      <span class="mob-tile__lbl">Track</span>
+      <span class="mob-tile__val" x-text="selected_track() ? (selected_track().name || selected_track().key) : (current_event.track || '—')"></span>
+      <span class="mob-tile__sub" x-text="selected_track() && selected_track().config ? selected_track().config : (session.track_config || 'default')"></span>
+      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
-    <button class="mobile-control-card" type="button" @click="open_panel('cars')">
-      <span class="mobile-control-card__eyebrow">Cars</span>
-      <strong class="mobile-control-card__title" x-text="selected_car_cards().length ? selected_car_cards().length + ' selected' : 'Choose roster'"></strong>
-      <span class="mobile-control-card__meta" x-text="current_event.class || 'Running class preset'"></span>
+    <button class="mob-tile" type="button" @click="open_panel('cars')">
+      <span class="mob-tile__lbl">Cars</span>
+      <span class="mob-tile__val" x-text="selected_car_count() ? selected_car_count() + ' cars' : '—'"></span>
+      <span class="mob-tile__sub" x-text="current_event.class || 'Car class'"></span>
+      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
-    <button class="mobile-control-card" type="button" @click="open_panel('weather')">
-      <span class="mobile-control-card__eyebrow">Weather</span>
-      <strong class="mobile-control-card__title" x-text="selected_weather() ? (selected_weather().name || selected_weather().key) : (session.weather_graphics || 'Choose weather')"></strong>
-      <span class="mobile-control-card__meta" x-text="current_event.time || 'Time preset'"></span>
+    <button class="mob-tile" type="button" @click="open_panel('weather')">
+      <span class="mob-tile__lbl">Weather</span>
+      <span class="mob-tile__val" x-text="selected_weather() ? (selected_weather().name || selected_weather().key) : (session.weather_graphics || '—')"></span>
+      <span class="mob-tile__sub" x-text="current_event.time || 'Time preset'"></span>
+      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
-  </section>
+  </div>
 
-  <section class="mobile-surface">
-    <div class="mobile-surface__head">
-      <span>Session snapshot</span>
-      <span x-text="format_label()"></span>
+  <!-- ── Session details ────────────────────────────── -->
+  <div class="mob-card">
+    <div class="mob-card__head">
+      <span>Session</span>
+      <span x-text="session.type || 'Waiting'"></span>
     </div>
-    <div class="mobile-detail-grid">
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Type</span>
-        <strong class="mobile-detail__value" x-text="session.type || 'Waiting'"></strong>
+    <div class="mob-rows">
+      <div class="mob-row">
+        <span>Elapsed</span>
+        <strong class="mob-row__mono" x-text="elapsed_label()"></strong>
       </div>
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Elapsed</span>
-        <strong class="mobile-detail__value" x-text="elapsed_label()"></strong>
+      <div class="mob-row">
+        <span>Ambient</span>
+        <strong x-text="(session.ambient_temp || 0) + '°C'"></strong>
       </div>
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Ambient</span>
-        <strong class="mobile-detail__value" x-text="(session.ambient_temp || 0) + '°'"></strong>
+      <div class="mob-row">
+        <span>Road temp</span>
+        <strong x-text="(session.road_temp || 0) + '°C'"></strong>
       </div>
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Road</span>
-        <strong class="mobile-detail__value" x-text="(session.road_temp || 0) + '°'"></strong>
+      <div class="mob-row">
+        <span>Time preset</span>
+        <strong x-text="current_event.time || '—'"></strong>
       </div>
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Public IP</span>
-        <strong class="mobile-detail__value mobile-detail__value--mono" x-text="public_ip || '—'"></strong>
-      </div>
-      <div class="mobile-detail">
-        <span class="mobile-detail__label">Time preset</span>
-        <strong class="mobile-detail__value" x-text="current_event.time || '—'"></strong>
+      <div class="mob-row">
+        <span>Public IP</span>
+        <strong class="mob-row__mono" x-text="public_ip || '—'"></strong>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section class="mobile-surface">
-    <div class="mobile-surface__head">
-      <span>Selected cars</span>
-      <span x-text="selected_car_cards().length + ' active'"></span>
-    </div>
-    <div class="mobile-pill-row">
-      <template x-if="selected_car_cards().length === 0">
-        <div class="mobile-empty-state">No cars loaded from the current entry list yet.</div>
-      </template>
-      <template x-for="car in selected_car_cards()" :key="car.key">
-        <div class="mobile-pill">
-          <span x-text="car.name"></span>
-          <small x-text="car.brand"></small>
-        </div>
-      </template>
-    </div>
-  </section>
+  <!-- ── Notice ─────────────────────────────────────── -->
+  <template x-if="notice">
+    <div class="mob-notice" x-text="notice"></div>
+  </template>
 
-  <section class="mobile-surface" x-show="notice">
-    <div class="mobile-notice" x-text="notice"></div>
-  </section>
-
-  <section class="mobile-surface">
-    <div class="mobile-surface__head">
-      <span>Live log</span>
+  <!-- ── Log ───────────────────────────────────────── -->
+  <div class="mob-card">
+    <div class="mob-card__head">
+      <span>Server log</span>
       <span x-text="quick_log_lines().length + ' lines'"></span>
     </div>
-    <div class="mobile-log">
+    <div class="mob-log">
       <template x-if="quick_log_lines().length === 0">
-        <div class="mobile-empty-state">No server output yet.</div>
+        <div class="mob-log__empty">No server output yet.</div>
       </template>
-      <template x-for="line in quick_log_lines()" :key="line">
-        <div class="mobile-log__line" x-text="line"></div>
+      <template x-for="(line, i) in quick_log_lines()" :key="i">
+        <div class="mob-log__line" x-text="line"></div>
       </template>
     </div>
-  </section>
+  </div>
 
-  <div class="mobile-sheet-backdrop" x-show="panel" x-cloak @click="close_panel()"></div>
+  <!-- ── Sheet backdrop ─────────────────────────────── -->
+  <div class="mob-sheet-bd" x-show="panel" x-cloak @click="close_panel()"></div>
 
-  <section class="mobile-sheet" x-show="panel" x-cloak>
-    <div class="mobile-sheet__handle"></div>
-    <div class="mobile-sheet__head">
+  <!-- ── Bottom sheet ───────────────────────────────── -->
+  <section class="mob-sheet" x-show="panel" x-cloak>
+    <div class="mob-sheet__handle"></div>
+
+    <div class="mob-sheet__head">
       <div>
-        <div class="mobile-sheet__eyebrow" x-text="panel === 'track' ? 'Track control' : (panel === 'cars' ? 'Car control' : 'Weather control')"></div>
-        <h2 class="mobile-sheet__title" x-text="panel === 'track' ? 'Change track' : (panel === 'cars' ? 'Change cars' : 'Change weather')"></h2>
+        <div class="mob-sheet__eyebrow"
+          x-text="panel === 'track' ? 'Track' : panel === 'cars' ? 'Cars · ' + edit.class_entries.length + ' selected' : 'Weather'">
+        </div>
+        <h2 class="mob-sheet__title"
+          x-text="panel === 'track' ? 'Change track' : panel === 'cars' ? 'Change cars' : 'Change weather'">
+        </h2>
       </div>
-      <button class="mobile-sheet__close" type="button" @click="close_panel()">&times;</button>
+      <button class="mob-sheet__close" type="button" @click="close_panel()">
+        <i class="fas fa-times"></i>
+      </button>
     </div>
 
-    <div class="mobile-sheet__toolbar" x-show="panel === 'track'">
-      <input class="pw-input pw-input--full" type="text" x-model="track_search" placeholder="Search track, country, config or tag" />
-    </div>
-    <div class="mobile-sheet__toolbar" x-show="panel === 'cars'">
-      <input class="pw-input pw-input--full" type="text" x-model="car_search" placeholder="Search car, brand, class or tag" />
-    </div>
-    <div class="mobile-sheet__toolbar" x-show="panel === 'weather'">
-      <input class="pw-input pw-input--full" type="text" x-model="weather_search" placeholder="Search weather preset" />
+    <div class="mob-sheet__search">
+      <input class="mob-search" type="search" x-show="panel === 'track'" x-model="track_search" placeholder="Search tracks…" autocomplete="off" />
+      <input class="mob-search" type="search" x-show="panel === 'cars'" x-model="car_search" placeholder="Search cars…" autocomplete="off" />
+      <input class="mob-search" type="search" x-show="panel === 'weather'" x-model="weather_search" placeholder="Search weather…" autocomplete="off" />
     </div>
 
-    <div class="mobile-sheet__body" x-show="panel === 'track'">
+    <!-- Track list -->
+    <div class="mob-sheet__body" x-show="panel === 'track'">
       <template x-for="track in filtered_tracks()" :key="track_value(track)">
-        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': edit.track === track_value(track) }" @click="edit.track = track_value(track)">
-          <img class="mobile-choice-card__media" :src="track_preview(track.key, track.config)" :alt="(track.name || track.key) + ' preview'" />
-          <span class="mobile-choice-card__title" x-text="track.name || track.key"></span>
-          <span class="mobile-choice-card__meta" x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
+        <button class="mob-choice" type="button"
+          :class="{ 'is-on': edit.track === track_value(track) }"
+          @click="edit.track = track_value(track)">
+          <img class="mob-choice__img" loading="lazy" :src="track_preview(track.key, track.config)" :alt="track.name || track.key" />
+          <div class="mob-choice__body">
+            <span class="mob-choice__name" x-text="track.name || track.key"></span>
+            <span class="mob-choice__meta" x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
+          </div>
+          <i class="fas fa-check mob-choice__check"></i>
         </button>
       </template>
     </div>
 
-    <div class="mobile-sheet__body" x-show="panel === 'cars'">
+    <!-- Cars grid -->
+    <div class="mob-sheet__body mob-sheet__body--grid" x-show="panel === 'cars'">
       <template x-for="car in filtered_cars()" :key="car.key">
-        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': car_selected(car.key) }" @click="toggle_class_car(car)">
-          <img class="mobile-choice-card__media" :src="car_preview(car.key, first_skin_key(car.key))" :alt="(car.name || car.key) + ' preview'" />
-          <span class="mobile-choice-card__title" x-text="car.name || car.key"></span>
-          <span class="mobile-choice-card__meta" x-text="[car.brand || '', car.class || ''].filter(Boolean).join(' · ')"></span>
+        <button class="mob-choice mob-choice--grid" type="button"
+          :class="{ 'is-on': car_selected(car.key) }"
+          @click="toggle_class_car(car)">
+          <div class="mob-choice__thumb">
+            <img loading="lazy" :src="car_preview(car.key, first_skin_key(car.key))" :alt="car.name || car.key" />
+            <i class="fas fa-check mob-choice--grid__check"></i>
+          </div>
+          <span class="mob-choice__name" x-text="car.name || car.key"></span>
+          <span class="mob-choice__meta" x-text="car.brand || ''"></span>
         </button>
       </template>
     </div>
 
-    <div class="mobile-sheet__body" x-show="panel === 'weather'">
+    <!-- Weather grid -->
+    <div class="mob-sheet__body mob-sheet__body--grid" x-show="panel === 'weather'">
       <template x-for="weather in filtered_weathers()" :key="weather.key">
-        <button class="mobile-choice-card" type="button" :class="{ 'is-selected': edit.weather_key === weather.key }" @click="edit.weather_key = weather.key">
-          <img class="mobile-choice-card__media" :src="weather_preview(weather.key)" :alt="(weather.name || weather.key) + ' preview'" />
-          <span class="mobile-choice-card__title" x-text="weather.name || weather.key"></span>
-          <span class="mobile-choice-card__meta" x-text="weather.key"></span>
+        <button class="mob-choice mob-choice--grid" type="button"
+          :class="{ 'is-on': edit.weather_key === weather.key }"
+          @click="edit.weather_key = weather.key">
+          <div class="mob-choice__thumb" x-data="{ broken: false }">
+            <img loading="lazy" x-show="!broken" :src="weather_preview(weather.key)" :alt="weather.name || weather.key" @error="broken = true" />
+            <div x-show="broken" class="mob-choice__thumb-fallback"><i class="fas fa-cloud-sun-rain"></i></div>
+            <i class="fas fa-check mob-choice--grid__check"></i>
+          </div>
+          <span class="mob-choice__name" x-text="weather.name || weather.key"></span>
+          <span class="mob-choice__meta" x-text="weather.key"></span>
         </button>
       </template>
     </div>
 
-    <div class="mobile-sheet__footer">
-      <button class="mobile-action-btn mobile-action-btn--ghost" type="button" @click="close_panel()">Cancel</button>
-      <button class="mobile-action-btn" type="button" x-show="panel === 'track'" @click="save_track_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply track'"></button>
-      <button class="mobile-action-btn" type="button" x-show="panel === 'cars'" @click="save_cars_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply cars'"></button>
-      <button class="mobile-action-btn" type="button" x-show="panel === 'weather'" @click="save_weather_change()" :disabled="saving" x-text="saving ? 'Applying…' : 'Apply weather'"></button>
+    <div class="mob-sheet__footer">
+      <button class="mob-btn mob-btn--ghost" type="button" @click="close_panel()">Cancel</button>
+      <button class="mob-btn mob-btn--primary" type="button"
+        x-show="panel === 'track'" @click="save_track_change()" :disabled="saving"
+        x-text="saving ? 'Saving…' : 'Apply track'"></button>
+      <button class="mob-btn mob-btn--primary" type="button"
+        x-show="panel === 'cars'" @click="save_cars_change()" :disabled="saving"
+        x-text="saving ? 'Saving…' : 'Apply cars'"></button>
+      <button class="mob-btn mob-btn--primary" type="button"
+        x-show="panel === 'weather'" @click="save_weather_change()" :disabled="saving"
+        x-text="saving ? 'Saving…' : 'Apply weather'"></button>
     </div>
   </section>
+
 </div>
 
 {{ template "/htm/footer.htm" }}

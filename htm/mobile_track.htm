@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Change Track · ServerManager</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link href="/static/css/main.css" rel="stylesheet" />
+  <link href="/static/css/extra.css" rel="stylesheet" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/js/all.min.js" crossorigin="anonymous"></script>
+</head>
+<body class="mob-page-body">
+
+<script>
+  function trackPage() {
+    return {
+      tracks: {{ .track_data }},
+      selected: "",
+      search: "",
+      saving: false,
+      notice: "",
+      current_event_id: 0,
+      is_running: false,
+
+      init() {
+        fetch("/api/server/status")
+          .then((r) => r.json())
+          .then((j) => {
+            this.is_running = j.is_running || false;
+            const ev = j.current_event || {};
+            this.current_event_id = ev.id || 0;
+            const key = ev.track_key || (j.session || {}).track || "";
+            const cfg = ev.track_config || (j.session || {}).track_config || "";
+            this.selected = key ? key + ":" + cfg : "";
+          });
+      },
+
+      track_value(track) {
+        return track.key + ":" + (track.config || "");
+      },
+
+      filtered() {
+        const q = this.search.trim().toLowerCase();
+        if (!q) return this.tracks;
+        return this.tracks.filter((t) => {
+          const tags = (t.tags || []).join(" ").toLowerCase();
+          return [t.name||"", t.key||"", t.config||"", t.country||"", t.city||"", tags]
+            .join(" ").toLowerCase().includes(q);
+        });
+      },
+
+      preview(key, config) {
+        if (!config) return "/api/track/preview/" + key;
+        return "/api/track/preview/" + key + "/" + config;
+      },
+
+      apply() {
+        if (!this.selected) { this.notice = "Select a track first."; return; }
+        if (!this.current_event_id) { this.notice = "No running or queued event available."; return; }
+        this.saving = true;
+        this.notice = "";
+        fetch("/api/server/current-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: this.current_event_id,
+            track: this.selected,
+            restart_now: this.is_running
+          })
+        })
+          .then((r) => r.json().then((b) => ({ ok: r.ok, b })))
+          .then(({ ok, b }) => {
+            this.saving = false;
+            if (!ok || b.success === false) {
+              this.notice = (b && b.message) || "Could not update track.";
+              return;
+            }
+            window.location.href = "/mobile";
+          })
+          .catch(() => {
+            this.saving = false;
+            this.notice = "Could not update track.";
+          });
+      }
+    };
+  }
+</script>
+
+<div class="mob-page" x-data="trackPage()" x-init="init()">
+
+  <!-- Nav -->
+  <div class="mob-page__nav">
+    <a class="mob-page__back" href="/mobile">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+    <div class="mob-page__title">Change Track</div>
+    <div class="mob-page__meta" x-text="filtered().length + ' tracks'"></div>
+  </div>
+
+  <!-- Search -->
+  <div class="mob-page__search">
+    <input class="mob-search" type="search" x-model="search"
+      placeholder="Search tracks…" autocomplete="off" autofocus />
+  </div>
+
+  <!-- List -->
+  <div class="mob-page__body">
+    <template x-for="track in filtered()" :key="track_value(track)">
+      <button class="mob-choice" type="button"
+        :class="{ 'is-on': selected === track_value(track) }"
+        @click="selected = track_value(track)">
+        <img class="mob-choice__img" loading="lazy"
+          :src="preview(track.key, track.config)"
+          :alt="track.name || track.key" />
+        <div class="mob-choice__body">
+          <span class="mob-choice__name" x-text="track.name || track.key"></span>
+          <span class="mob-choice__meta"
+            x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
+        </div>
+        <i class="fas fa-check mob-choice__check"></i>
+      </button>
+    </template>
+    <template x-if="filtered().length === 0">
+      <div class="mob-page__empty">No tracks match your search.</div>
+    </template>
+  </div>
+
+  <!-- Footer -->
+  <div class="mob-page__footer">
+    <template x-if="notice">
+      <div class="mob-page__notice" x-text="notice"></div>
+    </template>
+    <a class="mob-btn mob-btn--ghost" href="/mobile">Cancel</a>
+    <button class="mob-btn mob-btn--primary" type="button"
+      @click="apply()" :disabled="saving || !selected"
+      x-text="saving ? 'Applying…' : 'Apply track'"></button>
+  </div>
+
+</div>
+
+</body>
+</html>

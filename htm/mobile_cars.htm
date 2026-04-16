@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Change Cars · ServerManager</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link href="/static/css/main.css" rel="stylesheet" />
+  <link href="/static/css/extra.css" rel="stylesheet" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/js/all.min.js" crossorigin="anonymous"></script>
+</head>
+<body class="mob-page-body">
+
+<script>
+  function carsPage() {
+    return {
+      cars: {{ .car_data }},
+      entries: [],
+      search: "",
+      saving: false,
+      notice: "",
+      current_event_id: 0,
+      is_running: false,
+
+      init() {
+        fetch("/api/server/status")
+          .then((r) => r.json())
+          .then((j) => {
+            this.is_running = j.is_running || false;
+            const ev = j.current_event || {};
+            this.current_event_id = ev.id || 0;
+            const classId = ev.class_id || 0;
+            if (classId) {
+              fetch("/api/class/" + classId)
+                .then((r) => r.json())
+                .then((jc) => {
+                  const rawEntries = ((jc.data || {}).entries || []);
+                  this.entries = rawEntries
+                    .map((e) => ({
+                      cache_car_key: e.cache_car_key,
+                      skin_key: e.skin_key || this.first_skin(e.cache_car_key)
+                    }))
+                    .filter((e) => e.cache_car_key && e.skin_key);
+                });
+            }
+          });
+      },
+
+      first_skin(carKey) {
+        const car = this.cars.find((c) => c.key === carKey);
+        if (!car || !car.skins || car.skins.length === 0) return "";
+        return car.skins[0].key || "";
+      },
+
+      is_selected(carKey) {
+        return this.entries.some((e) => e.cache_car_key === carKey);
+      },
+
+      toggle(car) {
+        if (this.is_selected(car.key)) {
+          this.entries = this.entries.filter((e) => e.cache_car_key !== car.key);
+          return;
+        }
+        const skin = this.first_skin(car.key);
+        if (!skin) return;
+        this.entries.push({ cache_car_key: car.key, skin_key: skin });
+      },
+
+      car_img(carKey) {
+        const skin = this.first_skin(carKey);
+        if (!carKey || !skin) return "";
+        return "/api/car/image/" + carKey + "/" + skin;
+      },
+
+      filtered() {
+        const q = this.search.trim().toLowerCase();
+        if (!q) return this.cars;
+        return this.cars.filter((c) => {
+          const tags = (c.tags || []).join(" ").toLowerCase();
+          return [c.name||"", c.key||"", c.brand||"", c.class||"", tags]
+            .join(" ").toLowerCase().includes(q);
+        });
+      },
+
+      apply() {
+        if (this.entries.length === 0) { this.notice = "Select at least one car."; return; }
+        if (!this.current_event_id) { this.notice = "No running or queued event available."; return; }
+        this.saving = true;
+        this.notice = "";
+        fetch("/api/server/current-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: this.current_event_id,
+            class_entries: this.entries,
+            restart_now: this.is_running
+          })
+        })
+          .then((r) => r.json().then((b) => ({ ok: r.ok, b })))
+          .then(({ ok, b }) => {
+            this.saving = false;
+            if (!ok || b.success === false) {
+              this.notice = (b && b.message) || "Could not update cars.";
+              return;
+            }
+            window.location.href = "/mobile";
+          })
+          .catch(() => {
+            this.saving = false;
+            this.notice = "Could not update cars.";
+          });
+      }
+    };
+  }
+</script>
+
+<div class="mob-page" x-data="carsPage()" x-init="init()">
+
+  <!-- Nav -->
+  <div class="mob-page__nav">
+    <a class="mob-page__back" href="/mobile">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+    <div class="mob-page__title">Change Cars</div>
+    <div class="mob-page__meta" x-text="entries.length + ' selected'"></div>
+  </div>
+
+  <!-- Search -->
+  <div class="mob-page__search">
+    <input class="mob-search" type="search" x-model="search"
+      placeholder="Search cars…" autocomplete="off" autofocus />
+  </div>
+
+  <!-- Grid -->
+  <div class="mob-page__body">
+    <div class="mob-page__grid">
+      <template x-for="car in filtered()" :key="car.key">
+        <button class="mob-choice mob-choice--grid" type="button"
+          :class="{ 'is-on': is_selected(car.key) }"
+          @click="toggle(car)">
+          <div class="mob-choice__thumb" x-data="{ broken: false }">
+            <img loading="lazy" x-show="!broken"
+              :src="car_img(car.key)"
+              :alt="car.name || car.key"
+              @error="broken = true" />
+            <div x-show="broken" class="mob-choice__thumb-fallback">
+              <i class="fas fa-car"></i>
+            </div>
+            <i class="fas fa-check mob-choice--grid__check"></i>
+          </div>
+          <span class="mob-choice__name" x-text="car.name || car.key"></span>
+          <span class="mob-choice__meta" x-text="car.brand || ''"></span>
+        </button>
+      </template>
+    </div>
+    <template x-if="filtered().length === 0">
+      <div class="mob-page__empty">No cars match your search.</div>
+    </template>
+  </div>
+
+  <!-- Footer -->
+  <div class="mob-page__footer">
+    <template x-if="notice">
+      <div class="mob-page__notice" x-text="notice"></div>
+    </template>
+    <a class="mob-btn mob-btn--ghost" href="/mobile">Cancel</a>
+    <button class="mob-btn mob-btn--primary" type="button"
+      @click="apply()" :disabled="saving || entries.length === 0"
+      x-text="saving ? 'Applying…' : 'Apply cars'"></button>
+  </div>
+
+</div>
+
+</body>
+</html>

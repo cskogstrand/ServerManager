@@ -298,6 +298,9 @@ func main() {
 
 		app.GET("/server", routeServer)
 		app.GET("/mobile", routeMobile)
+		app.GET("/mobile/track", routeMobileTrack)
+		app.GET("/mobile/cars", routeMobileCars)
+		app.GET("/mobile/weather", routeMobileWeather)
 	}
 
 	api := router.Group("/api")

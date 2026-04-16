@@ -315,7 +315,39 @@ func routeMobile(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	Status.refresh()
+	c.HTML(http.StatusOK, "/htm/mobile.htm", gin.H{
+		"page":          "mobile",
+		"title":         " · Mobile",
+		"config_filled": cfgFilled,
+		"tmpLoc":        TempFolder,
+		"status":        Status,
+	})
+}
+
+func routeMobileTrack(c *gin.Context) {
+	cfgFilled, err := routeConfigFilled(c)
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
 	trackData, err := Dba.selectCacheTracks()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	trackData = withDemoTracks(c, trackData)
+	Status.refresh()
+	c.HTML(http.StatusOK, "/htm/mobile_track.htm", gin.H{
+		"page":          "mobile",
+		"config_filled": cfgFilled,
+		"track_data":    trackData,
+		"status":        Status,
+	})
+}
+
+func routeMobileCars(c *gin.Context) {
+	cfgFilled, err := routeConfigFilled(c)
 	if err != nil {
 		routeDbError(c, err)
 		return
@@ -325,23 +357,33 @@ func routeMobile(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	carData = withDemoCars(c, carData)
+	Status.refresh()
+	c.HTML(http.StatusOK, "/htm/mobile_cars.htm", gin.H{
+		"page":          "mobile",
+		"config_filled": cfgFilled,
+		"car_data":      carData,
+		"status":        Status,
+	})
+}
+
+func routeMobileWeather(c *gin.Context) {
+	cfgFilled, err := routeConfigFilled(c)
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
 	weatherData, err := Dba.selectCacheWeathers()
 	if err != nil {
 		routeDbError(c, err)
 		return
 	}
-	trackData = withDemoTracks(c, trackData)
-	carData = withDemoCars(c, carData)
 	weatherData = withDemoWeathers(c, weatherData)
 	Status.refresh()
-	c.HTML(http.StatusOK, "/htm/mobile.htm", gin.H{
+	c.HTML(http.StatusOK, "/htm/mobile_weather.htm", gin.H{
 		"page":          "mobile",
-		"title":         " · Mobile",
 		"config_filled": cfgFilled,
-		"track_data":    trackData,
-		"car_data":      carData,
 		"weather_data":  weatherData,
-		"tmpLoc":        TempFolder,
 		"status":        Status,
 	})
 }

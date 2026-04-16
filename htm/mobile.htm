@@ -36,6 +36,8 @@
         class_id: 0,
         time: "",
         time_id: 0,
+        weather: "",
+        weather_key: "",
         started_at: 0
       },
       config_filled: {{ if .config_filled }}true{{ else }}false{{ end }},
@@ -150,6 +152,7 @@
       },
 
       fmt_weather_name(str) {
+        if (this.current_event.weather) return this.current_event.weather;
         const p = this._parse_wx(str);
         return p.name || str || "—";
       },

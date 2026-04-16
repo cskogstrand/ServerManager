@@ -25,6 +25,8 @@
       saving: false,
       notice: "",
       current_event_id: 0,
+      current_weather_name: "",
+      current_weather_key: "",
       is_running: false,
 
       multipliers: [1, 2, 4, 6, 8, 16, 32],
@@ -36,8 +38,10 @@
             this.is_running = j.is_running || false;
             const ev = j.current_event || {};
             this.current_event_id = ev.id || 0;
+            this.current_weather_name = ev.weather || "";
+            this.current_weather_key = ev.weather_key || "";
             this.current_raw = (j.session || {}).weather_graphics || "";
-            this.selected = this.weather_base_key(this.current_raw);
+            this.selected = this.current_weather_key || this.weather_base_key(this.current_raw);
             const p = this.parse_weather(this.current_raw);
             if (p.time) { this.csp_time = p.time; this.has_csp = true; }
             if (p.mult_raw > 1) this.csp_time_multi = p.mult_raw;
@@ -100,7 +104,7 @@
 
       current_label() {
         const p = this.parse_weather(this.current_raw);
-        return [p.name, p.time, p.mult].filter(Boolean).join(" · ") || this.current_raw;
+        return [this.current_weather_name || p.name, p.time, p.mult].filter(Boolean).join(" · ") || this.current_raw;
       },
 
       filtered() {

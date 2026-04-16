@@ -131,6 +131,8 @@ func serverStatusPayload() gin.H {
 		"class_id":   0,
 		"time":       "",
 		"time_id":    0,
+		"weather":    "",
+		"weather_key": "",
 		"started_at": int64(0),
 		"finished":   0,
 	}
@@ -172,6 +174,22 @@ func serverStatusPayload() gin.H {
 	}
 	if Cr.serverEvent.Finished != nil {
 		currentEvent["finished"] = *Cr.serverEvent.Finished
+	}
+	if Cr.serverEvent.UserEvent.Id != nil {
+		event, err := Dba.selectEvent(*Cr.serverEvent.UserEvent.Id)
+		if err == nil && event.TimeId != nil {
+			currentEvent["time_id"] = *event.TimeId
+			tim, err := Dba.selectTimeWeather(*event.TimeId)
+			if err == nil && len(tim.Weathers) > 0 {
+				weather := tim.Weathers[0]
+				if weather.Name != nil {
+					currentEvent["weather"] = *weather.Name
+				}
+				if weather.Graphics != nil {
+					currentEvent["weather_key"] = *weather.Graphics
+				}
+			}
+		}
 	}
 
 	return gin.H{

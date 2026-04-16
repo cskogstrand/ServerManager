@@ -73,6 +73,15 @@
         return "/api/car/image/" + carKey + "/" + skin;
       },
 
+      car_name(carKey) {
+        const car = this.cars.find((c) => c.key === carKey);
+        return (car && (car.name || car.key)) || carKey;
+      },
+
+      remove(carKey) {
+        this.entries = this.entries.filter((e) => e.cache_car_key !== carKey);
+      },
+
       filtered() {
         const q = this.search.trim().toLowerCase();
         if (!q) return this.cars;
@@ -130,6 +139,19 @@
   <div class="mob-page__search">
     <input class="mob-search" type="search" x-model="search"
       placeholder="Search cars…" autocomplete="off" autofocus />
+  </div>
+
+  <!-- Selected chips -->
+  <div class="mob-chips" x-show="entries.length > 0">
+    <template x-for="entry in entries" :key="entry.cache_car_key">
+      <div class="mob-chip">
+        <span x-text="car_name(entry.cache_car_key)"></span>
+        <button class="mob-chip__remove" type="button"
+          @click="remove(entry.cache_car_key)" title="Remove">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </template>
   </div>
 
   <!-- Grid -->

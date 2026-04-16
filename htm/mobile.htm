@@ -110,27 +110,35 @@
         return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       },
 
-      // Parse "05_time=36000_mult=2_start=... Day" into "Day · 10:00 · 2×"
-      fmt_weather(str) {
-        if (!str) return "—";
-        if (!str.includes("time=") && !str.includes("mult=")) return str;
+      // Parse weather_graphics string into { name, time, mult }
+      _parse_wx(str) {
+        if (!str) return { name: "", time: "", mult: "" };
+        const hasCsp = str.includes("time=") || str.includes("mult=");
+        if (!hasCsp) return { name: str, time: "", mult: "" };
         const sp = str.indexOf(" ");
         const key = sp >= 0 ? str.slice(0, sp) : str;
         const name = sp >= 0 ? str.slice(sp + 1).trim() : "";
-        const parts = name ? [name] : [];
+        let time = "", mult = "";
         const tm = key.match(/time=(\d+)/);
         if (tm) {
           const s = parseInt(tm[1]);
           const h = Math.floor(s / 3600);
           const m = Math.floor((s % 3600) / 60);
-          parts.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"));
+          time = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
         }
         const ml = key.match(/mult=(\d+(?:\.\d+)?)/);
-        if (ml) {
-          const v = parseFloat(ml[1]);
-          if (v !== 1) parts.push(v + "×");
-        }
-        return parts.length ? parts.join(" · ") : str;
+        if (ml) { const v = parseFloat(ml[1]); if (v !== 1) mult = v + "×"; }
+        return { name, time, mult };
+      },
+
+      fmt_weather_name(str) {
+        const p = this._parse_wx(str);
+        return p.name || str || "—";
+      },
+
+      fmt_weather_detail(str) {
+        const p = this._parse_wx(str);
+        return [p.time, p.mult].filter(Boolean).join(" · ");
       },
 
       uptime_label() {
@@ -256,8 +264,8 @@
         <span class="mob-tile__lbl">Weather</span>
         <i class="fas fa-chevron-right mob-tile__arrow"></i>
       </div>
-      <span class="mob-tile__val" x-text="fmt_weather(session.weather_graphics) || current_event.time || '—'"></span>
-      <span class="mob-tile__sub" x-text="current_event.time || 'Time preset'"></span>
+      <span class="mob-tile__val" x-text="fmt_weather_name(session.weather_graphics) || current_event.time || '—'"></span>
+      <span class="mob-tile__sub" x-text="[fmt_weather_detail(session.weather_graphics), current_event.time].filter(Boolean).join(' · ') || 'Time preset'"></span>
     </a>
   </div>
 

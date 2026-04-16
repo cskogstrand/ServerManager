@@ -18,11 +18,16 @@
       weathers: {{ .weather_data }},
       selected: "",
       current_raw: "",
+      csp_time: "12:00",
+      csp_time_multi: 1,
+      has_csp: false,
       search: "",
       saving: false,
       notice: "",
       current_event_id: 0,
       is_running: false,
+
+      multipliers: [1, 2, 4, 6, 8, 16, 32],
 
       init() {
         fetch("/api/server/status")
@@ -33,6 +38,9 @@
             this.current_event_id = ev.id || 0;
             this.current_raw = (j.session || {}).weather_graphics || "";
             this.selected = this.current_raw;
+            const p = this.parse_weather(this.current_raw);
+            if (p.time) { this.csp_time = p.time; this.has_csp = true; }
+            if (p.mult_raw > 1) this.csp_time_multi = p.mult_raw;
             this.$nextTick(() => {
               const el = document.querySelector(".mob-choice.is-on");
               if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -40,33 +48,33 @@
           });
       },
 
+      // Returns { name, time "HH:MM", mult "2×", mult_raw 2 }
       parse_weather(str) {
-        if (!str) return { type: str, time: "", mult: "" };
-        if (!str.includes("time=") && !str.includes("mult=")) {
-          return { type: str, time: "", mult: "" };
-        }
+        if (!str) return { name: "", time: "", mult: "", mult_raw: 1 };
+        const hasCsp = str.includes("time=") || str.includes("mult=");
+        if (!hasCsp) return { name: str, time: "", mult: "", mult_raw: 1 };
         const sp = str.indexOf(" ");
-        const keyPart = sp >= 0 ? str.slice(0, sp) : str;
-        const type = sp >= 0 ? str.slice(sp + 1).trim() : "";
-        let time = "", mult = "";
-        const tm = keyPart.match(/time=(\d+)/);
+        const key = sp >= 0 ? str.slice(0, sp) : str;
+        const name = sp >= 0 ? str.slice(sp + 1).trim() : "";
+        let time = "", mult = "", mult_raw = 1;
+        const tm = key.match(/time=(\d+)/);
         if (tm) {
           const s = parseInt(tm[1]);
           const h = Math.floor(s / 3600);
           const m = Math.floor((s % 3600) / 60);
           time = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
         }
-        const ml = keyPart.match(/mult=(\d+(?:\.\d+)?)/);
+        const ml = key.match(/mult=(\d+(?:\.\d+)?)/);
         if (ml) {
-          const v = parseFloat(ml[1]);
-          if (v !== 1) mult = v + "×";
+          mult_raw = parseFloat(ml[1]);
+          if (mult_raw !== 1) mult = mult_raw + "×";
         }
-        return { type: type || keyPart, time, mult };
+        return { name, time, mult, mult_raw };
       },
 
       weather_name(w) {
         const p = this.parse_weather(w.name || w.key);
-        return p.type || w.name || w.key;
+        return p.name || w.name || w.key;
       },
 
       weather_meta(w) {
@@ -76,7 +84,7 @@
 
       current_label() {
         const p = this.parse_weather(this.current_raw);
-        return [p.type, p.time, p.mult].filter(Boolean).join(" · ") || this.current_raw;
+        return [p.name, p.time, p.mult].filter(Boolean).join(" · ") || this.current_raw;
       },
 
       filtered() {
@@ -96,14 +104,19 @@
         if (!this.current_event_id) { this.notice = "No running or queued event available."; return; }
         this.saving = true;
         this.notice = "";
+        const payload = {
+          event_id: this.current_event_id,
+          weather_key: this.selected,
+          restart_now: this.is_running
+        };
+        if (this.has_csp) {
+          payload.csp_time = this.csp_time;
+          payload.csp_time_multi = this.csp_time_multi;
+        }
         fetch("/api/server/current-event", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event_id: this.current_event_id,
-            weather_key: this.selected,
-            restart_now: this.is_running
-          })
+          body: JSON.stringify(payload)
         })
           .then((r) => r.json().then((b) => ({ ok: r.ok, b })))
           .then(({ ok, b }) => {
@@ -141,10 +154,35 @@
     <span class="mob-page__current-val" x-text="current_label()"></span>
   </div>
 
+  <!-- Time of day & multiplier controls -->
+  <div class="mob-page__controls" x-show="has_csp">
+    <div class="mob-page__ctrl">
+      <span class="mob-page__ctrl-lbl">
+        <i class="fas fa-clock" style="font-size:10px;opacity:0.6;"></i>
+        Time of day
+      </span>
+      <input class="mob-time-input" type="time" x-model="csp_time" />
+    </div>
+    <div class="mob-page__ctrl">
+      <span class="mob-page__ctrl-lbl">
+        <i class="fas fa-tachometer-alt" style="font-size:10px;opacity:0.6;"></i>
+        Speed
+      </span>
+      <div class="mob-mults">
+        <template x-for="m in multipliers" :key="m">
+          <button class="mob-mult-btn" type="button"
+            :class="{ 'is-on': csp_time_multi === m }"
+            @click="csp_time_multi = m"
+            x-text="m + '×'"></button>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <!-- Search -->
   <div class="mob-page__search">
     <input class="mob-search" type="search" x-model="search"
-      placeholder="Search weather…" autocomplete="off" autofocus />
+      placeholder="Search weather…" autocomplete="off" />
   </div>
 
   <!-- List -->

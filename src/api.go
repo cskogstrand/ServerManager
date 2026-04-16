@@ -23,6 +23,8 @@ type DashboardEventUpdate struct {
 	ClassID      int                         `json:"class_id"`
 	TimeID       int                         `json:"time_id"`
 	WeatherKey   string                      `json:"weather_key"`
+	CspTime      string                      `json:"csp_time"`       // "HH:MM"
+	CspTimeMul   int                         `json:"csp_time_multi"` // time-of-day multiplier
 	ClassEntries []DashboardClassEntryUpdate `json:"class_entries"`
 	RestartNow   bool                        `json:"restart_now"`
 }
@@ -694,6 +696,14 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 		}
 
 		tim.Weathers[0].Graphics = &payload.WeatherKey
+		if payload.CspTime != "" {
+			t := payload.CspTime
+			tim.Weathers[0].CspTime = &t
+		}
+		if payload.CspTimeMul > 0 {
+			m := payload.CspTimeMul
+			tim.Weathers[0].CspTimeOfDayMulti = &m
+		}
 		if _, err := Dba.updateTime(tim); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,

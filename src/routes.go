@@ -315,12 +315,19 @@ func routeMobile(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
+	weatherData, err := Dba.selectCacheWeathers()
+	if err != nil {
+		routeDbError(c, err)
+		return
+	}
+	weatherData = withDemoWeathers(c, weatherData)
 	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/mobile.htm", gin.H{
 		"page":          "mobile",
 		"title":         " · Mobile",
 		"config_filled": cfgFilled,
 		"tmpLoc":        TempFolder,
+		"weather_data":  weatherData,
 		"status":        Status,
 	})
 }

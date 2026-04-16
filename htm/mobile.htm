@@ -40,7 +40,9 @@
         started_at: 0
       },
       current_cars: [],
+      config_filled: {{ if .config_filled }}true{{ else }}false{{ end }},
       panel: "",
+      confirm: { show: false, action: "" },
       track_search: "",
       car_search: "",
       weather_search: "",
@@ -144,6 +146,33 @@
 
       close_panel() {
         this.panel = "";
+      },
+
+      ask_confirm(action) {
+        this.confirm = { show: true, action };
+      },
+
+      dismiss_confirm() {
+        this.confirm = { show: false, action: "" };
+      },
+
+      do_confirmed() {
+        const action = this.confirm.action;
+        this.dismiss_confirm();
+        if (action === "start") this.start_server();
+        if (action === "stop")  this.stop_server();
+      },
+
+      confirm_title() {
+        if (this.confirm.action === "start") return "Start server?";
+        if (this.confirm.action === "stop")  return "Stop server?";
+        return "";
+      },
+
+      confirm_desc() {
+        if (this.confirm.action === "start") return "The server will start with the next queued event.";
+        if (this.confirm.action === "stop")  return "The current session will end immediately.";
+        return "";
       },
 
       start_server() {
@@ -360,13 +389,16 @@
     </div>
 
     <div class="mob-status__actions">
-      <button class="mob-btn mob-btn--ghost mob-btn--icon" type="button" @click="fetch_status()" title="Refresh">
+      <button class="mob-btn mob-btn--ghost mob-btn--icon" type="button"
+        :disabled="!config_filled" @click="fetch_status()" title="Refresh">
         <i class="fas fa-sync-alt"></i>
       </button>
-      <button class="mob-btn mob-btn--start" type="button" x-show="!is_running" @click="start_server()">
+      <button class="mob-btn mob-btn--start" type="button"
+        x-show="!is_running" :disabled="!config_filled" @click="ask_confirm('start')">
         <i class="fas fa-play"></i> Start server
       </button>
-      <button class="mob-btn mob-btn--stop" type="button" x-show="is_running" @click="stop_server()">
+      <button class="mob-btn mob-btn--stop" type="button"
+        x-show="is_running" :disabled="!config_filled" @click="ask_confirm('stop')">
         <i class="fas fa-stop"></i> Stop server
       </button>
     </div>
@@ -375,22 +407,28 @@
   <!-- ── Action tiles ───────────────────────────────── -->
   <div class="mob-tiles">
     <button class="mob-tile" type="button" @click="open_panel('track')">
-      <span class="mob-tile__lbl">Track</span>
+      <div class="mob-tile__top">
+        <span class="mob-tile__lbl">Track</span>
+        <i class="fas fa-chevron-right mob-tile__arrow"></i>
+      </div>
       <span class="mob-tile__val" x-text="selected_track() ? (selected_track().name || selected_track().key) : (current_event.track || '—')"></span>
       <span class="mob-tile__sub" x-text="selected_track() && selected_track().config ? selected_track().config : (session.track_config || 'default')"></span>
-      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
     <button class="mob-tile" type="button" @click="open_panel('cars')">
-      <span class="mob-tile__lbl">Cars</span>
-      <span class="mob-tile__val" x-text="selected_car_count() ? selected_car_count() + ' cars' : '—'"></span>
+      <div class="mob-tile__top">
+        <span class="mob-tile__lbl">Cars</span>
+        <i class="fas fa-chevron-right mob-tile__arrow"></i>
+      </div>
+      <span class="mob-tile__val" x-text="selected_car_count() ? selected_car_count() + ' cars selected' : '—'"></span>
       <span class="mob-tile__sub" x-text="current_event.class || 'Car class'"></span>
-      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
     <button class="mob-tile" type="button" @click="open_panel('weather')">
-      <span class="mob-tile__lbl">Weather</span>
+      <div class="mob-tile__top">
+        <span class="mob-tile__lbl">Weather</span>
+        <i class="fas fa-chevron-right mob-tile__arrow"></i>
+      </div>
       <span class="mob-tile__val" x-text="selected_weather() ? (selected_weather().name || selected_weather().key) : (session.weather_graphics || '—')"></span>
       <span class="mob-tile__sub" x-text="current_event.time || 'Time preset'"></span>
-      <i class="fas fa-chevron-right mob-tile__arrow"></i>
     </button>
   </div>
 
@@ -442,6 +480,20 @@
       <template x-for="(line, i) in quick_log_lines()" :key="i">
         <div class="mob-log__line" x-text="line"></div>
       </template>
+    </div>
+  </div>
+
+  <!-- ── Confirm dialog ────────────────────────────── -->
+  <div class="mob-confirm-bd" x-show="confirm.show" x-cloak @click="dismiss_confirm()"></div>
+  <div class="mob-confirm" x-show="confirm.show" x-cloak>
+    <div class="mob-confirm__title" x-text="confirm_title()"></div>
+    <div class="mob-confirm__desc" x-text="confirm_desc()"></div>
+    <div class="mob-confirm__actions">
+      <button class="mob-btn mob-btn--ghost" type="button" @click="dismiss_confirm()">Cancel</button>
+      <button class="mob-btn" type="button"
+        :class="confirm.action === 'stop' ? 'mob-btn--stop' : 'mob-btn--start'"
+        @click="do_confirmed()"
+        x-text="confirm.action === 'stop' ? 'Stop' : 'Start'"></button>
     </div>
   </div>
 

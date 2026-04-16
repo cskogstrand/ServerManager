@@ -891,7 +891,7 @@ select {
 .pw-body--mobile .pw-layout { margin-left: 0; }
 
 .pw-body--mobile .pw-main {
-  padding: 18px 14px 96px;
+  padding: 18px 14px 32px;
 }
 
 .pw-body--mobile .pw-footer {
@@ -1071,17 +1071,16 @@ select {
 
 /* ── Action tiles */
 .mob-tiles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
 .mob-tile {
-  position: relative;
   border: 1px solid rgba(30, 41, 59, 0.9);
   border-radius: 14px;
   background: rgba(12, 20, 38, 0.96);
-  padding: 13px 11px 20px;
+  padding: 13px 14px;
   text-align: left;
   cursor: pointer;
   color: var(--c-text);
@@ -1099,41 +1098,38 @@ select {
 
 .mob-tile:active { transform: scale(0.97); }
 
+.mob-tile__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .mob-tile__lbl {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #2563eb;
   line-height: 1;
 }
 
+.mob-tile__arrow {
+  font-size: 10px;
+  color: #334155;
+}
+
 .mob-tile__val {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   color: #e2e8f0;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
   display: block;
 }
 
 .mob-tile__sub {
-  font-size: 11px;
-  color: #334155;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
+  color: #475569;
   display: block;
-}
-
-.mob-tile__arrow {
-  position: absolute;
-  bottom: 9px;
-  right: 10px;
-  font-size: 9px;
-  color: #1e3a5f;
 }
 
 /* ── Info card */
@@ -1206,6 +1202,50 @@ select {
 }
 
 .mob-log__line:last-child { border-bottom: 0; }
+
+/* ── Confirm dialog */
+.mob-confirm-bd {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 12, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 210;
+}
+
+.mob-confirm {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 220;
+  width: calc(100% - 48px);
+  max-width: 320px;
+  background: #0d1628;
+  border: 1px solid rgba(30, 41, 59, 0.95);
+  border-radius: 18px;
+  padding: 24px 20px 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.mob-confirm__title {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f1f5f9;
+  margin-bottom: 8px;
+}
+
+.mob-confirm__desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.mob-confirm__actions {
+  display: flex;
+  gap: 8px;
+}
 
 /* ── Sheet backdrop */
 .mob-sheet-bd {

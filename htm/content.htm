@@ -161,9 +161,9 @@
 
       archive_hint: function () {
         if (this.kind === "track") {
-          return "Accepted layouts: content/tracks/<track>, tracks/<track>, or a direct track folder.";
+          return "Supported archives: zip, rar, 7z, tar, tgz, tbz2, txz. Accepted layouts: content/tracks/<track>, tracks/<track>, or a direct track folder.";
         }
-        return "Accepted layouts: content/cars/<car>, cars/<car>, or a direct car folder.";
+        return "Supported archives: zip, rar, 7z, tar, tgz, tbz2, txz. Accepted layouts: content/cars/<car>, cars/<car>, or a direct car folder.";
       },
 
       progress_label: function () {
@@ -377,13 +377,13 @@
         </div>
 
         <div class="cnt-upload-drop" :class="(source_mode === 'file' && file_name) || (source_mode === 'url' && archive_url.trim()) ? 'is-ready' : ''">
-          <div class="cnt-upload-drop__eyebrow" x-text="source_mode === 'url' ? 'Remote ZIP' : 'ZIP Archive'"></div>
+          <div class="cnt-upload-drop__eyebrow" x-text="source_mode === 'url' ? 'Remote Archive' : 'Archive File'"></div>
           <template x-if="source_mode === 'file'">
             <div class="cnt-upload-drop__stack">
-              <div class="cnt-upload-drop__title" x-text="file_name || 'Choose a .zip file to import'"></div>
+              <div class="cnt-upload-drop__title" x-text="file_name || 'Choose an archive file to import'"></div>
               <div class="cnt-upload-drop__meta" x-text="file_name ? format_bytes(file_size) + ' ready to install' : archive_hint()"></div>
               <input id="content_archive" x-ref="archive" class="cnt-upload-input" type="file"
-                accept=".zip,application/zip" @change="pick_file($event)" />
+                accept=".zip,.rar,.7z,.tar,.gz,.bz2,.xz,.tgz,.tbz2,.txz,.tar.gz,.tar.bz2,.tar.xz,application/zip,application/x-rar-compressed,application/vnd.rar,application/x-7z-compressed,application/x-tar,application/gzip" @change="pick_file($event)" />
               <button class="pw-btn pw-btn--ghost" type="button" @click="browse()" :disabled="uploading">
                 <i class="fas fa-folder-open"></i> Browse Archive
               </button>
@@ -391,10 +391,10 @@
           </template>
           <template x-if="source_mode === 'url'">
             <div class="cnt-upload-drop__stack cnt-upload-drop__stack--wide">
-              <div class="cnt-upload-drop__title">Download a zip archive from a URL</div>
-              <div class="cnt-upload-drop__meta">Paste a direct `http` or `https` zip link. ServerManager downloads it, imports it, and rebuilds the cache.</div>
+              <div class="cnt-upload-drop__title">Download an archive from a URL</div>
+              <div class="cnt-upload-drop__meta">Paste a direct `http` or `https` archive link. ServerManager downloads it, imports it, and rebuilds the cache.</div>
               <input class="pw-input pw-input--full" type="url" x-model="archive_url"
-                placeholder="https://example.com/mods/my-track.zip" :disabled="uploading" />
+                placeholder="https://example.com/mods/my-track.rar" :disabled="uploading" />
               <div class="cnt-upload-drop__meta" x-text="archive_hint()"></div>
             </div>
           </template>

@@ -1,6 +1,6 @@
 FROM golang:alpine
 
-RUN apk --no-cache add gcc g++ make git npm
+RUN apk --no-cache add gcc g++ make git npm p7zip
 RUN /usr/local/go/bin/go install github.com/jessevdk/go-assets-builder@latest
 
 WORKDIR /go/src/app

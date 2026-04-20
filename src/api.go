@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -573,6 +574,7 @@ func apiContentUpload(c *gin.Context) {
 	kind := strings.TrimSpace(c.PostForm("kind"))
 	overwrite := parseBoolFormValue(c.PostForm("overwrite"))
 	archiveURL := strings.TrimSpace(c.PostForm("archive_url"))
+	var header *multipart.FileHeader
 
 	basepath, err := Dba.basepath()
 	if err != nil {
@@ -594,7 +596,38 @@ func apiContentUpload(c *gin.Context) {
 		return
 	}
 
-	tempPath, err := newTempArchiveFile()
+	sourceName := archiveURL
+	if archiveURL == "" {
+		header, err = c.FormFile("archive")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Choose an archive file or enter an archive URL.",
+			})
+			return
+		}
+		sourceName = header.Filename
+	} else {
+		parsedURL, err := validateArchiveURL(archiveURL)
+		if err != nil {
+			var uploadErr contentUploadError
+			if errors.As(err, &uploadErr) {
+				c.JSON(uploadErr.Status, gin.H{
+					"success": false,
+					"message": uploadErr.Message,
+				})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "The archive URL is not valid.",
+			})
+			return
+		}
+		sourceName = parsedURL.Path
+	}
+
+	tempPath, err := newTempArchiveFile(sourceName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -623,19 +656,15 @@ func apiContentUpload(c *gin.Context) {
 			return
 		}
 	} else {
-		header, err := c.FormFile("archive")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Choose a .zip archive or enter an archive URL.",
-			})
-			return
-		}
-		if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Only .zip archives are supported.",
-			})
+		if _, err := ensureSupportedArchiveName(header.Filename); err != nil {
+			var uploadErr contentUploadError
+			if errors.As(err, &uploadErr) {
+				c.JSON(uploadErr.Status, gin.H{
+					"success": false,
+					"message": uploadErr.Message,
+				})
+				return
+			}
 			return
 		}
 
@@ -648,7 +677,7 @@ func apiContentUpload(c *gin.Context) {
 		}
 	}
 
-	result, err := importContentArchive(tempPath, basepath, kind, overwrite)
+	result, err := importContentArchive(tempPath, sourceName, basepath, kind, overwrite)
 	if err != nil {
 		var uploadErr contentUploadError
 		if errors.As(err, &uploadErr) {

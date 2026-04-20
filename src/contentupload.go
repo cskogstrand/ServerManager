@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -19,6 +20,22 @@ import (
 
 const maxContentUploadSize int64 = 2 << 30
 const contentDownloadTimeout = 20 * time.Minute
+
+var supportedArchiveExtensions = []string{
+	".tar.gz",
+	".tar.bz2",
+	".tar.xz",
+	".tgz",
+	".tbz2",
+	".txz",
+	".zip",
+	".rar",
+	".7z",
+	".tar",
+	".gz",
+	".bz2",
+	".xz",
+}
 
 type contentCounts struct {
 	Tracks   int
@@ -99,8 +116,39 @@ func contentKindFolder(kind string) (string, error) {
 	}
 }
 
-func newTempArchiveFile() (string, error) {
-	tempFile, err := os.CreateTemp(TempFolder, "sm-upload-*.zip")
+func archiveExtensionForPath(name string) string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	for _, ext := range supportedArchiveExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return ext
+		}
+	}
+	return ""
+}
+
+func archiveRequires7z(ext string) bool {
+	return ext != "" && ext != ".zip"
+}
+
+func ensureSupportedArchiveName(name string) (string, error) {
+	ext := archiveExtensionForPath(name)
+	if ext == "" {
+		return "", contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "Unsupported archive type. Supported formats: zip, rar, 7z, tar, tar.gz, tgz, tar.bz2, tbz2, tar.xz, txz, gz, bz2, xz.",
+		}
+	}
+	return ext, nil
+}
+
+func newTempArchiveFile(sourceName string) (string, error) {
+	ext := archiveExtensionForPath(sourceName)
+	pattern := "sm-upload-*"
+	if ext != "" {
+		pattern += ext
+	}
+
+	tempFile, err := os.CreateTemp(TempFolder, pattern)
 	if err != nil {
 		return "", err
 	}
@@ -112,6 +160,31 @@ func newTempArchiveFile() (string, error) {
 	}
 
 	return tempPath, nil
+}
+
+func find7zBinary() string {
+	for _, name := range []string{"7z", "7zz", "7za"} {
+		if path, err := exec.LookPath(name); err == nil && path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func ensureArchiveExtractor(ext string) (string, error) {
+	if !archiveRequires7z(ext) {
+		return "", nil
+	}
+
+	binary := find7zBinary()
+	if binary == "" {
+		return "", contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "This archive format requires 7-Zip. Install `7z` or `7zz` on the ServerManager host to import rar/7z/tar-family archives.",
+		}
+	}
+
+	return binary, nil
 }
 
 func validateArchiveURL(rawURL string) (*url.URL, error) {
@@ -136,6 +209,31 @@ func validateArchiveURL(rawURL string) (*url.URL, error) {
 	}
 
 	return parsed, nil
+}
+
+func isArchiveContentType(mediaType string) bool {
+	switch mediaType {
+	case "application/zip",
+		"application/x-zip-compressed",
+		"application/vnd.rar",
+		"application/x-rar-compressed",
+		"application/x-7z-compressed",
+		"application/x-tar",
+		"application/gzip",
+		"application/x-gzip",
+		"application/x-bzip2",
+		"application/x-xz",
+		"application/octet-stream":
+		return true
+	}
+
+	return strings.Contains(mediaType, "zip") ||
+		strings.Contains(mediaType, "rar") ||
+		strings.Contains(mediaType, "7z") ||
+		strings.Contains(mediaType, "tar") ||
+		strings.Contains(mediaType, "gzip") ||
+		strings.Contains(mediaType, "bzip") ||
+		strings.Contains(mediaType, "xz")
 }
 
 func downloadContentArchive(rawURL string, destinationPath string) error {
@@ -182,16 +280,10 @@ func downloadContentArchive(rawURL string, destinationPath string) error {
 	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
 	if contentType != "" {
 		mediaType, _, parseErr := mime.ParseMediaType(contentType)
-		if parseErr == nil {
-			switch mediaType {
-			case "application/zip", "application/x-zip-compressed", "application/octet-stream":
-			default:
-				if !strings.Contains(mediaType, "zip") {
-					return contentUploadError{
-						Status:  http.StatusBadRequest,
-						Message: "The remote URL did not return a zip archive.",
-					}
-				}
+		if parseErr == nil && !isArchiveContentType(mediaType) {
+			return contentUploadError{
+				Status:  http.StatusBadRequest,
+				Message: "The remote URL did not return a supported archive.",
 			}
 		}
 	}
@@ -219,8 +311,12 @@ func downloadContentArchive(rawURL string, destinationPath string) error {
 	return nil
 }
 
-func importContentArchive(zipPath string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {
+func importContentArchive(archivePath string, archiveName string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {
 	contentFolder, err := contentKindFolder(kind)
+	if err != nil {
+		return contentArchiveImportResult{}, err
+	}
+	ext, err := ensureSupportedArchiveName(archiveName)
 	if err != nil {
 		return contentArchiveImportResult{}, err
 	}
@@ -230,11 +326,24 @@ func importContentArchive(zipPath string, basepath string, kind string, overwrit
 		return contentArchiveImportResult{}, fmt.Errorf("could not prepare destination folder: %w", err)
 	}
 
-	reader, err := zip.OpenReader(zipPath)
+	if ext == ".zip" {
+		return importZipArchive(archivePath, destinationRoot, kind, overwrite)
+	}
+
+	sevenZipBinary, err := ensureArchiveExtractor(ext)
+	if err != nil {
+		return contentArchiveImportResult{}, err
+	}
+
+	return importArchiveVia7z(archivePath, destinationRoot, kind, overwrite, sevenZipBinary)
+}
+
+func importZipArchive(archivePath string, destinationRoot string, kind string, overwrite bool) (contentArchiveImportResult, error) {
+	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return contentArchiveImportResult{}, contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: "The selected file is not a valid zip archive.",
+			Message: "The selected archive could not be opened.",
 		}
 	}
 	defer reader.Close()
@@ -393,7 +502,7 @@ func detectArchiveAssets(files []*zip.File, kind string) ([]detectedArchiveAsset
 	}
 
 	if len(assets) == 0 {
-		expected := "Expected a zip that contains content/" + contentFolderForMessage(kind) + "/... or a direct mod folder with the standard Assetto Corsa structure."
+		expected := "Expected an archive that contains content/" + contentFolderForMessage(kind) + "/... or a direct mod folder with the standard Assetto Corsa structure."
 		return nil, contentUploadError{
 			Status:  http.StatusBadRequest,
 			Message: "No valid " + kind + " content was found in the archive. " + expected,
@@ -401,6 +510,181 @@ func detectArchiveAssets(files []*zip.File, kind string) ([]detectedArchiveAsset
 	}
 
 	return assets, nil
+}
+
+func importArchiveVia7z(archivePath string, destinationRoot string, kind string, overwrite bool, sevenZipBinary string) (contentArchiveImportResult, error) {
+	stagingRoot, err := os.MkdirTemp(destinationRoot, ".sm-upload-*")
+	if err != nil {
+		return contentArchiveImportResult{}, fmt.Errorf("could not create staging folder: %w", err)
+	}
+	defer os.RemoveAll(stagingRoot)
+
+	extractRoot := filepath.Join(stagingRoot, "extract")
+	if err := os.MkdirAll(extractRoot, os.ModePerm); err != nil {
+		return contentArchiveImportResult{}, fmt.Errorf("could not prepare extraction folder: %w", err)
+	}
+
+	cmd := exec.Command(sevenZipBinary, "x", "-y", "-bso0", "-bsp0", "-bse1", "-o"+extractRoot, archivePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = "7-Zip could not extract the archive."
+		}
+		return contentArchiveImportResult{}, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: msg,
+		}
+	}
+
+	assets, err := detectExtractedAssets(extractRoot, kind)
+	if err != nil {
+		return contentArchiveImportResult{}, err
+	}
+	if len(assets) == 0 {
+		expected := "Expected an archive that contains content/" + contentFolderForMessage(kind) + "/... or a direct mod folder with the standard Assetto Corsa structure."
+		return contentArchiveImportResult{}, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "No valid " + kind + " content was found in the archive. " + expected,
+		}
+	}
+
+	if !overwrite {
+		conflicts := make([]string, 0)
+		for _, asset := range assets {
+			if _, err := os.Stat(filepath.Join(destinationRoot, asset.Key)); err == nil {
+				conflicts = append(conflicts, asset.Key)
+			}
+		}
+		if len(conflicts) > 0 {
+			sort.Strings(conflicts)
+			return contentArchiveImportResult{}, contentUploadError{
+				Status:  http.StatusConflict,
+				Message: "Archive already exists on disk: " + strings.Join(conflicts, ", ") + ". Enable overwrite to replace it.",
+			}
+		}
+	}
+
+	filesWritten := 0
+	keys := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		sourcePath := filepath.Join(extractRoot, filepath.FromSlash(asset.RootPath))
+		targetPath := filepath.Join(destinationRoot, asset.Key)
+
+		count, err := countFilesInTree(sourcePath)
+		if err != nil {
+			return contentArchiveImportResult{}, err
+		}
+		filesWritten += count
+
+		if overwrite {
+			if err := os.RemoveAll(targetPath); err != nil {
+				return contentArchiveImportResult{}, fmt.Errorf("could not replace existing content: %w", err)
+			}
+		}
+
+		if err := os.Rename(sourcePath, targetPath); err != nil {
+			return contentArchiveImportResult{}, fmt.Errorf("could not install %q: %w", asset.Key, err)
+		}
+		keys = append(keys, asset.Key)
+	}
+
+	sort.Strings(keys)
+	return contentArchiveImportResult{
+		AssetKeys:    keys,
+		FilesWritten: filesWritten,
+	}, nil
+}
+
+func detectExtractedAssets(root string, kind string) ([]detectedArchiveAsset, error) {
+	assets := make([]detectedArchiveAsset, 0)
+	err := filepath.Walk(root, func(currentPath string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(root, currentPath)
+		if err != nil {
+			return err
+		}
+
+		asset, ok, err := detectFilesystemAsset(kind, filepath.ToSlash(relPath))
+		if err != nil || !ok {
+			return err
+		}
+
+		index := indexAssetByKey(assets, asset.Key)
+		if index >= 0 {
+			if assets[index].RootPath != asset.RootPath {
+				return contentUploadError{
+					Status:  http.StatusBadRequest,
+					Message: "Archive contains multiple conflicting folders for " + asset.Key + ".",
+				}
+			}
+			return nil
+		}
+
+		assets = append(assets, asset)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return assets, nil
+}
+
+func detectFilesystemAsset(kind string, relPath string) (detectedArchiveAsset, bool, error) {
+	cleaned, skip, err := normalizeArchivePath(relPath)
+	if err != nil || skip {
+		return detectedArchiveAsset{}, false, err
+	}
+
+	segments := strings.Split(cleaned, "/")
+	start := 0
+	folder := contentFolderForMessage(kind)
+	if idx := indexSegmentSequence(segments, []string{"content", folder}); idx >= 0 {
+		start = idx + 2
+	} else if idx := indexSegmentSequence(segments, []string{folder}); idx >= 0 {
+		start = idx + 1
+	}
+
+	trimmedSegments := segments[start:]
+	if len(trimmedSegments) == 0 {
+		return detectedArchiveAsset{}, false, nil
+	}
+
+	rootPath, assetKey, ok := detectArchiveAssetRoot(strings.Join(trimmedSegments, "/"), kind)
+	if !ok {
+		return detectedArchiveAsset{}, false, nil
+	}
+
+	rootSegments := append([]string{}, segments[:start]...)
+	if rootPath != "" {
+		rootSegments = append(rootSegments, strings.Split(rootPath, "/")...)
+	}
+
+	return detectedArchiveAsset{
+		Key:      assetKey,
+		RootPath: strings.Join(rootSegments, "/"),
+	}, true, nil
+}
+
+func countFilesInTree(root string) (int, error) {
+	count := 0
+	err := filepath.Walk(root, func(_ string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !info.IsDir() {
+			count++
+		}
+		return nil
+	})
+	return count, err
 }
 
 func trimmedArchivePath(kind string, archivePath string) (string, bool, error) {

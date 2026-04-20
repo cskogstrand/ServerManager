@@ -3108,6 +3108,14 @@ select {
   margin-bottom: 16px;
 }
 
+.cnt-source-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
 .cnt-kind-switch__btn {
   display: inline-flex;
   align-items: center;
@@ -3123,10 +3131,31 @@ select {
   transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 
+.cnt-source-switch__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: rgba(255,255,255,0.015);
+  color: var(--c-text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
 .cnt-kind-switch__btn:hover:not(:disabled) {
   border-color: var(--c-border-hi);
   color: var(--c-text);
   background: rgba(255,255,255,0.03);
+}
+
+.cnt-source-switch__btn:hover:not(:disabled) {
+  border-color: var(--c-border-hi);
+  color: var(--c-text);
+  background: rgba(255,255,255,0.025);
 }
 
 .cnt-kind-switch__btn.is-active {
@@ -3134,6 +3163,12 @@ select {
   border-color: var(--c-accent);
   color: var(--c-accent);
   box-shadow: inset 0 0 0 1px rgba(74,158,214,0.15);
+}
+
+.cnt-source-switch__btn.is-active {
+  background: rgba(74,158,214,0.09);
+  border-color: rgba(74,158,214,0.45);
+  color: var(--c-text);
 }
 
 .cnt-upload-drop {
@@ -3174,6 +3209,18 @@ select {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--c-text-dim);
+}
+
+.cnt-upload-drop__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.cnt-upload-drop__stack--wide {
+  max-width: 100%;
 }
 
 .cnt-upload-drop__title {
@@ -3279,10 +3326,15 @@ select {
   .cnt-kind-switch {
     grid-template-columns: 1fr;
   }
+
+  .cnt-source-switch {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cnt-kind-switch__btn,
+  .cnt-source-switch__btn,
   .cnt-upload-drop,
   .cnt-progress__track span {
     transition: none !important;

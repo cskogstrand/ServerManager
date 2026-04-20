@@ -114,10 +114,12 @@
   function upload_panel() {
     return {
       kind: "car",
+      source_mode: "file",
       overwrite: false,
       selected_file: null,
       file_name: "",
       file_size: 0,
+      archive_url: "",
       progress: 0,
       uploading: false,
       upload_success: null,
@@ -127,6 +129,15 @@
       select_kind: function (kind) {
         if (this.uploading) return;
         this.kind = kind;
+        this.upload_success = null;
+        this.upload_message = "";
+        this.imported_assets = [];
+      },
+
+      select_source: function (mode) {
+        if (this.uploading) return;
+        this.source_mode = mode;
+        this.progress = 0;
         this.upload_success = null;
         this.upload_message = "";
         this.imported_assets = [];
@@ -158,7 +169,15 @@
       progress_label: function () {
         if (!this.uploading) return "";
         if (this.progress >= 100) return "Installing archive and rebuilding the content cache...";
+        if (this.source_mode === "url") return "Downloading archive from URL...";
         return "Uploading archive...";
+      },
+
+      can_submit: function () {
+        if (this.source_mode === "url") {
+          return this.archive_url.trim() !== "";
+        }
+        return !!this.selected_file;
       },
 
       format_bytes: function (bytes) {
@@ -184,10 +203,10 @@
       },
 
       submit_upload: function () {
-        if (this.uploading || !this.selected_file) return;
+        if (this.uploading || !this.can_submit()) return;
 
         this.uploading = true;
-        this.progress = 0;
+        this.progress = this.source_mode === "url" ? 12 : 0;
         this.upload_success = null;
         this.upload_message = "";
         this.imported_assets = [];
@@ -195,7 +214,11 @@
         const formData = new FormData();
         formData.append("kind", this.kind);
         formData.append("overwrite", this.overwrite ? "1" : "0");
-        formData.append("archive", this.selected_file);
+        if (this.source_mode === "url") {
+          formData.append("archive_url", this.archive_url.trim());
+        } else {
+          formData.append("archive", this.selected_file);
+        }
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/content/upload");
@@ -208,6 +231,7 @@
 
         xhr.addEventListener("load", () => {
           this.uploading = false;
+          this.progress = 100;
           const json = xhr.response || {};
 
           if (xhr.status >= 200 && xhr.status < 300 && json.success) {
@@ -216,6 +240,7 @@
             this.upload_message = json.message || "Archive installed successfully.";
             this.imported_assets = json.imported_assets || [];
             this.reset_picker();
+            this.archive_url = "";
             return;
           }
 
@@ -342,15 +367,37 @@
           </button>
         </div>
 
-        <div class="cnt-upload-drop" :class="file_name ? 'is-ready' : ''">
-          <div class="cnt-upload-drop__eyebrow">ZIP Archive</div>
-          <div class="cnt-upload-drop__title" x-text="file_name || 'Choose a .zip file to import'"></div>
-          <div class="cnt-upload-drop__meta" x-text="file_name ? format_bytes(file_size) + ' ready to install' : archive_hint()"></div>
-          <input id="content_archive" x-ref="archive" class="cnt-upload-input" type="file"
-            accept=".zip,application/zip" @change="pick_file($event)" />
-          <button class="pw-btn pw-btn--ghost" type="button" @click="browse()" :disabled="uploading">
-            <i class="fas fa-folder-open"></i> Browse Archive
+        <div class="cnt-source-switch" role="tablist" aria-label="Archive source">
+          <button class="cnt-source-switch__btn" type="button" :class="source_mode === 'file' ? 'is-active' : ''" @click="select_source('file')">
+            <i class="fas fa-file-archive"></i> Local File
           </button>
+          <button class="cnt-source-switch__btn" type="button" :class="source_mode === 'url' ? 'is-active' : ''" @click="select_source('url')">
+            <i class="fas fa-link"></i> Download URL
+          </button>
+        </div>
+
+        <div class="cnt-upload-drop" :class="(source_mode === 'file' && file_name) || (source_mode === 'url' && archive_url.trim()) ? 'is-ready' : ''">
+          <div class="cnt-upload-drop__eyebrow" x-text="source_mode === 'url' ? 'Remote ZIP' : 'ZIP Archive'"></div>
+          <template x-if="source_mode === 'file'">
+            <div class="cnt-upload-drop__stack">
+              <div class="cnt-upload-drop__title" x-text="file_name || 'Choose a .zip file to import'"></div>
+              <div class="cnt-upload-drop__meta" x-text="file_name ? format_bytes(file_size) + ' ready to install' : archive_hint()"></div>
+              <input id="content_archive" x-ref="archive" class="cnt-upload-input" type="file"
+                accept=".zip,application/zip" @change="pick_file($event)" />
+              <button class="pw-btn pw-btn--ghost" type="button" @click="browse()" :disabled="uploading">
+                <i class="fas fa-folder-open"></i> Browse Archive
+              </button>
+            </div>
+          </template>
+          <template x-if="source_mode === 'url'">
+            <div class="cnt-upload-drop__stack cnt-upload-drop__stack--wide">
+              <div class="cnt-upload-drop__title">Download a zip archive from a URL</div>
+              <div class="cnt-upload-drop__meta">Paste a direct `http` or `https` zip link. ServerManager downloads it, imports it, and rebuilds the cache.</div>
+              <input class="pw-input pw-input--full" type="url" x-model="archive_url"
+                placeholder="https://example.com/mods/my-track.zip" :disabled="uploading" />
+              <div class="cnt-upload-drop__meta" x-text="archive_hint()"></div>
+            </div>
+          </template>
         </div>
 
         <div class="pw-form-row" style="margin-bottom:14px;">
@@ -380,10 +427,10 @@
           <span>Archives can contain a direct mod folder or the full <span class="cnt-inline-note__mono" x-text="kind === 'track' ? 'content/tracks' : 'content/cars'"></span> path.</span>
         </div>
 
-        <button class="pw-btn pw-btn--primary" type="button" @click="submit_upload()" :disabled="uploading || !selected_file">
+        <button class="pw-btn pw-btn--primary" type="button" @click="submit_upload()" :disabled="uploading || !can_submit()">
           <div class="loader" x-show="uploading" style="width:14px;height:14px;border-width:2px;"></div>
-          <i class="fas fa-file-import" x-show="!uploading"></i>
-          <span x-text="uploading ? 'Uploading...' : 'Upload And Rebuild Cache'"></span>
+          <i class="fas" x-show="!uploading" :class="source_mode === 'url' ? 'fa-cloud-download-alt' : 'fa-file-import'"></i>
+          <span x-text="uploading ? (source_mode === 'url' ? 'Downloading...' : 'Uploading...') : (source_mode === 'url' ? 'Download And Rebuild Cache' : 'Upload And Rebuild Cache')"></span>
         </button>
 
         <div class="cnt-feedback" x-show="upload_message" :class="upload_success ? 'is-success' : 'is-error'">

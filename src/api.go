@@ -572,6 +572,7 @@ func apiContentUpload(c *gin.Context) {
 
 	kind := strings.TrimSpace(c.PostForm("kind"))
 	overwrite := parseBoolFormValue(c.PostForm("overwrite"))
+	archiveURL := strings.TrimSpace(c.PostForm("archive_url"))
 
 	basepath, err := Dba.basepath()
 	if err != nil {
@@ -593,33 +594,8 @@ func apiContentUpload(c *gin.Context) {
 		return
 	}
 
-	header, err := c.FormFile("archive")
+	tempPath, err := newTempArchiveFile()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Choose a .zip archive to upload.",
-		})
-		return
-	}
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Only .zip archives are supported.",
-		})
-		return
-	}
-
-	tempFile, err := os.CreateTemp(TempFolder, "sm-upload-*.zip")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Could not prepare the upload.",
-		})
-		return
-	}
-	tempPath := tempFile.Name()
-	if err := tempFile.Close(); err != nil {
-		os.Remove(tempPath)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Could not prepare the upload.",
@@ -628,12 +604,48 @@ func apiContentUpload(c *gin.Context) {
 	}
 	defer os.Remove(tempPath)
 
-	if err := c.SaveUploadedFile(header, tempPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Could not save the uploaded archive.",
-		})
-		return
+	source := "upload"
+	if archiveURL != "" {
+		source = "url"
+		if err := downloadContentArchive(archiveURL, tempPath); err != nil {
+			var uploadErr contentUploadError
+			if errors.As(err, &uploadErr) {
+				c.JSON(uploadErr.Status, gin.H{
+					"success": false,
+					"message": uploadErr.Message,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	} else {
+		header, err := c.FormFile("archive")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Choose a .zip archive or enter an archive URL.",
+			})
+			return
+		}
+		if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Only .zip archives are supported.",
+			})
+			return
+		}
+
+		if err := c.SaveUploadedFile(header, tempPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Could not save the uploaded archive.",
+			})
+			return
+		}
 	}
 
 	result, err := importContentArchive(tempPath, basepath, kind, overwrite)
@@ -665,6 +677,7 @@ func apiContentUpload(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{
 		"success":        true,
 		"kind":           kind,
+		"source":         source,
 		"imported_assets": result.AssetKeys,
 		"imported_count": len(result.AssetKeys),
 		"files_written":  result.FilesWritten,

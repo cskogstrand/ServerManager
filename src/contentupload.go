@@ -2,18 +2,23 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 const maxContentUploadSize int64 = 2 << 30
+const contentDownloadTimeout = 20 * time.Minute
 
 type contentCounts struct {
 	Tracks   int
@@ -92,6 +97,126 @@ func contentKindFolder(kind string) (string, error) {
 			Message: "Select either car or track before uploading.",
 		}
 	}
+}
+
+func newTempArchiveFile() (string, error) {
+	tempFile, err := os.CreateTemp(TempFolder, "sm-upload-*.zip")
+	if err != nil {
+		return "", err
+	}
+
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		return "", err
+	}
+
+	return tempPath, nil
+}
+
+func validateArchiveURL(rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "The archive URL is not valid.",
+		}
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "Only http and https archive URLs are supported.",
+		}
+	}
+	if parsed.Host == "" {
+		return nil, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "The archive URL must include a host.",
+		}
+	}
+
+	return parsed, nil
+}
+
+func downloadContentArchive(rawURL string, destinationPath string) error {
+	archiveURL, err := validateArchiveURL(rawURL)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), contentDownloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL.String(), nil)
+	if err != nil {
+		return fmt.Errorf("could not create download request: %w", err)
+	}
+	req.Header.Set("User-Agent", "ServerManager/ContentImport")
+
+	client := &http.Client{
+		Timeout: contentDownloadTimeout,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return contentUploadError{
+			Status:  http.StatusBadGateway,
+			Message: "Could not download the archive URL.",
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return contentUploadError{
+			Status:  http.StatusBadGateway,
+			Message: fmt.Sprintf("Archive download failed with HTTP %d.", resp.StatusCode),
+		}
+	}
+	if resp.ContentLength > maxContentUploadSize {
+		return contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "The remote archive is larger than 2 GB.",
+		}
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
+	if contentType != "" {
+		mediaType, _, parseErr := mime.ParseMediaType(contentType)
+		if parseErr == nil {
+			switch mediaType {
+			case "application/zip", "application/x-zip-compressed", "application/octet-stream":
+			default:
+				if !strings.Contains(mediaType, "zip") {
+					return contentUploadError{
+						Status:  http.StatusBadRequest,
+						Message: "The remote URL did not return a zip archive.",
+					}
+				}
+			}
+		}
+	}
+
+	destinationFile, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("could not prepare downloaded archive: %w", err)
+	}
+	defer destinationFile.Close()
+
+	written, err := io.Copy(destinationFile, io.LimitReader(resp.Body, maxContentUploadSize+1))
+	if err != nil {
+		return contentUploadError{
+			Status:  http.StatusBadGateway,
+			Message: "The archive download was interrupted.",
+		}
+	}
+	if written > maxContentUploadSize {
+		return contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "The remote archive is larger than 2 GB.",
+		}
+	}
+
+	return nil
 }
 
 func importContentArchive(zipPath string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {

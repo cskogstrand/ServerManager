@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"strings"
@@ -15,6 +16,8 @@ type Dbaccess struct {
 	name string
 	db   *sql.DB
 }
+
+var errInstallPathNotConfigured = errors.New("assetto corsa installation path is not configured")
 
 func derefOrEmpty(s *string) string {
 	if s == nil {
@@ -35,7 +38,13 @@ func open(name string) Dbaccess {
 
 func (dba Dbaccess) basepath() (string, error) {
 	cfg, err := dba.selectConfig()
-	return *cfg.InstallPath, err
+	if err != nil {
+		return "", err
+	}
+	if cfg.InstallPath == nil || strings.TrimSpace(*cfg.InstallPath) == "" {
+		return "", errInstallPathNotConfigured
+	}
+	return *cfg.InstallPath, nil
 }
 
 func (dba Dbaccess) applySchema(filePath string) {

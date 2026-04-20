@@ -321,6 +321,7 @@ func main() {
 		api.GET("/time/:id", apiTime)
 
 		api.GET("/content/recache", apiRecacheContent)
+		api.POST("/content/upload", apiContentUpload)
 
 		api.POST("/validate/installpath", apiValidateInstallpath)
 

@@ -21,6 +21,11 @@
     });
     return false;
   }
+
+  function emit_content_counts(payload) {
+    window.dispatchEvent(new CustomEvent("sm-content-counts", { detail: payload || {} }))
+  }
+
   function csp() {
     return {
       csp_required: {{ .form.CspRequired | toJsBool}},
@@ -39,6 +44,7 @@
       }
     }
   }
+
   function cache() {
     return {
       tracks_total: {{ .track_data | len}},
@@ -46,24 +52,49 @@
       weathers_total: {{ .weather_data | len}},
       content_loaded: false,
       loading: false,
+      notice: "",
+      notice_ok: true,
+
+      init: function () {
+        window.addEventListener("sm-content-counts", (event) => {
+          const detail = event.detail || {};
+          if (typeof detail.tracks_total !== "undefined") this.tracks_total = detail.tracks_total;
+          if (typeof detail.cars_total !== "undefined") this.cars_total = detail.cars_total;
+          if (typeof detail.weathers_total !== "undefined") this.weathers_total = detail.weathers_total;
+        });
+      },
 
       load_content: function () {
+        if (this.loading) return;
+
         this.loading = true;
         this.content_loaded = false;
+        this.notice = "";
+
         fetch("/api/content/recache")
           .then((response) => response.json())
           .then((json) => {
             this.loading = false;
             if (json.result == 'ok') {
               this.content_loaded = true;
+              this.notice_ok = true;
+              this.notice = "Content cache rebuilt from the Assetto Corsa install.";
+              emit_content_counts(json);
+              return;
             }
-            this.tracks_total = json.tracks_total;
-            this.cars_total = json.cars_total;
-            this.weathers_total = json.weathers_total;
+
+            this.notice_ok = false;
+            this.notice = json.message || "Could not reload content.";
+          })
+          .catch(() => {
+            this.loading = false;
+            this.notice_ok = false;
+            this.notice = "Could not reload content.";
           });
       }
     }
   }
+
   function install_path() {
     return {
       install_path: '{{ .form.InstallPath | derefStr }}',
@@ -79,12 +110,136 @@
       },
     }
   }
+
+  function upload_panel() {
+    return {
+      kind: "car",
+      overwrite: false,
+      selected_file: null,
+      file_name: "",
+      file_size: 0,
+      progress: 0,
+      uploading: false,
+      upload_success: null,
+      upload_message: "",
+      imported_assets: [],
+
+      select_kind: function (kind) {
+        if (this.uploading) return;
+        this.kind = kind;
+        this.upload_success = null;
+        this.upload_message = "";
+        this.imported_assets = [];
+      },
+
+      browse: function () {
+        if (this.uploading) return;
+        this.$refs.archive.click();
+      },
+
+      pick_file: function (event) {
+        const file = (event.target.files || [])[0] || null;
+        this.selected_file = file;
+        this.file_name = file ? file.name : "";
+        this.file_size = file ? file.size : 0;
+        this.progress = 0;
+        this.upload_success = null;
+        this.upload_message = "";
+        this.imported_assets = [];
+      },
+
+      archive_hint: function () {
+        if (this.kind === "track") {
+          return "Accepted layouts: content/tracks/<track>, tracks/<track>, or a direct track folder.";
+        }
+        return "Accepted layouts: content/cars/<car>, cars/<car>, or a direct car folder.";
+      },
+
+      progress_label: function () {
+        if (!this.uploading) return "";
+        if (this.progress >= 100) return "Installing archive and rebuilding the content cache...";
+        return "Uploading archive...";
+      },
+
+      format_bytes: function (bytes) {
+        if (!bytes) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        let size = bytes;
+        let unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+          size /= 1024;
+          unit++;
+        }
+        return (size >= 100 || unit === 0 ? Math.round(size) : size.toFixed(1)) + " " + units[unit];
+      },
+
+      reset_picker: function () {
+        this.selected_file = null;
+        this.file_name = "";
+        this.file_size = 0;
+        this.progress = 0;
+        if (this.$refs.archive) {
+          this.$refs.archive.value = "";
+        }
+      },
+
+      submit_upload: function () {
+        if (this.uploading || !this.selected_file) return;
+
+        this.uploading = true;
+        this.progress = 0;
+        this.upload_success = null;
+        this.upload_message = "";
+        this.imported_assets = [];
+
+        const formData = new FormData();
+        formData.append("kind", this.kind);
+        formData.append("overwrite", this.overwrite ? "1" : "0");
+        formData.append("archive", this.selected_file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/content/upload");
+        xhr.responseType = "json";
+
+        xhr.upload.addEventListener("progress", (event) => {
+          if (!event.lengthComputable) return;
+          this.progress = Math.max(5, Math.round((event.loaded / event.total) * 100));
+        });
+
+        xhr.addEventListener("load", () => {
+          this.uploading = false;
+          const json = xhr.response || {};
+
+          if (xhr.status >= 200 && xhr.status < 300 && json.success) {
+            emit_content_counts(json);
+            this.upload_success = true;
+            this.upload_message = json.message || "Archive installed successfully.";
+            this.imported_assets = json.imported_assets || [];
+            this.reset_picker();
+            return;
+          }
+
+          this.progress = 0;
+          this.upload_success = false;
+          this.upload_message = json.message || "Upload failed.";
+        });
+
+        xhr.addEventListener("error", () => {
+          this.uploading = false;
+          this.progress = 0;
+          this.upload_success = false;
+          this.upload_message = "Upload failed.";
+        });
+
+        xhr.send(formData);
+      }
+    }
+  }
 </script>
 
 <form id="frmContent" method="POST" action="/content">
   <div class="pw-page-title">Content &amp; Mods</div>
 
-  <!-- Installation -->
   <div class="pw-card" x-data="install_path()">
     <div class="pw-card__header">
       <span class="pw-card__icon"><i class="fas fa-folder-open"></i></span>
@@ -118,50 +273,130 @@
     </div>
   </div>
 
-  <!-- Content Cache -->
-  <div class="pw-card" x-data="cache()">
-    <div class="pw-card__header">
-      <span class="pw-card__icon"><i class="fas fa-database"></i></span>
-      <div>
-        <div class="pw-card__title">Content Cache</div>
-        <div class="pw-card__subtitle">SM scans your AC install to build a content database used when configuring events</div>
+  <div class="cnt-grid">
+    <div class="pw-card" x-data="cache()" x-init="init()">
+      <div class="pw-card__header">
+        <span class="pw-card__icon"><i class="fas fa-database"></i></span>
+        <div>
+          <div class="pw-card__title">Content Cache</div>
+          <div class="pw-card__subtitle">SM scans the AC install and rebuilds the database used by events, classes, and the live server dashboard</div>
+        </div>
+      </div>
+      <div class="pw-card__body">
+        <div class="cnt-metrics">
+          <div class="cnt-metric">
+            <div class="cnt-metric__value" x-text="tracks_total"></div>
+            <div class="cnt-metric__label">Tracks</div>
+          </div>
+          <div class="cnt-metric">
+            <div class="cnt-metric__value" x-text="cars_total"></div>
+            <div class="cnt-metric__label">Cars</div>
+          </div>
+          <div class="cnt-metric">
+            <div class="cnt-metric__value" x-text="weathers_total"></div>
+            <div class="cnt-metric__label">Weathers</div>
+          </div>
+        </div>
+
+        <div class="cnt-inline-note">
+          <i class="fas fa-box-open"></i>
+          <span>Use reload when files were added manually to the AC install.</span>
+        </div>
+
+        {{ if (eq (derefInt .form.ModFilled) "1") }}
+        <button class="pw-btn pw-btn--dark" type="button" @click="load_content()" :disabled="loading">
+          <div class="loader" x-show="loading" style="width:14px;height:14px;border-width:2px;"></div>
+          <i class="fas fa-check" x-show="content_loaded && !loading" style="color:var(--c-green);"></i>
+          <i class="fas fa-sync" x-show="!loading && !content_loaded"></i>
+          <span x-show="!loading">Reload Content</span>
+          <span x-show="loading">Loading...</span>
+        </button>
+        {{ else }}
+        <p style="font-size:13px;color:var(--c-red);">
+          <i class="fas fa-info-circle"></i> Fill in a valid installation path and save before loading content
+        </p>
+        {{ end }}
+
+        <div class="cnt-feedback" x-show="notice" :class="notice_ok ? 'is-success' : 'is-error'">
+          <i class="fas" :class="notice_ok ? 'fa-check-circle' : 'fa-exclamation-circle'"></i>
+          <span x-text="notice"></span>
+        </div>
       </div>
     </div>
-    <div class="pw-card__body">
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px;">
-        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
-          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
-            x-text="tracks_total"></div>
-          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Tracks</div>
-        </div>
-        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
-          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
-            x-text="cars_total"></div>
-          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Cars</div>
-        </div>
-        <div style="background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 18px;">
-          <div style="font-size:22px;font-weight:700;letter-spacing:-0.03em;color:var(--c-text);font-family:var(--font-mono);"
-            x-text="weathers_total"></div>
-          <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--c-text-dim);margin-top:3px;">Weathers</div>
+
+    <div class="pw-card" x-data="upload_panel()">
+      <div class="pw-card__header">
+        <span class="pw-card__icon"><i class="fas fa-file-upload"></i></span>
+        <div>
+          <div class="pw-card__title">Upload Archive</div>
+          <div class="pw-card__subtitle">Import zipped cars or tracks directly into the configured AC installation and recache automatically</div>
         </div>
       </div>
-      {{ if (eq (derefInt .form.ModFilled) "1") }}
-      <button class="pw-btn pw-btn--dark" type="button" @click="load_content()" :disabled="loading">
-        <div class="loader" x-show="loading" style="width:14px;height:14px;border-width:2px;"></div>
-        <i class="fas fa-check" x-show="content_loaded && !loading" style="color:var(--c-green);"></i>
-        <i class="fas fa-sync" x-show="!loading && !content_loaded"></i>
-        <span x-show="!loading">Reload Content</span>
-        <span x-show="loading">Loading...</span>
-      </button>
-      {{ else }}
-      <p style="font-size:13px;color:var(--c-red);">
-        <i class="fas fa-info-circle"></i> Fill in a valid installation path and save before loading content
-      </p>
-      {{ end }}
+      <div class="pw-card__body">
+        <div class="cnt-kind-switch" role="tablist" aria-label="Archive type">
+          <button class="cnt-kind-switch__btn" type="button" :class="kind === 'car' ? 'is-active' : ''" @click="select_kind('car')">
+            <i class="fas fa-car"></i> Car Archive
+          </button>
+          <button class="cnt-kind-switch__btn" type="button" :class="kind === 'track' ? 'is-active' : ''" @click="select_kind('track')">
+            <i class="fas fa-road"></i> Track Archive
+          </button>
+        </div>
+
+        <div class="cnt-upload-drop" :class="file_name ? 'is-ready' : ''">
+          <div class="cnt-upload-drop__eyebrow">ZIP Archive</div>
+          <div class="cnt-upload-drop__title" x-text="file_name || 'Choose a .zip file to import'"></div>
+          <div class="cnt-upload-drop__meta" x-text="file_name ? format_bytes(file_size) + ' ready to install' : archive_hint()"></div>
+          <input id="content_archive" x-ref="archive" class="cnt-upload-input" type="file"
+            accept=".zip,application/zip" @change="pick_file($event)" />
+          <button class="pw-btn pw-btn--ghost" type="button" @click="browse()" :disabled="uploading">
+            <i class="fas fa-folder-open"></i> Browse Archive
+          </button>
+        </div>
+
+        <div class="pw-form-row" style="margin-bottom:14px;">
+          <div class="pw-toggle-row">
+            <div class="pw-toggle">
+              <input type="checkbox" class="toggle-checkbox" id="overwrite_upload" x-model="overwrite" />
+              <label class="toggle-label" for="overwrite_upload"></label>
+            </div>
+            <label class="pw-toggle-label-text" for="overwrite_upload">
+              Replace an existing car or track folder if the archive uses the same key
+            </label>
+          </div>
+        </div>
+
+        <div class="cnt-progress" x-show="uploading || progress > 0">
+          <div class="cnt-progress__head">
+            <span x-text="progress_label()"></span>
+            <span x-text="progress + '%'"></span>
+          </div>
+          <div class="cnt-progress__track">
+            <span :style="'width:' + progress + '%'"></span>
+          </div>
+        </div>
+
+        <div class="cnt-inline-note">
+          <i class="fas fa-info-circle"></i>
+          <span>Archives can contain a direct mod folder or the full <span class="cnt-inline-note__mono" x-text="kind === 'track' ? 'content/tracks' : 'content/cars'"></span> path.</span>
+        </div>
+
+        <button class="pw-btn pw-btn--primary" type="button" @click="submit_upload()" :disabled="uploading || !selected_file">
+          <div class="loader" x-show="uploading" style="width:14px;height:14px;border-width:2px;"></div>
+          <i class="fas fa-file-import" x-show="!uploading"></i>
+          <span x-text="uploading ? 'Uploading...' : 'Upload And Rebuild Cache'"></span>
+        </button>
+
+        <div class="cnt-feedback" x-show="upload_message" :class="upload_success ? 'is-success' : 'is-error'">
+          <i class="fas" :class="upload_success ? 'fa-check-circle' : 'fa-exclamation-triangle'"></i>
+          <div>
+            <div x-text="upload_message"></div>
+            <div class="cnt-feedback__meta" x-show="imported_assets.length > 0" x-text="'Installed: ' + imported_assets.join(', ')"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Custom Shaders Patch -->
   <div class="pw-card" x-data="csp()">
     <div class="pw-card__header">
       <span class="pw-card__icon"><i class="fas fa-magic"></i></span>

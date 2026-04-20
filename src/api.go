@@ -540,40 +540,138 @@ func apiTime(c *gin.Context) {
 }
 
 func apiRecacheContent(c *gin.Context) {
-
-	tracks, err := Dba.selectCacheTracks()
+	counts, err := refreshContentCounts()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
+		status := http.StatusInternalServerError
+		if errors.Is(err, errInstallPathNotConfigured) {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, map[string]any{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
-
-	cars, err := Dba.selectCacheCars()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	weathers, err := Dba.selectCacheWeathers()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	parseContent(Dba)
 	c.PureJSON(http.StatusOK, gin.H{
 		"result":         "ok",
-		"tracks_total":   len(tracks),
-		"cars_total":     len(cars),
-		"weathers_total": len(weathers),
+		"tracks_total":   counts.Tracks,
+		"cars_total":     counts.Cars,
+		"weathers_total": counts.Weathers,
+	})
+}
+
+func apiContentUpload(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxContentUploadSize)
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Could not read the upload. Use a .zip archive smaller than 2 GB.",
+		})
+		return
+	}
+
+	kind := strings.TrimSpace(c.PostForm("kind"))
+	overwrite := parseBoolFormValue(c.PostForm("overwrite"))
+
+	basepath, err := Dba.basepath()
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errInstallPathNotConfigured) {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	if strings.TrimSpace(basepath) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Set a valid Assetto Corsa installation path before uploading content.",
+		})
+		return
+	}
+
+	header, err := c.FormFile("archive")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Choose a .zip archive to upload.",
+		})
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Only .zip archives are supported.",
+		})
+		return
+	}
+
+	tempFile, err := os.CreateTemp(TempFolder, "sm-upload-*.zip")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Could not prepare the upload.",
+		})
+		return
+	}
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Could not prepare the upload.",
+		})
+		return
+	}
+	defer os.Remove(tempPath)
+
+	if err := c.SaveUploadedFile(header, tempPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Could not save the uploaded archive.",
+		})
+		return
+	}
+
+	result, err := importContentArchive(tempPath, basepath, kind, overwrite)
+	if err != nil {
+		var uploadErr contentUploadError
+		if errors.As(err, &uploadErr) {
+			c.JSON(uploadErr.Status, gin.H{
+				"success": false,
+				"message": uploadErr.Message,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	counts, err := refreshContentCounts()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.PureJSON(http.StatusOK, gin.H{
+		"success":        true,
+		"kind":           kind,
+		"imported_assets": result.AssetKeys,
+		"imported_count": len(result.AssetKeys),
+		"files_written":  result.FilesWritten,
+		"tracks_total":   counts.Tracks,
+		"cars_total":     counts.Cars,
+		"weathers_total": counts.Weathers,
+		"message":        fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), kind, strings.Join(result.AssetKeys, ", ")),
 	})
 }
 

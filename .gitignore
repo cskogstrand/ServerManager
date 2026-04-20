@@ -7,5 +7,5 @@ src/assets.go
 *.syso
 
 .idea
-/data/servermanager/logfile.log
-/data/servermanager/smdata.db
+/data
+/assetocorsa

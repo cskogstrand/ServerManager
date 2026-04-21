@@ -274,10 +274,10 @@ func formatByteCount(bytes int64) string {
 		unit++
 	}
 
-	if unit == 0 || value >= 100 {
+	if unit == 0 {
 		return fmt.Sprintf("%.0f %s", value, units[unit])
 	}
-	return fmt.Sprintf("%.1f %s", value, units[unit])
+	return fmt.Sprintf("%.3f %s", value, units[unit])
 }
 
 func find7zBinary() string {

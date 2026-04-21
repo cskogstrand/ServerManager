@@ -173,7 +173,7 @@ func main() {
 	router := gin.New()
 	if debug {
 		router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-			SkipPaths: []string{"/api/server/status"},
+			SkipPaths: []string{"/api/server/status", "/api/content/jobs/active"},
 		}))
 	}
 	router.Use(gin.Recovery())

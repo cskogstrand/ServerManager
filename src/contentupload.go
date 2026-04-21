@@ -298,7 +298,7 @@ func ensureArchiveExtractor(ext string) (string, error) {
 	if binary == "" {
 		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: "This archive format requires 7-Zip. Install `7z` or `7zz` on the ServerManager host to import rar/7z/tar-family archives.",
+			Message: "This archive format uses the 7-Zip binary available in the current runtime. No embedded 7-Zip library is bundled. If you are running in Docker, rebuild/restart the container so the packaged `7z` binary is present; otherwise install `7z`, `7zz`, or `7za` in this environment.",
 		}
 	}
 

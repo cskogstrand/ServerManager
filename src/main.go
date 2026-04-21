@@ -132,11 +132,7 @@ func main() {
 	mw := io.MultiWriter(os.Stdout, logfile, &LogBuffer)
 	log.SetOutput(mw)
 
-	TempFolder = "/tmp"
-	if runtime.GOOS == "windows" {
-		TempFolder = os.Getenv("TEMP")
-	}
-	TempFolder = filepath.Join(TempFolder, "servermanager")
+	TempFolder = filepath.Join(ConfigFolder, "tmp")
 	if _, err := os.Stat(TempFolder); os.IsNotExist(err) {
 		err := os.Mkdir(TempFolder, os.ModePerm)
 		if err != nil {

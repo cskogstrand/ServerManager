@@ -35,6 +35,140 @@ type DashboardClassEntryUpdate struct {
 	SkinKey     string `json:"skin_key"`
 }
 
+func apiContentJobsActive(c *gin.Context) {
+	c.PureJSON(http.StatusOK, gin.H{
+		"jobs": ContentJobs.ListVisible(),
+	})
+}
+
+func apiContentJob(c *gin.Context) {
+	job, ok := ContentJobs.Get(c.Param("id"))
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Content job not found.",
+		})
+		return
+	}
+
+	c.PureJSON(http.StatusOK, gin.H{
+		"job": job,
+	})
+}
+
+func runContentURLImportJob(jobID string, archiveURL string, sourceName string, basepath string, kind string, overwrite bool) {
+	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Status = "running"
+		job.Phase = "downloading"
+		job.Message = "Preparing download..."
+		job.Progress = 5
+	})
+
+	tempPath, err := newTempArchiveFile(sourceName)
+	if err != nil {
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.Status = "failed"
+			job.Phase = "failed"
+			job.Message = "Could not prepare the background import."
+			job.Progress = 0
+			job.FinishedAt = time.Now().Unix()
+		})
+		return
+	}
+	defer os.Remove(tempPath)
+
+	err = downloadContentArchive(archiveURL, tempPath, func(downloaded int64, total int64) {
+		progress := 20
+		if total > 0 {
+			progress = 10 + int(float64(downloaded)/float64(total)*55)
+			if progress > 65 {
+				progress = 65
+			}
+		}
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.Status = "running"
+			job.Phase = "downloading"
+			job.Message = buildContentJobDownloadMessage(downloaded, total)
+			job.Progress = progress
+			job.Downloaded = downloaded
+			job.DownloadTotal = total
+		})
+	})
+	if err != nil {
+		msg := err.Error()
+		var uploadErr contentUploadError
+		if errors.As(err, &uploadErr) {
+			msg = uploadErr.Message
+		}
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.Status = "failed"
+			job.Phase = "failed"
+			job.Message = msg
+			job.Progress = 0
+			job.FinishedAt = time.Now().Unix()
+		})
+		return
+	}
+
+	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Status = "running"
+		job.Phase = "extracting"
+		job.Message = "Archive downloaded. Importing content..."
+		job.Progress = 72
+	})
+
+	result, err := importContentArchive(tempPath, sourceName, basepath, kind, overwrite)
+	if err != nil {
+		msg := err.Error()
+		var uploadErr contentUploadError
+		if errors.As(err, &uploadErr) {
+			msg = uploadErr.Message
+		}
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.Status = "failed"
+			job.Phase = "failed"
+			job.Message = msg
+			job.Progress = 72
+			job.FinishedAt = time.Now().Unix()
+		})
+		return
+	}
+
+	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Status = "running"
+		job.Phase = "recaching"
+		job.Message = "Archive imported. Rebuilding the content cache..."
+		job.Progress = 90
+		job.FilesWritten = result.FilesWritten
+		job.ImportedAssets = result.AssetKeys
+	})
+
+	counts, err := refreshContentCounts()
+	if err != nil {
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.Status = "failed"
+			job.Phase = "failed"
+			job.Message = err.Error()
+			job.Progress = 90
+			job.FinishedAt = time.Now().Unix()
+		})
+		return
+	}
+
+	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Status = "completed"
+		job.Phase = "completed"
+		job.Message = fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), kind, strings.Join(result.AssetKeys, ", "))
+		job.Progress = 100
+		job.FilesWritten = result.FilesWritten
+		job.ImportedAssets = result.AssetKeys
+		job.TracksTotal = counts.Tracks
+		job.CarsTotal = counts.Cars
+		job.WeathersTotal = counts.Weathers
+		job.FinishedAt = time.Now().Unix()
+	})
+}
+
 func parseEntryListFile(path string) ([]DashboardClassEntryUpdate, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -566,7 +700,7 @@ func apiContentUpload(c *gin.Context) {
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Could not read the upload. Use a .zip archive smaller than 2 GB.",
+			"message": "Could not read the upload. Use a supported archive smaller than 2 GB.",
 		})
 		return
 	}
@@ -625,6 +759,42 @@ func apiContentUpload(c *gin.Context) {
 			return
 		}
 		sourceName = parsedURL.Path
+		if _, err := ensureSupportedArchiveName(sourceName); err != nil {
+			var uploadErr contentUploadError
+			if errors.As(err, &uploadErr) {
+				c.JSON(uploadErr.Status, gin.H{
+					"success": false,
+					"message": uploadErr.Message,
+				})
+				return
+			}
+		}
+	}
+
+	source := "upload"
+	if archiveURL != "" {
+		source = "url"
+		job := ContentJobs.Create(kind, source, sourceName, archiveURL)
+		go runContentURLImportJob(job.ID, archiveURL, sourceName, basepath, kind, overwrite)
+		c.PureJSON(http.StatusAccepted, gin.H{
+			"success": true,
+			"async":   true,
+			"job":     job,
+			"message": "Background import started.",
+		})
+		return
+	}
+
+	if _, err := ensureSupportedArchiveName(header.Filename); err != nil {
+		var uploadErr contentUploadError
+		if errors.As(err, &uploadErr) {
+			c.JSON(uploadErr.Status, gin.H{
+				"success": false,
+				"message": uploadErr.Message,
+			})
+			return
+		}
+		return
 	}
 
 	tempPath, err := newTempArchiveFile(sourceName)
@@ -637,44 +807,12 @@ func apiContentUpload(c *gin.Context) {
 	}
 	defer os.Remove(tempPath)
 
-	source := "upload"
-	if archiveURL != "" {
-		source = "url"
-		if err := downloadContentArchive(archiveURL, tempPath); err != nil {
-			var uploadErr contentUploadError
-			if errors.As(err, &uploadErr) {
-				c.JSON(uploadErr.Status, gin.H{
-					"success": false,
-					"message": uploadErr.Message,
-				})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-			return
-		}
-	} else {
-		if _, err := ensureSupportedArchiveName(header.Filename); err != nil {
-			var uploadErr contentUploadError
-			if errors.As(err, &uploadErr) {
-				c.JSON(uploadErr.Status, gin.H{
-					"success": false,
-					"message": uploadErr.Message,
-				})
-				return
-			}
-			return
-		}
-
-		if err := c.SaveUploadedFile(header, tempPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "Could not save the uploaded archive.",
-			})
-			return
-		}
+	if err := c.SaveUploadedFile(header, tempPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Could not save the uploaded archive.",
+		})
+		return
 	}
 
 	result, err := importContentArchive(tempPath, sourceName, basepath, kind, overwrite)
@@ -705,6 +843,7 @@ func apiContentUpload(c *gin.Context) {
 
 	c.PureJSON(http.StatusOK, gin.H{
 		"success":        true,
+		"async":          false,
 		"kind":           kind,
 		"source":         source,
 		"imported_assets": result.AssetKeys,

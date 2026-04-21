@@ -111,6 +111,69 @@
     }
   }
 
+  function content_jobs() {
+    return {
+      jobs: [],
+      timer: null,
+
+      init: function () {
+        this.fetch_jobs();
+        this.timer = setInterval(() => this.fetch_jobs(), 1000);
+      },
+
+      fetch_jobs: function () {
+        fetch("/api/content/jobs/active")
+          .then((response) => response.json())
+          .then((json) => {
+            this.jobs = json.jobs || [];
+            this.jobs.forEach((job) => {
+              if (job.status === "completed") {
+                emit_content_counts(job);
+              }
+            });
+          })
+          .catch(() => {});
+      },
+
+      status_label: function (job) {
+        if (job.status === "completed") return "Completed";
+        if (job.status === "failed") return "Failed";
+        if (job.phase === "downloading") return "Downloading";
+        if (job.phase === "extracting") return "Extracting";
+        if (job.phase === "recaching") return "Recaching";
+        return "Queued";
+      },
+
+      status_class: function (job) {
+        if (job.status === "completed") return "is-success";
+        if (job.status === "failed") return "is-error";
+        return "is-running";
+      },
+
+      format_bytes: function (bytes) {
+        if (!bytes) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        let size = bytes;
+        let unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+          size /= 1024;
+          unit++;
+        }
+        return (size >= 100 || unit === 0 ? Math.round(size) : size.toFixed(1)) + " " + units[unit];
+      },
+
+      progress_text: function (job) {
+        if (job.phase === "downloading" && job.download_total_bytes > 0) {
+          return this.format_bytes(job.downloaded_bytes) + " / " + this.format_bytes(job.download_total_bytes);
+        }
+        if (job.phase === "downloading" && job.downloaded_bytes > 0) {
+          return this.format_bytes(job.downloaded_bytes);
+        }
+        return job.progress + "%";
+      }
+    }
+  }
+
   function upload_panel() {
     return {
       kind: "car",
@@ -233,6 +296,15 @@
           this.uploading = false;
           this.progress = 100;
           const json = xhr.response || {};
+
+          if (xhr.status === 202 && json.job) {
+            this.progress = 0;
+            this.upload_success = true;
+            this.upload_message = json.message || "Background import started.";
+            this.imported_assets = [];
+            this.archive_url = "";
+            return;
+          }
 
           if (xhr.status >= 200 && xhr.status < 300 && json.success) {
             emit_content_counts(json);
@@ -440,6 +512,47 @@
             <div class="cnt-feedback__meta" x-show="imported_assets.length > 0" x-text="'Installed: ' + imported_assets.join(', ')"></div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pw-card" x-data="content_jobs()" x-init="init()">
+    <div class="pw-card__header">
+      <span class="pw-card__icon"><i class="fas fa-tasks"></i></span>
+      <div>
+        <div class="pw-card__title">Background Imports</div>
+        <div class="pw-card__subtitle">All connected clients see the same shared content import jobs and progress</div>
+      </div>
+    </div>
+    <div class="pw-card__body">
+      <template x-if="jobs.length === 0">
+        <div class="cnt-jobs-empty">No background imports right now.</div>
+      </template>
+      <div class="cnt-jobs" x-show="jobs.length > 0">
+        <template x-for="job in jobs" :key="job.id">
+          <div class="cnt-job" :class="status_class(job)">
+            <div class="cnt-job__head">
+              <div>
+                <div class="cnt-job__title">
+                  <span x-text="job.source === 'url' ? 'Remote archive import' : 'Archive import'"></span>
+                  <span class="cnt-job__badge" x-text="status_label(job)"></span>
+                </div>
+                <div class="cnt-job__meta">
+                  <span x-text="job.kind === 'track' ? 'Track' : 'Car'"></span>
+                  <span>·</span>
+                  <span x-text="job.source_name || job.source_url || 'archive'"></span>
+                </div>
+              </div>
+              <div class="cnt-job__progress" x-text="progress_text(job)"></div>
+            </div>
+            <div class="cnt-progress cnt-progress--job">
+              <div class="cnt-progress__track">
+                <span :style="'width:' + (job.progress || 0) + '%'"></span>
+              </div>
+            </div>
+            <div class="cnt-job__message" x-text="job.message || 'Waiting...'"></div>
+          </div>
+        </template>
       </div>
     </div>
   </div>

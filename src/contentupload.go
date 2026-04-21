@@ -162,6 +162,32 @@ func newTempArchiveFile(sourceName string) (string, error) {
 	return tempPath, nil
 }
 
+func buildContentJobDownloadMessage(downloaded int64, total int64) string {
+	if total > 0 {
+		return fmt.Sprintf("Downloading archive (%s / %s)...", formatByteCount(downloaded), formatByteCount(total))
+	}
+	return fmt.Sprintf("Downloading archive (%s)...", formatByteCount(downloaded))
+}
+
+func formatByteCount(bytes int64) string {
+	if bytes <= 0 {
+		return "0 B"
+	}
+
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	value := float64(bytes)
+	unit := 0
+	for value >= 1024 && unit < len(units)-1 {
+		value /= 1024
+		unit++
+	}
+
+	if unit == 0 || value >= 100 {
+		return fmt.Sprintf("%.0f %s", value, units[unit])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[unit])
+}
+
 func find7zBinary() string {
 	for _, name := range []string{"7z", "7zz", "7za"} {
 		if path, err := exec.LookPath(name); err == nil && path != "" {
@@ -236,7 +262,7 @@ func isArchiveContentType(mediaType string) bool {
 		strings.Contains(mediaType, "xz")
 }
 
-func downloadContentArchive(rawURL string, destinationPath string) error {
+func downloadContentArchive(rawURL string, destinationPath string, progress func(downloaded int64, total int64)) error {
 	archiveURL, err := validateArchiveURL(rawURL)
 	if err != nil {
 		return err
@@ -294,11 +320,42 @@ func downloadContentArchive(rawURL string, destinationPath string) error {
 	}
 	defer destinationFile.Close()
 
-	written, err := io.Copy(destinationFile, io.LimitReader(resp.Body, maxContentUploadSize+1))
-	if err != nil {
-		return contentUploadError{
-			Status:  http.StatusBadGateway,
-			Message: "The archive download was interrupted.",
+	if progress != nil {
+		progress(0, resp.ContentLength)
+	}
+
+	written := int64(0)
+	buffer := make([]byte, 1024*1024)
+	for {
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			written += int64(n)
+			if written > maxContentUploadSize {
+				return contentUploadError{
+					Status:  http.StatusBadRequest,
+					Message: "The remote archive is larger than 2 GB.",
+				}
+			}
+
+			if _, err := destinationFile.Write(buffer[:n]); err != nil {
+				return contentUploadError{
+					Status:  http.StatusBadGateway,
+					Message: "The archive download was interrupted.",
+				}
+			}
+			if progress != nil {
+				progress(written, resp.ContentLength)
+			}
+		}
+
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return contentUploadError{
+				Status:  http.StatusBadGateway,
+				Message: "The archive download was interrupted.",
+			}
 		}
 	}
 	if written > maxContentUploadSize {

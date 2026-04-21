@@ -30,6 +30,7 @@ var TempFolder string
 var SecretKey []byte
 var Zf ZipFile
 var LogBuffer bytes.Buffer
+var ContentJobs *ContentJobStore
 var Version = "development"
 
 // TODO: checksuming is failing when CSP is enabled
@@ -160,6 +161,7 @@ func main() {
 	Cr = ConfigRenderer{}
 	Status = ServerStatus{}
 	Zf = ZipFile{}
+	ContentJobs = NewContentJobStore()
 	Udp = udpListen()
 
 	go func() {
@@ -321,6 +323,8 @@ func main() {
 		api.GET("/time/:id", apiTime)
 
 		api.GET("/content/recache", apiRecacheContent)
+		api.GET("/content/jobs/active", apiContentJobsActive)
+		api.GET("/content/jobs/:id", apiContentJob)
 		api.POST("/content/upload", apiContentUpload)
 
 		api.POST("/validate/installpath", apiValidateInstallpath)

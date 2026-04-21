@@ -126,6 +126,27 @@ func archiveExtensionForPath(name string) string {
 	return ""
 }
 
+func archiveExtensionForContentType(mediaType string) string {
+	switch mediaType {
+	case "application/zip", "application/x-zip-compressed":
+		return ".zip"
+	case "application/vnd.rar", "application/x-rar-compressed":
+		return ".rar"
+	case "application/x-7z-compressed":
+		return ".7z"
+	case "application/x-tar":
+		return ".tar"
+	case "application/gzip", "application/x-gzip":
+		return ".gz"
+	case "application/x-bzip2":
+		return ".bz2"
+	case "application/x-xz":
+		return ".xz"
+	default:
+		return ""
+	}
+}
+
 func archiveRequires7z(ext string) bool {
 	return ext != "" && ext != ".zip"
 }
@@ -160,6 +181,77 @@ func newTempArchiveFile(sourceName string) (string, error) {
 	}
 
 	return tempPath, nil
+}
+
+func archiveNameFromContentDisposition(header string) string {
+	if strings.TrimSpace(header) == "" {
+		return ""
+	}
+
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil {
+		return ""
+	}
+
+	if filenameStar := strings.TrimSpace(params["filename*"]); filenameStar != "" {
+		parts := strings.SplitN(filenameStar, "''", 2)
+		if len(parts) == 2 {
+			if decoded, err := url.QueryUnescape(parts[1]); err == nil {
+				return filepath.Base(decoded)
+			}
+		}
+		return filepath.Base(filenameStar)
+	}
+
+	if filename := strings.TrimSpace(params["filename"]); filename != "" {
+		return filepath.Base(filename)
+	}
+
+	return ""
+}
+
+func detectArchiveNameFromFile(path string, fallback string) string {
+	if ext := archiveExtensionForPath(fallback); ext != "" {
+		base := strings.TrimSuffix(filepath.Base(fallback), ext)
+		if base == "" || base == "." || base == "/" {
+			base = "download"
+		}
+		return base + ext
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "download.zip"
+	}
+	defer file.Close()
+
+	buffer := make([]byte, 512)
+	n, err := io.ReadFull(file, buffer)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return "download.zip"
+	}
+	buffer = buffer[:n]
+
+	switch {
+	case len(buffer) >= 4 && string(buffer[:2]) == "PK":
+		return "download.zip"
+	case len(buffer) >= 8 && string(buffer[:8]) == "Rar!\x1a\x07\x00":
+		return "download.rar"
+	case len(buffer) >= 8 && string(buffer[:8]) == "Rar!\x1a\x07\x01":
+		return "download.rar"
+	case len(buffer) >= 6 && buffer[0] == 0x37 && buffer[1] == 0x7A && buffer[2] == 0xBC && buffer[3] == 0xAF && buffer[4] == 0x27 && buffer[5] == 0x1C:
+		return "download.7z"
+	case len(buffer) >= 2 && buffer[0] == 0x1F && buffer[1] == 0x8B:
+		return "download.gz"
+	case len(buffer) >= 3 && string(buffer[:3]) == "BZh":
+		return "download.bz2"
+	case len(buffer) >= 6 && buffer[0] == 0xFD && buffer[1] == 0x37 && buffer[2] == 0x7A && buffer[3] == 0x58 && buffer[4] == 0x5A && buffer[5] == 0x00:
+		return "download.xz"
+	case len(buffer) >= 265 && string(buffer[257:262]) == "ustar":
+		return "download.tar"
+	default:
+		return "download.zip"
+	}
 }
 
 func buildContentJobDownloadMessage(downloaded int64, total int64) string {
@@ -262,10 +354,10 @@ func isArchiveContentType(mediaType string) bool {
 		strings.Contains(mediaType, "xz")
 }
 
-func downloadContentArchive(rawURL string, destinationPath string, progress func(downloaded int64, total int64)) error {
+func downloadContentArchive(rawURL string, destinationPath string, progress func(downloaded int64, total int64)) (string, error) {
 	archiveURL, err := validateArchiveURL(rawURL)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), contentDownloadTimeout)
@@ -273,7 +365,7 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL.String(), nil)
 	if err != nil {
-		return fmt.Errorf("could not create download request: %w", err)
+		return "", fmt.Errorf("could not create download request: %w", err)
 	}
 	req.Header.Set("User-Agent", "ServerManager/ContentImport")
 
@@ -283,7 +375,7 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return contentUploadError{
+		return "", contentUploadError{
 			Status:  http.StatusBadGateway,
 			Message: "Could not download the archive URL.",
 		}
@@ -291,32 +383,38 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return contentUploadError{
+		return "", contentUploadError{
 			Status:  http.StatusBadGateway,
 			Message: fmt.Sprintf("Archive download failed with HTTP %d.", resp.StatusCode),
 		}
 	}
 	if resp.ContentLength > maxContentUploadSize {
-		return contentUploadError{
+		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
 			Message: "The remote archive is larger than 2 GB.",
 		}
 	}
 
+	resolvedName := archiveNameFromContentDisposition(resp.Header.Get("Content-Disposition"))
 	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
 	if contentType != "" {
 		mediaType, _, parseErr := mime.ParseMediaType(contentType)
 		if parseErr == nil && !isArchiveContentType(mediaType) {
-			return contentUploadError{
+			return "", contentUploadError{
 				Status:  http.StatusBadRequest,
 				Message: "The remote URL did not return a supported archive.",
+			}
+		}
+		if resolvedName == "" {
+			if ext := archiveExtensionForContentType(mediaType); ext != "" {
+				resolvedName = "download" + ext
 			}
 		}
 	}
 
 	destinationFile, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("could not prepare downloaded archive: %w", err)
+		return "", fmt.Errorf("could not prepare downloaded archive: %w", err)
 	}
 	defer destinationFile.Close()
 
@@ -331,14 +429,14 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 		if n > 0 {
 			written += int64(n)
 			if written > maxContentUploadSize {
-				return contentUploadError{
+				return "", contentUploadError{
 					Status:  http.StatusBadRequest,
 					Message: "The remote archive is larger than 2 GB.",
 				}
 			}
 
 			if _, err := destinationFile.Write(buffer[:n]); err != nil {
-				return contentUploadError{
+				return "", contentUploadError{
 					Status:  http.StatusBadGateway,
 					Message: "The archive download was interrupted.",
 				}
@@ -352,20 +450,20 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 			break
 		}
 		if readErr != nil {
-			return contentUploadError{
+			return "", contentUploadError{
 				Status:  http.StatusBadGateway,
 				Message: "The archive download was interrupted.",
 			}
 		}
 	}
 	if written > maxContentUploadSize {
-		return contentUploadError{
+		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
 			Message: "The remote archive is larger than 2 GB.",
 		}
 	}
 
-	return nil
+	return detectArchiveNameFromFile(destinationPath, resolvedName), nil
 }
 
 func importContentArchive(archivePath string, archiveName string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {

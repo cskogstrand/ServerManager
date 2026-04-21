@@ -77,7 +77,7 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 	}
 	defer os.Remove(tempPath)
 
-	err = downloadContentArchive(archiveURL, tempPath, func(downloaded int64, total int64) {
+	resolvedName, err := downloadContentArchive(archiveURL, tempPath, func(downloaded int64, total int64) {
 		progress := 20
 		if total > 0 {
 			progress = 10 + int(float64(downloaded)/float64(total)*55)
@@ -108,6 +108,12 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 			job.FinishedAt = time.Now().Unix()
 		})
 		return
+	}
+	if resolvedName != "" {
+		sourceName = resolvedName
+		ContentJobs.Update(jobID, func(job *ContentJob) {
+			job.SourceName = resolvedName
+		})
 	}
 
 	ContentJobs.Update(jobID, func(job *ContentJob) {
@@ -759,16 +765,6 @@ func apiContentUpload(c *gin.Context) {
 			return
 		}
 		sourceName = parsedURL.Path
-		if _, err := ensureSupportedArchiveName(sourceName); err != nil {
-			var uploadErr contentUploadError
-			if errors.As(err, &uploadErr) {
-				c.JSON(uploadErr.Status, gin.H{
-					"success": false,
-					"message": uploadErr.Message,
-				})
-				return
-			}
-		}
 	}
 
 	source := "upload"

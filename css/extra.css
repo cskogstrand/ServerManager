@@ -3391,6 +3391,32 @@ select {
   transition: width 0.18s ease;
 }
 
+.cnt-upload-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.cnt-upload-actions__overwrite {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.cnt-upload-actions__submit {
+  flex: 0 0 auto;
+}
+
+.cnt-upload-actions__hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
 .cnt-feedback {
   display: flex;
   align-items: flex-start;

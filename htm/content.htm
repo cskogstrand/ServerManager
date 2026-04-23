@@ -472,18 +472,6 @@
           </template>
         </div>
 
-        <div class="pw-form-row" style="margin-bottom:14px;">
-          <div class="pw-toggle-row">
-            <div class="pw-toggle">
-              <input type="checkbox" class="toggle-checkbox" id="overwrite_upload" x-model="overwrite" />
-              <label class="toggle-label" for="overwrite_upload"></label>
-            </div>
-            <label class="pw-toggle-label-text" for="overwrite_upload">
-              Replace an existing car or track folder if the archive uses the same key
-            </label>
-          </div>
-        </div>
-
         <div class="cnt-progress" x-show="uploading || progress > 0">
           <div class="cnt-progress__head">
             <span x-text="progress_label()"></span>
@@ -499,11 +487,25 @@
           <span>Archives can contain a direct mod folder or the full <span class="cnt-inline-note__mono" x-text="kind === 'track' ? 'content/tracks' : 'content/cars'"></span> path.</span>
         </div>
 
-        <button class="pw-btn pw-btn--primary" type="button" @click="submit_upload()" :disabled="uploading || !can_submit()">
-          <div class="loader" x-show="uploading" style="width:14px;height:14px;border-width:2px;"></div>
-          <i class="fas" x-show="!uploading" :class="source_mode === 'url' ? 'fa-cloud-download-alt' : 'fa-file-import'"></i>
-          <span x-text="uploading ? (source_mode === 'url' ? 'Downloading...' : 'Uploading...') : (source_mode === 'url' ? 'Download And Rebuild Cache' : 'Upload And Rebuild Cache')"></span>
-        </button>
+        <div class="cnt-upload-actions">
+          <label class="cnt-upload-actions__overwrite" for="overwrite_upload">
+            <span class="pw-toggle">
+              <input type="checkbox" class="toggle-checkbox" id="overwrite_upload" x-model="overwrite" />
+              <span class="toggle-label"></span>
+            </span>
+            <span class="pw-toggle-label-text">Overwrite existing folder</span>
+          </label>
+
+          <button class="pw-btn pw-btn--primary cnt-upload-actions__submit" type="button" @click="submit_upload()" :disabled="uploading || !can_submit()">
+            <div class="loader" x-show="uploading" style="width:14px;height:14px;border-width:2px;"></div>
+            <i class="fas" x-show="!uploading" :class="source_mode === 'url' ? 'fa-cloud-download-alt' : 'fa-file-import'"></i>
+            <span x-text="uploading ? (source_mode === 'url' ? 'Downloading...' : 'Uploading...') : (source_mode === 'url' ? 'Download And Rebuild Cache' : 'Upload And Rebuild Cache')"></span>
+          </button>
+        </div>
+
+        <div class="cnt-upload-actions__hint">
+          Replaces an existing car or track folder when the archive uses the same key.
+        </div>
 
         <div class="cnt-feedback" x-show="upload_message" :class="upload_success ? 'is-success' : 'is-error'">
           <i class="fas" :class="upload_success ? 'fa-check-circle' : 'fa-exclamation-triangle'"></i>

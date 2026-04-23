@@ -21,12 +21,18 @@
       sort_by: "name",
       country_filter: "all",
       quick_filter: "all",
+      render_count: 40,
+      render_step: 40,
+      render_observer: null,
       saving: false,
       notice: "",
       current_event_id: 0,
       is_running: false,
 
       init() {
+        ["search", "sort_by", "country_filter", "quick_filter"].forEach((key) => {
+          this.$watch(key, () => this.reset_render_count());
+        });
         fetch("/api/server/status")
           .then((r) => r.json())
           .then((j) => {
@@ -37,10 +43,31 @@
             const cfg = ev.track_config || (j.session || {}).track_config || "";
             this.selected = key ? key + ":" + cfg : "";
             this.$nextTick(() => {
+              this.setup_render_observer();
               const el = document.querySelector(".mob-choice.is-on");
               if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
             });
           });
+      },
+
+      setup_render_observer() {
+        if (this.render_observer) this.render_observer.disconnect();
+        if (!this.$refs.renderMore) return;
+        this.render_observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) this.load_more();
+          });
+        }, { root: this.$refs.resultsBody, rootMargin: "200px 0px" });
+        this.render_observer.observe(this.$refs.renderMore);
+      },
+
+      reset_render_count() {
+        this.render_count = this.render_step;
+        this.$nextTick(() => this.setup_render_observer());
+      },
+
+      load_more() {
+        this.render_count += this.render_step;
       },
 
       track_value(track) {
@@ -123,6 +150,10 @@
           }
           return this.normalize(a.name || a.key).localeCompare(this.normalize(b.name || b.key));
         });
+      },
+
+      displayed() {
+        return this.filtered().slice(0, this.render_count);
       },
 
       preview(key, config) {
@@ -212,8 +243,8 @@
   </div>
 
   <!-- List -->
-  <div class="mob-page__body">
-    <template x-for="track in filtered()" :key="track_value(track)">
+  <div class="mob-page__body" x-ref="resultsBody">
+    <template x-for="track in displayed()" :key="track_value(track)">
       <button class="mob-choice" type="button"
         :class="{ 'is-on': selected === track_value(track) }"
         @click="selected = track_value(track)">
@@ -233,6 +264,9 @@
     <template x-if="filtered().length === 0">
       <div class="mob-page__empty">No tracks match the current search or filters.</div>
     </template>
+    <div class="mob-page__lazy-sentinel" x-show="displayed().length < filtered().length" x-ref="renderMore">
+      Loading more tracks…
+    </div>
   </div>
 
   <!-- Footer -->

@@ -24,6 +24,9 @@
       quick_filter: "all",
       chip_limit: null,
       show_all_chips: false,
+      render_count: 40,
+      render_step: 40,
+      render_observer: null,
       saving: false,
       notice: "",
       current_event_id: 0,
@@ -33,6 +36,9 @@
         this.$watch("entries", () => {
           this.show_all_chips = false;
           this.$nextTick(() => this.measure_chip_limit());
+        });
+        ["search", "sort_by", "brand_filter", "class_filter", "quick_filter"].forEach((key) => {
+          this.$watch(key, () => this.reset_render_count());
         });
         window.addEventListener("resize", () => {
           this.$nextTick(() => this.measure_chip_limit());
@@ -53,6 +59,7 @@
               this.$nextTick(() => {
                 this.scroll_to_first_selected();
                 this.measure_chip_limit();
+                this.setup_render_observer();
               });
             } else {
               const classId = ev.class_id || 0;
@@ -69,11 +76,32 @@
                     this.$nextTick(() => {
                       this.scroll_to_first_selected();
                       this.measure_chip_limit();
+                      this.setup_render_observer();
                     });
                   });
               }
             }
           });
+      },
+
+      setup_render_observer() {
+        if (this.render_observer) this.render_observer.disconnect();
+        if (!this.$refs.renderMore) return;
+        this.render_observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) this.load_more();
+          });
+        }, { root: this.$refs.resultsBody, rootMargin: "200px 0px" });
+        this.render_observer.observe(this.$refs.renderMore);
+      },
+
+      reset_render_count() {
+        this.render_count = this.render_step;
+        this.$nextTick(() => this.setup_render_observer());
+      },
+
+      load_more() {
+        this.render_count += this.render_step;
       },
 
       scroll_to_first_selected() {
@@ -229,6 +257,10 @@
         });
       },
 
+      displayed() {
+        return this.filtered().slice(0, this.render_count);
+      },
+
       apply() {
         if (this.entries.length === 0) { this.notice = "Select at least one car."; return; }
         if (!this.current_event_id) { this.notice = "No running or queued event available."; return; }
@@ -349,8 +381,8 @@
   </div>
 
   <!-- List -->
-  <div class="mob-page__body">
-    <template x-for="car in filtered()" :key="car.key">
+  <div class="mob-page__body" x-ref="resultsBody">
+    <template x-for="car in displayed()" :key="car.key">
       <button class="mob-choice" type="button"
         :class="{ 'is-on': is_selected(car.key) }"
         @click="toggle(car)">
@@ -370,6 +402,9 @@
     <template x-if="filtered().length === 0">
       <div class="mob-page__empty">No cars match the current search or filters.</div>
     </template>
+    <div class="mob-page__lazy-sentinel" x-show="displayed().length < filtered().length" x-ref="renderMore">
+      Loading more cars…
+    </div>
   </div>
 
   <!-- Footer -->

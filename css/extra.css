@@ -1860,6 +1860,13 @@ select {
   font-size: 13px;
 }
 
+.mob-page__lazy-sentinel {
+  padding: 14px 16px 18px;
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+}
+
 .mob-page__footer {
   display: flex;
   align-items: center;

@@ -57,6 +57,11 @@ type contentArchiveImportResult struct {
 	FilesWritten int
 }
 
+func touchInstalledAsset(path string) error {
+	now := time.Now()
+	return os.Chtimes(path, now, now)
+}
+
 type detectedArchiveAsset struct {
 	Key      string
 	RootPath string
@@ -608,6 +613,9 @@ func importZipArchive(archivePath string, destinationRoot string, kind string, o
 		if err := os.Rename(sourcePath, targetPath); err != nil {
 			return contentArchiveImportResult{}, fmt.Errorf("could not install %q: %w", asset.Key, err)
 		}
+		if err := touchInstalledAsset(targetPath); err != nil {
+			return contentArchiveImportResult{}, fmt.Errorf("could not timestamp %q: %w", asset.Key, err)
+		}
 	}
 
 	keys := make([]string, 0, len(assets))
@@ -740,6 +748,9 @@ func importArchiveVia7z(archivePath string, destinationRoot string, kind string,
 
 		if err := os.Rename(sourcePath, targetPath); err != nil {
 			return contentArchiveImportResult{}, fmt.Errorf("could not install %q: %w", asset.Key, err)
+		}
+		if err := touchInstalledAsset(targetPath); err != nil {
+			return contentArchiveImportResult{}, fmt.Errorf("could not timestamp %q: %w", asset.Key, err)
 		}
 		keys = append(keys, asset.Key)
 	}

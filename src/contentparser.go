@@ -239,7 +239,6 @@ func parseTracks(dba Dbaccess) map[string]string {
 		track.Key = &key
 		track.Config = &config
 		track.Length = &parsedLen
-		track.ContentPath, track.ModifiedAt = statContentMetadata(jsonpath)
 
 		return track, nil
 	}
@@ -299,6 +298,8 @@ func parseTracks(dba Dbaccess) map[string]string {
 
 				track, err := parsejson(jsonpath, element.Name(), config.Name())
 				if err == nil {
+					contentPath := filepath.Join(trackspath, element.Name())
+					track.ContentPath, track.ModifiedAt = statContentMetadata(contentPath)
 					sliceMutex.Lock()
 					tracks = append(tracks, track)
 					sliceMutex.Unlock()
@@ -313,6 +314,8 @@ func parseTracks(dba Dbaccess) map[string]string {
 
 			track, err := parsejson(jsonpath, element.Name(), "")
 			if err == nil {
+				contentPath := filepath.Join(trackspath, element.Name())
+				track.ContentPath, track.ModifiedAt = statContentMetadata(contentPath)
 				sliceMutex.Lock()
 				tracks = append(tracks, track)
 				sliceMutex.Unlock()
@@ -438,7 +441,8 @@ func parseCars(dba Dbaccess) map[string]string {
 
 		key := element.Name()
 		result.Key = &key
-		result.ContentPath, result.ModifiedAt = statContentMetadata(jsonpath)
+		contentPath := filepath.Join(carspath, element.Name())
+		result.ContentPath, result.ModifiedAt = statContentMetadata(contentPath)
 
 		return result, nil
 	}

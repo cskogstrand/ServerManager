@@ -1531,12 +1531,22 @@ select {
   color: #93c5fd;
   white-space: nowrap;
   flex-shrink: 0;
+  min-width: 0;
+  max-width: min(44vw, 180px);
+}
+
+.mob-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .mob-chip--more {
   background: rgba(15, 23, 42, 0.92);
   color: #bfdbfe;
   cursor: pointer;
+  max-width: none;
 }
 
 .mob-chip--more:hover {

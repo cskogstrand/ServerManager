@@ -1505,11 +1505,17 @@ select {
 /* ── Selected-car chips bar */
 .mob-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 7px;
   padding: 8px 14px;
   border-bottom: 1px solid rgba(30, 41, 59, 0.8);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.mob-chips.is-expanded {
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .mob-chip {
@@ -1525,6 +1531,17 @@ select {
   color: #93c5fd;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.mob-chip--more {
+  background: rgba(15, 23, 42, 0.92);
+  color: #bfdbfe;
+  cursor: pointer;
+}
+
+.mob-chip--more:hover {
+  border-color: rgba(147, 197, 253, 0.55);
+  background: rgba(30, 41, 59, 0.96);
 }
 
 .mob-chip__remove {
@@ -1544,6 +1561,18 @@ select {
   transition: background 0.12s;
 }
 .mob-chip__remove:hover { background: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+
+.mob-chip-measure {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: 7px;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
 
 .mob-choice--grid.is-on .mob-choice--grid__check { opacity: 1; }
 

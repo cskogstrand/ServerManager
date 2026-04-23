@@ -22,12 +22,22 @@
       brand_filter: "all",
       class_filter: "all",
       quick_filter: "all",
+      chip_limit: null,
+      show_all_chips: false,
       saving: false,
       notice: "",
       current_event_id: 0,
       is_running: false,
 
       init() {
+        this.$watch("entries", () => {
+          this.show_all_chips = false;
+          this.$nextTick(() => this.measure_chip_limit());
+        });
+        window.addEventListener("resize", () => {
+          this.$nextTick(() => this.measure_chip_limit());
+        });
+
         fetch("/api/server/status")
           .then((r) => r.json())
           .then((j) => {
@@ -40,7 +50,10 @@
                 cache_car_key: e.cache_car_key,
                 skin_key: e.skin_key || this.first_skin(e.cache_car_key)
               }));
-              this.$nextTick(() => this.scroll_to_first_selected());
+              this.$nextTick(() => {
+                this.scroll_to_first_selected();
+                this.measure_chip_limit();
+              });
             } else {
               const classId = ev.class_id || 0;
               if (classId) {
@@ -53,7 +66,10 @@
                         skin_key: e.skin_key || this.first_skin(e.cache_car_key)
                       }))
                       .filter((e) => e.cache_car_key && e.skin_key);
-                    this.$nextTick(() => this.scroll_to_first_selected());
+                    this.$nextTick(() => {
+                      this.scroll_to_first_selected();
+                      this.measure_chip_limit();
+                    });
                   });
               }
             }
@@ -92,6 +108,53 @@
 
       remove(carKey) {
         this.entries = this.entries.filter((e) => e.cache_car_key !== carKey);
+      },
+
+      chip_entries() {
+        if (this.show_all_chips || this.hidden_chip_count() === 0) return this.entries;
+        return this.entries.slice(0, this.chip_limit);
+      },
+
+      hidden_chip_count() {
+        if (this.show_all_chips || this.chip_limit === null) return 0;
+        return Math.max(this.entries.length - this.chip_limit, 0);
+      },
+
+      measure_chip_limit() {
+        const wrap = this.$refs.chipWrap;
+        const measure = this.$refs.chipMeasure;
+        const more = this.$refs.chipMeasureMore;
+        if (!wrap || !measure || !more || this.show_all_chips) return;
+        if (this.entries.length === 0) {
+          this.chip_limit = null;
+          return;
+        }
+
+        const available = wrap.clientWidth;
+        if (!available) return;
+
+        const chips = Array.from(measure.querySelectorAll("[data-chip-measure]"));
+        const gap = 7;
+        const widths = chips.map((chip) => Math.ceil(chip.getBoundingClientRect().width));
+        const moreWidth = Math.ceil(more.getBoundingClientRect().width);
+        let used = 0;
+        let visible = 0;
+
+        for (let i = 0; i < widths.length; i++) {
+          const remaining = widths.length - (i + 1);
+          const chipWidth = widths[i] + (visible > 0 ? gap : 0);
+          const reserve = remaining > 0 ? gap + moreWidth : 0;
+          if ((used + chipWidth + reserve) > available) break;
+          used += chipWidth;
+          visible += 1;
+        }
+
+        if (visible >= this.entries.length) {
+          this.chip_limit = this.entries.length;
+          return;
+        }
+
+        this.chip_limit = Math.max(visible, 0);
       },
 
       car_img(carKey) {
@@ -210,8 +273,8 @@
   </div>
 
   <!-- Selected chips -->
-  <div class="mob-chips" x-show="entries.length > 0">
-    <template x-for="entry in entries" :key="entry.cache_car_key">
+  <div class="mob-chips" :class="{ 'is-expanded': show_all_chips }" x-show="entries.length > 0" x-ref="chipWrap">
+    <template x-for="entry in chip_entries()" :key="entry.cache_car_key">
       <div class="mob-chip">
         <span x-text="car_name(entry.cache_car_key)"></span>
         <button class="mob-chip__remove" type="button"
@@ -220,6 +283,29 @@
         </button>
       </div>
     </template>
+    <button
+      class="mob-chip mob-chip--more"
+      type="button"
+      x-show="hidden_chip_count() > 0"
+      @click="show_all_chips = true; $nextTick(() => measure_chip_limit())"
+      x-text="hidden_chip_count() + ' more'"></button>
+    <button
+      class="mob-chip mob-chip--more"
+      type="button"
+      x-show="show_all_chips && entries.length > 1"
+      @click="show_all_chips = false; $nextTick(() => measure_chip_limit())">Show less</button>
+  </div>
+
+  <div class="mob-chip-measure" aria-hidden="true" x-ref="chipMeasure">
+    <template x-for="entry in entries" :key="'measure-' + entry.cache_car_key">
+      <div class="mob-chip" data-chip-measure>
+        <span x-text="car_name(entry.cache_car_key)"></span>
+        <button class="mob-chip__remove" type="button" tabindex="-1">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </template>
+    <button class="mob-chip mob-chip--more" type="button" x-ref="chipMeasureMore">99 more</button>
   </div>
 
   <!-- Search -->

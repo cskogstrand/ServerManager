@@ -1433,6 +1433,15 @@ select {
   display: block;
 }
 
+.mob-choice__submeta {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
 .mob-choice__check {
   font-size: 11px;
   color: #2563eb;
@@ -1721,6 +1730,74 @@ select {
   padding: 10px 14px;
   border-bottom: 1px solid rgba(30, 41, 59, 0.8);
   flex-shrink: 0;
+}
+
+.mob-filterbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mob-select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mob-select-wrap__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.mob-select {
+  width: 100%;
+  background: rgba(5, 10, 22, 0.9);
+  border: 1px solid rgba(30, 41, 59, 0.9);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #e2e8f0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.mob-select:focus { border-color: #2563eb; }
+
+.mob-filterchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mob-filterchip {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.9);
+  background: rgba(12, 20, 38, 0.8);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.mob-filterchip.is-on {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(37, 99, 235, 0.55);
+  color: #bfdbfe;
+}
+
+.mob-filterchip:hover:not(.is-on) {
+  border-color: rgba(37, 99, 235, 0.3);
+  color: #cbd5e1;
 }
 
 .mob-page__body {

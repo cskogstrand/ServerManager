@@ -194,13 +194,15 @@ type DropDownList struct {
 }
 
 type CacheCar struct {
-	Id    *int
-	Key   *string   `json:"key"`
-	Name  *string   `json:"name"`
-	Brand *string   `json:"brand"`
-	Desc  *string   `json:"description"`
-	Tags  *[]string `json:"tags"`
-	Class *string   `json:"class"`
+	Id          *int
+	Key         *string   `json:"key"`
+	Name        *string   `json:"name"`
+	Brand       *string   `json:"brand"`
+	Desc        *string   `json:"description"`
+	Tags        *[]string `json:"tags"`
+	Class       *string   `json:"class"`
+	ContentPath *string   `json:"content_path,omitempty"`
+	ModifiedAt  *int64    `json:"modified_at,omitempty"`
 	Specs struct {
 		Bhp          string `json:"bhp"`
 		Torque       string `json:"torque"`
@@ -219,18 +221,20 @@ type CacheCar struct {
 }
 
 type CacheTrack struct {
-	Id       *int
-	Key      *string   `json:"key"`
-	Config   *string   `json:"config"`
-	Name     *string   `json:"name"`
-	Desc     *string   `json:"desc"`
-	Tags     *[]string `json:"tags"`
-	Country  *string   `json:"country"`
-	City     *string   `json:"city"`
-	Length   *int      `json:"length"`
-	Width    *string   `json:"width"`
-	Pitboxes *int      `json:"pitboxes,string"`
-	Run      *string   `json:"run"`
+	Id          *int
+	Key         *string   `json:"key"`
+	Config      *string   `json:"config"`
+	Name        *string   `json:"name"`
+	Desc        *string   `json:"desc"`
+	Tags        *[]string `json:"tags"`
+	Country     *string   `json:"country"`
+	City        *string   `json:"city"`
+	Length      *int      `json:"length"`
+	Width       *string   `json:"width"`
+	Pitboxes    *int      `json:"pitboxes,string"`
+	Run         *string   `json:"run"`
+	ContentPath *string   `json:"content_path,omitempty"`
+	ModifiedAt  *int64    `json:"modified_at,omitempty"`
 }
 
 type CacheWeather struct {

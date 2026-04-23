@@ -23,6 +23,16 @@ func stripBOM(s string) string {
 	return strings.TrimPrefix(s, "\xef\xbb\xbf")
 }
 
+func statContentMetadata(path string) (*string, *int64) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, nil
+	}
+
+	modifiedAt := info.ModTime().Unix()
+	return &path, &modifiedAt
+}
+
 func parseContent(dba Dbaccess) {
 	zipfiles := map[string]string{}
 	var mutex = &sync.RWMutex{}
@@ -229,6 +239,7 @@ func parseTracks(dba Dbaccess) map[string]string {
 		track.Key = &key
 		track.Config = &config
 		track.Length = &parsedLen
+		track.ContentPath, track.ModifiedAt = statContentMetadata(jsonpath)
 
 		return track, nil
 	}
@@ -427,6 +438,7 @@ func parseCars(dba Dbaccess) map[string]string {
 
 		key := element.Name()
 		result.Key = &key
+		result.ContentPath, result.ModifiedAt = statContentMetadata(jsonpath)
 
 		return result, nil
 	}

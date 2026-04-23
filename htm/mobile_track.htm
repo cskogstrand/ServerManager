@@ -18,6 +18,9 @@
       tracks: {{ .track_data }},
       selected: "",
       search: "",
+      sort_by: "name",
+      country_filter: "all",
+      quick_filter: "all",
       saving: false,
       notice: "",
       current_event_id: 0,
@@ -57,13 +60,68 @@
         return parts.join(" · ");
       },
 
+      normalize(value) {
+        return (value || "").toString().trim();
+      },
+
+      country_options() {
+        return [...new Set(this.tracks.map((track) => this.normalize(track.country)).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b));
+      },
+
+      is_recent(unixSeconds) {
+        if (!unixSeconds) return false;
+        return (Date.now() / 1000) - unixSeconds <= 60 * 60 * 24 * 30;
+      },
+
+      relative_time(unixSeconds) {
+        if (!unixSeconds) return "";
+        const diffSeconds = Math.round(unixSeconds - (Date.now() / 1000));
+        const abs = Math.abs(diffSeconds);
+        const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+        if (abs < 3600) return rtf.format(Math.round(diffSeconds / 60), "minute");
+        if (abs < 86400) return rtf.format(Math.round(diffSeconds / 3600), "hour");
+        if (abs < 604800) return rtf.format(Math.round(diffSeconds / 86400), "day");
+        if (abs < 2629800) return rtf.format(Math.round(diffSeconds / 604800), "week");
+        return rtf.format(Math.round(diffSeconds / 2629800), "month");
+      },
+
+      updated_label(track) {
+        return track.modified_at ? "Updated " + this.relative_time(track.modified_at) : "";
+      },
+
+      length_label(track) {
+        if (!track.length) return "";
+        return (track.length / 1000).toFixed(1) + " km";
+      },
+
       filtered() {
         const q = this.search.trim().toLowerCase();
-        if (!q) return this.tracks;
-        return this.tracks.filter((t) => {
+        const items = this.tracks.filter((t) => {
           const tags = (t.tags || []).join(" ").toLowerCase();
-          return [t.name||"", t.key||"", t.config||"", t.country||"", t.city||"", tags]
+          const matchesSearch = !q || [t.name||"", t.key||"", t.config||"", t.country||"", t.city||"", tags]
             .join(" ").toLowerCase().includes(q);
+          const matchesCountry = this.country_filter === "all" || this.normalize(t.country) === this.country_filter;
+          const matchesQuick = this.quick_filter === "all"
+            || (this.quick_filter === "selected" && this.selected === this.track_value(t))
+            || (this.quick_filter === "recent" && this.is_recent(t.modified_at));
+          return matchesSearch && matchesCountry && matchesQuick;
+        });
+
+        return items.slice().sort((a, b) => {
+          if (this.sort_by === "recent") {
+            const diff = (b.modified_at || 0) - (a.modified_at || 0);
+            if (diff !== 0) return diff;
+          }
+          if (this.sort_by === "length") {
+            const diff = (b.length || 0) - (a.length || 0);
+            if (diff !== 0) return diff;
+          }
+          if (this.sort_by === "country") {
+            const diff = this.normalize(a.country).localeCompare(this.normalize(b.country));
+            if (diff !== 0) return diff;
+          }
+          return this.normalize(a.name || a.key).localeCompare(this.normalize(b.name || b.key));
         });
       },
 
@@ -126,6 +184,31 @@
   <div class="mob-page__search">
     <input class="mob-search" type="search" x-model="search"
       placeholder="Search tracks…" autocomplete="off" autofocus />
+    <div class="mob-filterbar">
+      <label class="mob-select-wrap">
+        <span class="mob-select-wrap__label">Sort</span>
+        <select class="mob-select" x-model="sort_by" aria-label="Sort tracks">
+          <option value="name">Name A-Z</option>
+          <option value="recent">Recently updated</option>
+          <option value="length">Longest first</option>
+          <option value="country">Country A-Z</option>
+        </select>
+      </label>
+      <label class="mob-select-wrap">
+        <span class="mob-select-wrap__label">Country</span>
+        <select class="mob-select" x-model="country_filter" aria-label="Filter tracks by country">
+          <option value="all">All countries</option>
+          <template x-for="country in country_options()" :key="country">
+            <option :value="country" x-text="country"></option>
+          </template>
+        </select>
+      </label>
+    </div>
+    <div class="mob-filterchips" role="group" aria-label="Quick track filters">
+      <button class="mob-filterchip" type="button" :class="{ 'is-on': quick_filter === 'all' }" @click="quick_filter = 'all'">All</button>
+      <button class="mob-filterchip" type="button" :class="{ 'is-on': quick_filter === 'selected' }" @click="quick_filter = 'selected'">Current</button>
+      <button class="mob-filterchip" type="button" :class="{ 'is-on': quick_filter === 'recent' }" @click="quick_filter = 'recent'">Updated 30d</button>
+    </div>
   </div>
 
   <!-- List -->
@@ -141,12 +224,14 @@
           <span class="mob-choice__name" x-text="track.name || track.key"></span>
           <span class="mob-choice__meta"
             x-text="[track.config || 'default', track.country || '', track.city || ''].filter(Boolean).join(' · ')"></span>
+          <span class="mob-choice__submeta"
+            x-text="[length_label(track), updated_label(track)].filter(Boolean).join(' · ')"></span>
         </div>
         <span class="mob-choice__check"><i class="fas fa-check"></i></span>
       </button>
     </template>
     <template x-if="filtered().length === 0">
-      <div class="mob-page__empty">No tracks match your search.</div>
+      <div class="mob-page__empty">No tracks match the current search or filters.</div>
     </template>
   </div>
 

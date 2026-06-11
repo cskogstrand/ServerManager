@@ -92,13 +92,14 @@
             uid: Math.random().toString(16).slice(2),
             cache_car_key: x["cache_car_key"],
             skin_key: x["skin_key"],
+            count: x["count"] > 0 ? x["count"] : 1,
           };
           this.class_cars.push(car);
         });
       },
 
       car_add: function () {
-        var obj = {};
+        var obj = { count: 1 };
         this.class_cars.push(obj);
         this.car_changed(obj);
       },
@@ -442,6 +443,11 @@
                   <i class="fas fa-grip-horizontal"></i>
                 </button>
               </div>
+            </div>
+            <div>
+              <label class="pw-label">Number of cars</label>
+              <input class="pw-input" type="number" min="1" max="64" style="width: 90px;"
+                x-model.number="car.count" @input="if (car.count < 1) car.count = 1" />
             </div>
           </div>
           <div class="pw-entry-card__actions">

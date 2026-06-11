@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"math"
 	"net"
 	"strconv"
+	"time"
 
 	"golang.org/x/text/encoding/unicode/utf32"
 )
@@ -260,16 +262,19 @@ func logSession(prefix string, sess SessionInfo) {
 	)
 }
 
-func udpListen() UdpPlugin {
-	var udp UdpPlugin
-	udpClient, err := net.ResolveUDPAddr("udp", ":5001")
+// udpListen binds the plugin socket pair for one instance: we listen on
+// listenPort (UDP_PLUGIN_ADDRESS) and send commands to acServer on serverPort
+// (UDP_PLUGIN_LOCAL_PORT).
+func udpListen(listenPort int, serverPort int) *UdpPlugin {
+	udp := &UdpPlugin{}
+	udpClient, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(listenPort))
 	if err != nil {
-		log.Print("Could not resolve UPD on 5001: ", err)
+		log.Printf("Could not resolve UDP on %d: %v", listenPort, err)
 	}
 
-	udpServer, err := net.ResolveUDPAddr("udp", ":5000")
+	udpServer, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(serverPort))
 	if err != nil {
-		log.Print("Could not resolve UPD on 5000: ", err)
+		log.Printf("Could not resolve UDP on %d: %v", serverPort, err)
 	}
 
 	udp.conn, err = net.DialUDP("udp", udpClient, udpServer)
@@ -280,9 +285,43 @@ func udpListen() UdpPlugin {
 	return udp
 }
 
-func (udp UdpPlugin) Receive() {
+func (udp *UdpPlugin) Close() {
+	if udp.conn != nil {
+		udp.conn.Close()
+	}
+}
+
+func (udp UdpPlugin) write(data []byte) {
+	if udp.conn == nil {
+		return
+	}
+	udp.conn.Write(data)
+}
+
+// udpLoop pumps plugin packets until the connection is closed (instance
+// removed or ports rebound).
+func (inst *Instance) udpLoop() {
+	for inst.udpReceive() {
+	}
+}
+
+// udpReceive handles one packet; returns false when the loop should stop.
+func (inst *Instance) udpReceive() bool {
+	udp := inst.Udp
+	if udp == nil || udp.conn == nil {
+		return false
+	}
+
 	data := make([]byte, 1024)
-	udp.conn.Read(data)
+	if _, err := udp.conn.Read(data); err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			return false
+		}
+		// Transient errors (e.g. ICMP port unreachable while acServer is
+		// down) just mean there is nothing to process right now.
+		time.Sleep(100 * time.Millisecond)
+		return true
+	}
 
 	r := UdpReader{}
 	r.New(data)
@@ -306,29 +345,36 @@ func (udp UdpPlugin) Receive() {
 	case acspVersion:
 		v := r.ReadByte()
 		log.Print("ACSP_VERSION: ", v)
-		Udp.online = true
+		udp.online = true
 
 	case acspNewSession:
 		sess := readSessionInfo(r)
-		if !sess.sameAs(Status.Session) {
+		inst.mu.Lock()
+		if !sess.sameAs(inst.Status.Session) {
 			logSession("ACSP_NEW_SESSION", sess)
 		}
-		Status.Session = sess
+		inst.Status.Session = sess
+		inst.mu.Unlock()
 
 	case acspSessionInfo:
 		sess := readSessionInfo(r)
-		if !sess.sameAs(Status.Session) {
+		inst.mu.Lock()
+		if !sess.sameAs(inst.Status.Session) {
 			logSession("ACSP_SESSION_INFO", sess)
 		}
-		Status.Session = sess
+		inst.Status.Session = sess
+		inst.mu.Unlock()
 
 	case acspEndSession:
 		file := r.ReadUTF32String()
 		log.Print("ACSP_END_SESSION: " + file)
 
-		if Status.Session.currentSessionIndex == Status.Session.sessionCount-1 {
+		inst.mu.Lock()
+		lastSession := inst.Status.Session.currentSessionIndex == inst.Status.Session.sessionCount-1
+		inst.mu.Unlock()
+		if lastSession {
 			log.Print("UDP Plugin triggers Server Change Track")
-			Status.serverChangeTrack()
+			inst.serverChangeTrack()
 		}
 
 	case acspClientEvent:
@@ -374,7 +420,9 @@ func (udp UdpPlugin) Receive() {
 		nc.carId = r.ReadByte()
 		nc.carModel = r.ReadString()
 		nc.carSkin = r.ReadString()
-		Status.Players = Status.Players + 1
+		inst.mu.Lock()
+		inst.Status.Players = inst.Status.Players + 1
+		inst.mu.Unlock()
 		log.Print("ACSP_NEW_CONNECTION: ")
 		PrintInterface(nc)
 
@@ -385,7 +433,9 @@ func (udp UdpPlugin) Receive() {
 		cc.carId = r.ReadByte()
 		cc.carModel = r.ReadString()
 		cc.carSkin = r.ReadString()
-		Status.Players = Status.Players - 1
+		inst.mu.Lock()
+		inst.Status.Players = inst.Status.Players - 1
+		inst.mu.Unlock()
 		log.Print("ACSP_CONNECTION_CLOSED: ")
 		PrintInterface(cc)
 
@@ -400,46 +450,48 @@ func (udp UdpPlugin) Receive() {
 	default:
 		log.Print("ACSP Unknown code: "+strconv.Itoa(acsp), data)
 	}
+
+	return true
 }
 
 func (udp UdpPlugin) WriteAdminCommand(command string) {
 	var w UdpWriter
 	w.WriteByte(acspAdminCommand)
 	w.WriteUTF32String(command)
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteBroadcastChat(message string) {
 	var w UdpWriter
 	w.WriteByte(acspBroadcastChat)
 	w.WriteUTF32String(message)
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteGetCarInfo(carid int) {
 	var w UdpWriter
 	w.WriteByte(acspGetCarInfo)
 	w.WriteByte(byte(carid))
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteKickUser(carid int) {
 	var w UdpWriter
 	w.WriteByte(acspKickUser)
 	w.WriteByte(byte(carid))
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteNextSession() {
 	var w UdpWriter
 	w.WriteByte(acspNextSession)
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteRestartSession() {
 	var w UdpWriter
 	w.WriteByte(acspRestartSession)
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }
 
 func (udp UdpPlugin) WriteSendChat(carid int, message string) {
@@ -447,5 +499,5 @@ func (udp UdpPlugin) WriteSendChat(carid int, message string) {
 	w.WriteByte(acspSendChat)
 	w.WriteByte(byte(carid))
 	w.WriteUTF32String(message)
-	udp.conn.Write(w.data)
+	udp.write(w.data)
 }

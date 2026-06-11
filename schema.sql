@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS user_class_entry (
   cache_car_key TEXT NOT NULL,
   skin_key TEXT NOT NULL,
   ballast INTEGER,
+  car_count INTEGER NOT NULL DEFAULT 1,
 
   FOREIGN KEY (user_class_id) REFERENCES user_class(id) ON DELETE RESTRICT,
   FOREIGN KEY (cache_car_key) REFERENCES cache_car(key) ON DELETE RESTRICT
@@ -223,8 +224,20 @@ CREATE TABLE IF NOT EXISTS server_event (
   started_at INTEGER,
   finished INTEGER DEFAULT 0,
   orderby INTEGER,
+  instance_id INTEGER NOT NULL DEFAULT 1,
 
   FOREIGN KEY (user_event_id) REFERENCES user_event(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS server_instance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  udp_port INTEGER NOT NULL,
+  tcp_port INTEGER NOT NULL,
+  http_port INTEGER NOT NULL,
+  plugin_port INTEGER NOT NULL,
+  plugin_listen_port INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1
 );
 
 
@@ -247,6 +260,11 @@ ON users (name);
 
 -- DEFAULT VALUES
 INSERT OR IGNORE INTO user_config (id, name, udp_port, tcp_port, http_port, client_send_interval, num_threads, secret_key) VALUES (1, 'SM Server', 9600, 9600, 8081, 18, 2, hex(randomblob(16)));
+
+-- Default instance inherits the ports historically stored in user_config
+INSERT OR IGNORE INTO server_instance (id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port)
+SELECT 1, COALESCE(name, 'SM Server'), COALESCE(udp_port, 9600), COALESCE(tcp_port, 9600), COALESCE(http_port, 8081), 5000, 5001
+FROM user_config WHERE id = 1;
 
 -- DEFAULT USERNAME admin PASSWORD admin
 INSERT OR IGNORE INTO users (id, name, password) VALUES (1, 'admin', '$2a$08$BvgMQY6H60BhcK9wM79RBu9IlURIP26BWYcCiWJjs06L1yEdkUif2');

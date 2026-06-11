@@ -18,42 +18,45 @@ type ServerStatus struct {
 
 var publicIp string
 
-func cspTrackBase() string {
-	return filepath.Join(TempFolder, "content", "tracks", "csp")
+func (inst *Instance) cspTrackBase() string {
+	return filepath.Join(inst.Dir(), "content", "tracks", "csp")
 }
 
-func cspTrackFolder() string {
-	return filepath.Join(cspTrackBase(), *Cr.track.Key, *Cr.track.Config)
+func (inst *Instance) cspTrackFolder() string {
+	return filepath.Join(inst.cspTrackBase(), *inst.Cr.track.Key, *inst.Cr.track.Config)
 }
 
-func ensureCspTrackAliases() {
-	if !Cr.cspRequired {
+func (inst *Instance) ensureCspTrackAliases() {
+	if !inst.Cr.cspRequired {
 		return
 	}
 
-	if err := os.MkdirAll(cspTrackFolder(), os.ModePerm); err != nil {
+	if err := os.MkdirAll(inst.cspTrackFolder(), os.ModePerm); err != nil {
 		log.Print("Could not create CSP track folder: ", err)
 	}
 
-	if Cr.cspVersion != "" {
-		if err := os.MkdirAll(filepath.Join(cspTrackBase(), Cr.cspVersion), os.ModePerm); err != nil {
+	if inst.Cr.cspVersion != "" {
+		if err := os.MkdirAll(filepath.Join(inst.cspTrackBase(), inst.Cr.cspVersion), os.ModePerm); err != nil {
 			log.Print("Could not create CSP version folder: ", err)
 		}
 	}
 
-	if Cr.cspLetter != "" {
-		if err := os.MkdirAll(filepath.Join(cspTrackBase(), Cr.cspLetter), os.ModePerm); err != nil {
+	if inst.Cr.cspLetter != "" {
+		if err := os.MkdirAll(filepath.Join(inst.cspTrackBase(), inst.Cr.cspLetter), os.ModePerm); err != nil {
 			log.Print("Could not create CSP alias folder: ", err)
 		}
 	}
 }
 
-func (stats ServerStatus) refresh() {
-	Status.Status = isRunning()
-	Status.PublicIp = publicIp
+func (inst *Instance) refresh() {
+	running := inst.isRunning()
+	inst.mu.Lock()
+	inst.Status.Status = running
+	inst.Status.PublicIp = publicIp
+	inst.mu.Unlock()
 }
 
-func (status ServerStatus) updatePublicIp() {
+func updatePublicIp() {
 	ticker := time.NewTicker(5 * time.Minute)
 	quit := make(chan struct{})
 	go func() {
@@ -63,6 +66,7 @@ func (status ServerStatus) updatePublicIp() {
 				res, err := http.Get("https://api.ipify.org")
 				if err != nil {
 					log.Print("Failed to query IP: ", err)
+					continue
 				}
 				ip, err := io.ReadAll(res.Body)
 				if err != nil {
@@ -77,35 +81,35 @@ func (status ServerStatus) updatePublicIp() {
 	}()
 }
 
-func (status ServerStatus) serverChangeTrack() {
+func (inst *Instance) serverChangeTrack() {
 	log.Print("Kicking players for track change")
 	// Haven't found a cleaner way to notify the users the track is about to change but to kick them
-	for i := range Cr.maxClients {
-		Udp.WriteKickUser(i)
+	for i := range inst.Cr.maxClients {
+		inst.Udp.WriteKickUser(i)
 	}
 	time.Sleep(3 * time.Second)
 
-	stop()
+	inst.stop()
 	val := 1
-	Cr.serverEvent.Finished = &val
-	Dba.updateServerEvent(Cr.serverEvent)
-	if Status.serverApplyTrack() {
-		start()
+	inst.Cr.serverEvent.Finished = &val
+	Dba.updateServerEvent(inst.Cr.serverEvent)
+	if inst.serverApplyTrack() {
+		inst.start()
 	} else {
 		log.Print("End")
 	}
 }
 
-func (status ServerStatus) serverApplyTrack() bool {
-	nextevents, err := Dba.selectServerEvents(true)
+func (inst *Instance) serverApplyTrack() bool {
+	nextevents, err := Dba.selectServerEvents(true, inst.Id())
 
 	if err != nil {
 		log.Print("Database error: ", err)
 	}
 
 	if len(nextevents) == 0 {
-		log.Print("No events in queue")
+		log.Print("No events in queue for instance ", inst.Name())
 		return false
 	}
-	return applyServerEvent(nextevents[0])
+	return applyServerEvent(inst, nextevents[0])
 }

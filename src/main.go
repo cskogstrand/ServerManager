@@ -22,9 +22,7 @@ import (
 )
 
 var Dba Dbaccess
-var Cr ConfigRenderer
-var Status ServerStatus
-var Udp UdpPlugin
+var Instances *InstanceManager
 var ConfigFolder string
 var TempFolder string
 var SecretKey []byte
@@ -154,17 +152,13 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 
-	Cr = ConfigRenderer{}
-	Status = ServerStatus{}
 	Zf = ZipFile{}
 	ContentJobs = NewContentJobStore()
-	Udp = udpListen()
 
-	go func() {
-		for {
-			Udp.Receive()
-		}
-	}()
+	Instances = NewInstanceManager()
+	if err := Instances.LoadFromDb(); err != nil {
+		log.Fatal("Could not load server instances: ", err)
+	}
 
 	router := gin.New()
 	if debug {
@@ -340,6 +334,13 @@ func main() {
 		api.GET("/queue/movedown/:id", apiQueueMoveDown)
 		api.GET("/queue/skipevent", apiQueueSkipEvent)
 		api.GET("/queue/clearcompleted", apiQueueClearCompleted)
+		api.POST("/queue/event/:id", apiQueueAddEvent)
+		api.POST("/queue/category/:id", apiQueueAddCategory)
+
+		api.GET("/instances", apiInstances)
+		api.POST("/instances", apiInstanceCreate)
+		api.PUT("/instances/:id", apiInstanceUpdate)
+		api.DELETE("/instances/:id", apiInstanceDelete)
 	}
 
 	router.NoRoute(route404)
@@ -348,16 +349,17 @@ func main() {
 		OpenURL("http://localhost:3030")
 	}
 
-	Status.updatePublicIp()
+	updatePublicIp()
 
 	if cfg.AutoStartServer != nil && *cfg.AutoStartServer > 0 {
 		go func() {
-			if isRunning() {
+			inst := Instances.Default()
+			if inst == nil || inst.isRunning() {
 				return
 			}
-			if Status.serverApplyTrack() {
+			if inst.serverApplyTrack() {
 				log.Print("Auto-starting server from queue on launch")
-				start()
+				inst.start()
 			} else {
 				log.Print("Auto-start enabled but no unfinished queue event was available")
 			}

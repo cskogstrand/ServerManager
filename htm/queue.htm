@@ -189,6 +189,18 @@
         </div>
       </div>
       <div class="pw-card__body">
+        {{ if gt (len .instances) 1 }}
+        <!-- Instance row -->
+        <div style="margin-bottom: 14px; max-width: 280px;">
+          <label class="pw-label" for="instance">Server instance</label>
+          <select class="pw-select" id="instance" name="instance">
+            {{range $inst := .instances}}
+            <option value="{{ $inst.Id }}">{{ $inst.Name }}</option>
+            {{ end }}
+          </select>
+        </div>
+        {{ end }}
+
         <!-- Category row -->
         <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
           <div style="flex: 1; min-width: 200px;">

@@ -79,6 +79,12 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("cache_track", "modified_at", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for cache_track.modified_at: ", err)
 	}
+	if err := dba.ensureColumn("user_class_entry", "car_count", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		log.Fatal("Error applying database migration for user_class_entry.car_count: ", err)
+	}
+	if err := dba.ensureColumn("server_event", "instance_id", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		log.Fatal("Error applying database migration for server_event.instance_id: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -331,13 +337,23 @@ func (dba Dbaccess) updateContent(cfg UserConfig) (int64, error) {
 	return affected, nil
 }
 
-func (dba Dbaccess) selectServerEvents(notfinished bool) ([]ServerEvent, error) {
+// selectServerEvents returns queued events; instanceId 0 means all instances.
+func (dba Dbaccess) selectServerEvents(notfinished bool, instanceId int) ([]ServerEvent, error) {
 
 	orderby := " ORDER BY orderby ASC"
 
-	where := ""
+	conditions := []string{}
+	args := []any{}
 	if notfinished {
-		where = " WHERE finished = 0"
+		conditions = append(conditions, "finished = 0")
+	}
+	if instanceId > 0 {
+		conditions = append(conditions, "s.instance_id = ?")
+		args = append(args, instanceId)
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	rows, err := dba.db.Query(`
@@ -351,7 +367,8 @@ SELECT
 	tw.name as time_name,
 	ct.name as category_name,
 	s.started_at as started_at,
-	s.finished as finished
+	s.finished as finished,
+	s.instance_id as instance_id
 FROM server_event s
 JOIN user_event u
 	on s.user_event_id = u.id
@@ -367,7 +384,7 @@ JOIN user_session e
 JOIN user_class c
 	on u.class_id = c.id
 JOIN user_time tw
-	on u.time_id = tw.id` + where + orderby)
+	on u.time_id = tw.id`+where+orderby, args...)
 
 	if err != nil {
 		return nil, tracerr.Wrap(err)
@@ -382,7 +399,7 @@ JOIN user_time tw
 	list := make([]ServerEvent, 0)
 	for rows.Next() {
 		se := ServerEvent{}
-		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished)
+		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -394,7 +411,7 @@ JOIN user_time tw
 }
 
 func (dba Dbaccess) selectServerEvent(id int) (ServerEvent, error) {
-	events, err := dba.selectServerEvents(false)
+	events, err := dba.selectServerEvents(false, 0)
 	if err != nil {
 		return ServerEvent{}, err
 	}
@@ -406,14 +423,17 @@ func (dba Dbaccess) selectServerEvent(id int) (ServerEvent, error) {
 	return ServerEvent{}, sql.ErrNoRows
 }
 
-func (dba Dbaccess) insertServerEvent(event int) (int64, error) {
-	sql := "INSERT INTO server_event (user_event_id, orderby) SELECT ?, (SELECT ifnull(MAX(orderby)+1, 1) FROM server_event)"
+func (dba Dbaccess) insertServerEvent(event int, instanceId int) (int64, error) {
+	if instanceId <= 0 {
+		instanceId = 1
+	}
+	sql := "INSERT INTO server_event (user_event_id, instance_id, orderby) SELECT ?, ?, (SELECT ifnull(MAX(orderby)+1, 1) FROM server_event)"
 
 	stmt, err := dba.db.Prepare(sql)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
-	res, err := stmt.Exec(event)
+	res, err := stmt.Exec(event, instanceId)
 	defer stmt.Close()
 
 	if err != nil {
@@ -428,7 +448,10 @@ func (dba Dbaccess) insertServerEvent(event int) (int64, error) {
 	return affected, nil
 }
 
-func (dba Dbaccess) insertServerEventCategory(category int) (int64, error) {
+func (dba Dbaccess) insertServerEventCategory(category int, instanceId int) (int64, error) {
+	if instanceId <= 0 {
+		instanceId = 1
+	}
 	stmt, err := dba.db.Prepare("SELECT id FROM user_event WHERE event_category_id = ?")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
@@ -450,11 +473,11 @@ func (dba Dbaccess) insertServerEventCategory(category int) (int64, error) {
 	}
 
 	for _, id := range ids {
-		stmt, err := dba.db.Prepare("INSERT INTO server_event (user_event_id, orderby) VALUES (?, (SELECT ifnull(MAX(orderby)+1, 1) FROM server_event))")
+		stmt, err := dba.db.Prepare("INSERT INTO server_event (user_event_id, instance_id, orderby) VALUES (?, ?, (SELECT ifnull(MAX(orderby)+1, 1) FROM server_event))")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-		res, err := stmt.Exec(id)
+		res, err := stmt.Exec(id, instanceId)
 		defer stmt.Close()
 
 		if err != nil {
@@ -495,14 +518,14 @@ func (dba Dbaccess) updateServerEvent(se ServerEvent) (int64, error) {
 }
 
 func (dba Dbaccess) updateServerEventMoveUp(id int) error {
-	stmt, err := dba.db.Prepare("SELECT id, MAX(orderby) as orderby FROM server_event WHERE orderby < (SELECT orderby FROM server_event WHERE id = ?)")
+	stmt, err := dba.db.Prepare("SELECT id, MAX(orderby) as orderby FROM server_event WHERE orderby < (SELECT orderby FROM server_event WHERE id = ?) AND instance_id = (SELECT instance_id FROM server_event WHERE id = ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	var oldid int
 	var orderby int
-	err = stmt.QueryRow(id).Scan(&oldid, &orderby)
+	err = stmt.QueryRow(id, id).Scan(&oldid, &orderby)
 
 	if err != nil {
 		return err
@@ -538,14 +561,14 @@ func (dba Dbaccess) updateServerEventMoveUp(id int) error {
 }
 
 func (dba Dbaccess) updateServerEventMoveDown(id int) error {
-	stmt, err := dba.db.Prepare("SELECT id, MIN(orderby) as orderby FROM server_event WHERE orderby > (SELECT orderby FROM server_event WHERE id = ?)")
+	stmt, err := dba.db.Prepare("SELECT id, MIN(orderby) as orderby FROM server_event WHERE orderby > (SELECT orderby FROM server_event WHERE id = ?) AND instance_id = (SELECT instance_id FROM server_event WHERE id = ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	var oldid int
 	var orderby int
-	err = stmt.QueryRow(id).Scan(&oldid, &orderby)
+	err = stmt.QueryRow(id, id).Scan(&oldid, &orderby)
 
 	if err != nil {
 		return err
@@ -1217,7 +1240,7 @@ func (dba Dbaccess) selectClassEntries(id int) (UserClass, error) {
 		return cls, err
 	}
 
-	stmt, err = dba.db.Prepare("SELECT id, user_class_id, cache_car_key, skin_key, ballast FROM user_class_entry WHERE user_class_id = ?")
+	stmt, err = dba.db.Prepare("SELECT id, user_class_id, cache_car_key, skin_key, ballast, car_count FROM user_class_entry WHERE user_class_id = ?")
 	if err != nil {
 		return cls, err
 	}
@@ -1227,7 +1250,7 @@ func (dba Dbaccess) selectClassEntries(id int) (UserClass, error) {
 	cls.Entries = make([]UserClassEntry, 0)
 	for rows.Next() {
 		ent := UserClassEntry{}
-		err = rows.Scan(&ent.Id, &ent.UserClassId, &ent.CacheCarKey, &ent.SkinKey, &ent.Ballast)
+		err = rows.Scan(&ent.Id, &ent.UserClassId, &ent.CacheCarKey, &ent.SkinKey, &ent.Ballast, &ent.Count)
 		if err != nil {
 			return cls, err
 		}
@@ -1295,11 +1318,15 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 	}
 
 	for _, ent := range cls.Entries {
-		stmt, err = dba.db.Prepare("INSERT INTO user_class_entry (user_class_id, cache_car_key, skin_key) VALUES (?, ?, ?)")
+		count := 1
+		if ent.Count != nil && *ent.Count > 0 {
+			count = *ent.Count
+		}
+		stmt, err = dba.db.Prepare("INSERT INTO user_class_entry (user_class_id, cache_car_key, skin_key, car_count) VALUES (?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-		_, err = stmt.Exec(cls.Id, ent.CacheCarKey, ent.SkinKey)
+		_, err = stmt.Exec(cls.Id, ent.CacheCarKey, ent.SkinKey, count)
 		defer stmt.Close()
 
 		if err != nil {
@@ -1308,6 +1335,72 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 	}
 
 	return 1, nil
+}
+
+func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
+	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled FROM server_instance ORDER BY id ASC")
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	list := make([]ServerInstance, 0)
+	for rows.Next() {
+		si := ServerInstance{}
+		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled)
+		if err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		list = append(list, si)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+
+	return list, nil
+}
+
+func (dba Dbaccess) insertServerInstance(si ServerInstance) (int64, error) {
+	stmt, err := dba.db.Prepare("INSERT INTO server_instance (name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+
+	res, err := stmt.Exec(si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return res.LastInsertId()
+}
+
+func (dba Dbaccess) updateServerInstance(si ServerInstance) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE server_instance SET name = ?, udp_port = ?, tcp_port = ?, http_port = ?, plugin_port = ?, plugin_listen_port = ? WHERE id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+
+	res, err := stmt.Exec(si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort, si.Id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return res.RowsAffected()
+}
+
+func (dba Dbaccess) deleteServerInstance(id int) (int64, error) {
+	stmt, err := dba.db.Prepare("DELETE FROM server_event WHERE instance_id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	if _, err = stmt.Exec(id); err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return dba.deleteFrom(id, "server_instance")
 }
 
 func (dba Dbaccess) updateCacheCars(cars []CacheCar) (int64, error) {

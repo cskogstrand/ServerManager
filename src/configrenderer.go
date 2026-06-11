@@ -44,8 +44,8 @@ func (cr *ConfigRenderer) timeToSunAngle(timeStr *string) int {
 	return angle
 }
 
-func (cr *ConfigRenderer) writeIni() {
-	cfgfolder := filepath.Join(TempFolder, "cfg")
+func (cr *ConfigRenderer) writeIni(dir string) {
+	cfgfolder := filepath.Join(dir, "cfg")
 	err := os.MkdirAll(cfgfolder, os.ModePerm)
 	if err != nil {
 		log.Print("Could not create temp folder: ", cfgfolder, err)
@@ -62,7 +62,7 @@ func (cr *ConfigRenderer) writeIni() {
 	}
 }
 
-func (cr *ConfigRenderer) renderIni(eventId int) {
+func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 	r := regexp.MustCompile(`\d{1,3}`)
 
 	event, err := Dba.selectEvent(eventId)
@@ -107,6 +107,19 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		return
 	}
 
+	// Expand each entry by its car count so one list row can yield N grid slots
+	expanded := make([]UserClassEntry, 0, len(class.Entries))
+	for _, ent := range class.Entries {
+		count := 1
+		if ent.Count != nil && *ent.Count > 0 {
+			count = *ent.Count
+		}
+		for i := 0; i < count; i++ {
+			expanded = append(expanded, ent)
+		}
+	}
+	class.Entries = expanded
+
 	track, err := Dba.selectCacheTrack(*event.CacheTrackKey, *event.CacheTrackConfig)
 	if err != nil {
 		log.Print("Database error: ", err)
@@ -123,7 +136,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	cr.cspVersion = ""
 	cr.cspLetter = ""
 	if cfg.CspRequired != nil && *cfg.CspRequired > 0 && cfg.CspVersion != nil && *cfg.CspVersion > 0 {
-		Cr.cspRequired = true
+		cr.cspRequired = true
 		cspLetter := ""
 
 		cspPhycars := cfg.CspPhycars != nil && *cfg.CspPhycars > 0
@@ -150,7 +163,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		cr.cspLetter = strings.TrimPrefix(cspLetter, "/../")
 		cspstr = "csp/" + cr.cspVersion + cspLetter + "/../"
 	} else {
-		Cr.cspRequired = false
+		cr.cspRequired = false
 	}
 
 	// Weather CSP? build new graphics string
@@ -230,7 +243,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 		},
 	}
 
-	if Cr.serverCfgIni == nil {
+	if cr.serverCfgIni == nil {
 		file, err := OpenAsset("/ini/server_cfg.ini")
 		if err != nil {
 			log.Print("Could not open template file server_cfg.ini: ", err)
@@ -240,7 +253,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 			if err != nil {
 				log.Print("Could not read template file server_cfg.ini: ", err)
 			}
-			Cr.serverCfgIni, err = ttemplate.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
+			cr.serverCfgIni, err = ttemplate.New("server_cfg.ini").Funcs(funcMap).Parse(string(tmplStr))
 			if err != nil {
 				log.Print("Error parsing server_cfg.ini template: ", err)
 			}
@@ -250,6 +263,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	data := map[string]any{
 		"event":       event,
 		"config":      cfg,
+		"instance":    instance,
 		"diff":        diff,
 		"session":     session,
 		"time":        tm,
@@ -262,12 +276,12 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	}
 
 	var b bytes.Buffer
-	err = Cr.serverCfgIni.Execute(&b, data)
+	err = cr.serverCfgIni.Execute(&b, data)
 	if err != nil {
 		log.Print("Error executing server_cfg.ini template: ", err)
 	}
 
-	if Cr.entryListIni == nil {
+	if cr.entryListIni == nil {
 		file, err := OpenAsset("/ini/entry_list.ini")
 		if err != nil {
 			log.Print("Could not open template file entry_list.ini: ", err)
@@ -277,7 +291,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 			if err != nil {
 				log.Print("Could not read template file entry_list.ini: ", err)
 			}
-			Cr.entryListIni, err = ttemplate.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
+			cr.entryListIni, err = ttemplate.New("entry_list.ini").Funcs(funcMap).Parse(string(tmplStr))
 			if err != nil {
 				log.Print("Error parsing entry_list.ini template: ", err)
 			}
@@ -285,7 +299,7 @@ func (cr *ConfigRenderer) renderIni(eventId int) {
 	}
 
 	var b2 bytes.Buffer
-	err = Cr.entryListIni.Execute(&b2, class)
+	err = cr.entryListIni.Execute(&b2, class)
 	if err != nil {
 		log.Print("Error executing entry_list.ini template: ", err)
 	}

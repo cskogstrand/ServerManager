@@ -159,14 +159,13 @@ func routeAbout(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 
 	c.HTML(http.StatusOK, "/htm/about.htm", gin.H{
 		"page":          "about",
 		"config_filled": cfgFilled,
 		"cfgLoc":        ConfigFolder,
 		"tmpLoc":        TempFolder,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -180,7 +179,6 @@ func routeConfig(c *gin.Context) {
 		}
 	}
 
-	Status.refresh()
 
 	form, err := Dba.selectConfig()
 	if err != nil {
@@ -198,7 +196,7 @@ func routeConfig(c *gin.Context) {
 		"page":          "config",
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -245,7 +243,6 @@ func routeContent(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/content.htm", gin.H{
 		"page":          "content",
 		"form":          form,
@@ -253,7 +250,7 @@ func routeContent(c *gin.Context) {
 		"car_data":      carData,
 		"weather_data":  weatherData,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -295,7 +292,6 @@ func routeServer(c *gin.Context) {
 		routeDbError(c, err)
 		return
 	}
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/server.htm", gin.H{
 		"page":          "server",
 		"config_filled": cfgFilled,
@@ -305,7 +301,7 @@ func routeServer(c *gin.Context) {
 		"classes":       classes,
 		"times":         times,
 		"tmpLoc":        TempFolder,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -321,14 +317,13 @@ func routeMobile(c *gin.Context) {
 		return
 	}
 	weatherData = withDemoWeathers(c, weatherData)
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/mobile.htm", gin.H{
 		"page":          "mobile",
 		"title":         " · Mobile",
 		"config_filled": cfgFilled,
 		"tmpLoc":        TempFolder,
 		"weather_data":  weatherData,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -344,12 +339,11 @@ func routeMobileTrack(c *gin.Context) {
 		return
 	}
 	trackData = withDemoTracks(c, trackData)
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/mobile_track.htm", gin.H{
 		"page":          "mobile",
 		"config_filled": cfgFilled,
 		"track_data":    trackData,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -365,12 +359,11 @@ func routeMobileCars(c *gin.Context) {
 		return
 	}
 	carData = withDemoCars(c, carData)
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/mobile_cars.htm", gin.H{
 		"page":          "mobile",
 		"config_filled": cfgFilled,
 		"car_data":      carData,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -386,22 +379,28 @@ func routeMobileWeather(c *gin.Context) {
 		return
 	}
 	weatherData = withDemoWeathers(c, weatherData)
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/mobile_weather.htm", gin.H{
 		"page":          "mobile",
 		"config_filled": cfgFilled,
 		"weather_data":  weatherData,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
 func routeQueue(c *gin.Context) {
 	if c.Request.Method == "POST" {
+		instanceId, _ := strconv.Atoi(c.PostForm("instance"))
+		if instanceId <= 0 {
+			if inst := Instances.Default(); inst != nil {
+				instanceId = inst.Id()
+			}
+		}
+
 		if c.PostForm("event") != "" {
 			// insert single event from category
 			id, err := strconv.Atoi(c.PostForm("event"))
 			if id > 0 && err == nil {
-				_, err := Dba.insertServerEvent(id)
+				_, err := Dba.insertServerEvent(id, instanceId)
 				if err != nil {
 					routeDbError(c, err)
 					return
@@ -411,7 +410,7 @@ func routeQueue(c *gin.Context) {
 			// insert all events from category
 			id, err := strconv.Atoi(c.PostForm("category"))
 			if id > 0 && err == nil {
-				_, err := Dba.insertServerEventCategory(id)
+				_, err := Dba.insertServerEventCategory(id, instanceId)
 				if err != nil {
 					routeDbError(c, err)
 					return
@@ -438,21 +437,21 @@ func routeQueue(c *gin.Context) {
 		return
 	}
 
-	serverEvents, err := Dba.selectServerEvents(false)
+	serverEvents, err := Dba.selectServerEvents(false, 0)
 	if err != nil {
 		routeDbError(c, err)
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/queue.htm", gin.H{
 		"page":          "queue",
 		"config_filled": cfgFilled,
 		"event_cat":     eventCat,
 		"event_list":    eventList,
 		"server_events": serverEvents,
+		"instances":     Instances.All(),
 		"tmpLoc":        TempFolder,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -513,13 +512,12 @@ func routeDifficulty(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/difficulty.htm", gin.H{
 		"page":          "difficulty",
 		"list":          list,
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -587,14 +585,13 @@ func routeClass(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/class.htm", gin.H{
 		"page":          "class",
 		"list":          list,
 		"car_data":      carData,
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -654,13 +651,12 @@ func routeSession(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/session.htm", gin.H{
 		"page":          "session",
 		"list":          list,
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -732,14 +728,13 @@ func routeTime(c *gin.Context) {
 		return
 	}
 
-	Status.refresh()
 	c.HTML(http.StatusOK, "/htm/time.htm", gin.H{
 		"page":          "time",
 		"list":          list,
 		"weatherlist":   weatherList,
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -756,7 +751,6 @@ func routeDeleteTime(c *gin.Context) {
 
 func routeEventCategory(c *gin.Context) {
 	form := UserEventCategory{}
-	Status.refresh()
 
 	id, err := strconv.Atoi(c.Param("id"))
 	if id > 0 && err == nil {
@@ -854,7 +848,7 @@ func routeEventCategory(c *gin.Context) {
 		"max_clients":   cfg.MaxClients,
 		"track_data":    tracksData,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -967,7 +961,7 @@ func routeUser(c *gin.Context) {
 			"page":          "user",
 			"form":          form,
 			"config_filled": true,
-			"status":        Status,
+			"status":        defaultStatus(),
 		})
 		return
 	}
@@ -990,7 +984,7 @@ func routeUser(c *gin.Context) {
 		"page":          "user",
 		"form":          form,
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 }
 
@@ -1014,7 +1008,7 @@ func routeAdmin(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "/htm/admin.htm", gin.H{
 		"config_filled": cfgFilled,
-		"status":        Status,
+		"status":        defaultStatus(),
 	})
 
 }

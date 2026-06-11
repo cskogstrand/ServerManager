@@ -11,10 +11,7 @@ import (
 	"runtime"
 )
 
-var lines string
-var cmd *exec.Cmd
-
-func appendOutput(pipe io.ReadCloser, label string) {
+func (inst *Instance) appendOutput(pipe io.ReadCloser, label string) {
 	out := bufio.NewReader(pipe)
 
 	for {
@@ -27,22 +24,24 @@ func appendOutput(pipe io.ReadCloser, label string) {
 		}
 
 		if len(b) > 0 {
-			lines += string(b) + "\n"
+			inst.mu.Lock()
+			inst.lines += string(b) + "\n"
+			inst.mu.Unlock()
 		}
 	}
 }
 
-func start() {
+func (inst *Instance) start() {
 	binary := "acServer"
 	if runtime.GOOS == "windows" {
 		binary = "acServer.exe"
 	}
 
-	fpath := filepath.Join(TempFolder, binary)
+	dir := inst.Dir()
+	fpath := filepath.Join(dir, binary)
 	if _, err := os.Stat(fpath); errors.Is(err, os.ErrNotExist) {
 		log.Print("Could not find executable: ", fpath, err)
 	}
-	cmd = exec.Command(fpath)
 
 	if runtime.GOOS != "windows" {
 		err := os.Chmod(fpath, 0755)
@@ -52,8 +51,16 @@ func start() {
 		}
 	}
 
-	cmd.Dir = TempFolder
-	Udp.online = false
+	inst.mu.Lock()
+	if inst.cmd != nil {
+		inst.mu.Unlock()
+		log.Print("Instance already running: ", inst.Name())
+		return
+	}
+
+	cmd := exec.Command(fpath)
+	cmd.Dir = dir
+	inst.Udp.online = false
 	stdOut, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Print("Could not capture acServer stdout: ", err)
@@ -64,32 +71,43 @@ func start() {
 	}
 	err = cmd.Start()
 	if err != nil {
+		inst.mu.Unlock()
 		log.Print("Could not start executable: ", fpath, err)
 		return
 	}
 
-	lines = ""
-	go appendOutput(stdOut, "stdout")
-	go appendOutput(stdErr, "stderr")
+	inst.cmd = cmd
+	inst.lines = ""
+	inst.mu.Unlock()
+
+	go inst.appendOutput(stdOut, "stdout")
+	go inst.appendOutput(stdErr, "stderr")
 }
 
-func getContent() string {
-	return lines
+func (inst *Instance) logContent() string {
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+	return inst.lines
 }
 
-func isRunning() bool {
-	return cmd != nil
+func (inst *Instance) isRunning() bool {
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+	return inst.cmd != nil
 }
 
-func stop() {
-	if cmd != nil && cmd.Process != nil {
-		err := cmd.Process.Kill()
+func (inst *Instance) stop() {
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	if inst.cmd != nil && inst.cmd.Process != nil {
+		err := inst.cmd.Process.Kill()
 
 		if err != nil {
 			log.Print("Error killing acServer process: ", err)
 		}
-		cmd = nil
-		Udp.online = false
-		Status.Players = 0
+		inst.cmd = nil
+		inst.Udp.online = false
+		inst.Status.Players = 0
 	}
 }

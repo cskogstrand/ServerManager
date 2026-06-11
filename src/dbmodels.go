@@ -36,12 +36,24 @@ type UserConfig struct {
 }
 
 type ServerEvent struct {
-	Id        *int
-	UserEvent UserEvent
-	ServerCfg *string
-	EntryList *string
-	StartedAt *int64
-	Finished  *int
+	Id         *int
+	UserEvent  UserEvent
+	ServerCfg  *string
+	EntryList  *string
+	StartedAt  *int64
+	Finished   *int
+	InstanceId *int `json:"instance_id"`
+}
+
+type ServerInstance struct {
+	Id               *int    `json:"id"`
+	Name             *string `json:"name" form:"name"`
+	UdpPort          *int    `json:"udp_port" form:"udp_port"`
+	TcpPort          *int    `json:"tcp_port" form:"tcp_port"`
+	HttpPort         *int    `json:"http_port" form:"http_port"`
+	PluginPort       *int    `json:"plugin_port" form:"plugin_port"`
+	PluginListenPort *int    `json:"plugin_listen_port" form:"plugin_listen_port"`
+	Enabled          *int    `json:"enabled" form:"enabled"`
 }
 
 type UserEvent struct {
@@ -186,6 +198,7 @@ type UserClassEntry struct {
 	CacheCarKey *string `json:"cache_car_key"`
 	SkinKey     *string `json:"skin_key"`
 	Ballast     *int    `json:"ballast"`
+	Count       *int    `json:"count"`
 }
 
 type DropDownList struct {

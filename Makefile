@@ -1,6 +1,6 @@
 VERSION ?= dev-build
 
-.PHONY: all build buildwin run rundebug rundebug-docker rundebug-docker-cold stopdebug-docker deps package clean webapp webapp-dev types
+.PHONY: all build buildwin run rundebug rundebug-docker rundebug-docker-cold stopdebug-docker deps package clean webapp webapp-dev types test
 
 all: deps clean buildwin build
 
@@ -13,26 +13,27 @@ webapp-dev:
 types:
 	tygo generate
 
+test:
+	cd webapp && npm test
+	cd src && go vet .
+
 build: webapp
 	mkdir -p bin/
-	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css --minify
-	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
+	go-assets-builder schema.sql favicon.ico ini webapp/dist -o src/assets.go
 	cd src; CGO_ENABLED=1 go build -o ../bin/sm_linux -ldflags="-w -s -X 'main.Version=$(VERSION)'" .
 
 buildwin: webapp
 	mkdir -p bin/
-	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css --minify
-	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
+	go-assets-builder schema.sql favicon.ico ini webapp/dist -o src/assets.go
 	go-winres make
 	cd src; CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -o ../bin/sm_win.exe -ldflags="-w -s -X 'main.Version=$(VERSION)'" .
 
 run: webapp
-	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
+	go-assets-builder schema.sql favicon.ico ini webapp/dist -o src/assets.go
 	cd src; go run .
 
 rundebug:
-	test -d node_modules || npm install
-	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css
+	test -d webapp/dist || $(MAKE) webapp
 	cd src; go run . -debug
 
 rundebug-docker:
@@ -48,15 +49,15 @@ stopdebug-docker:
 deps:
 	go install github.com/jessevdk/go-assets-builder@latest
 	go install github.com/tc-hib/go-winres@latest
+	go install github.com/gzuidhof/tygo@latest
 	go get main/src
-	npm install
-	npx tailwindcss -i ./css/input.css -o ./css/main.css
+	cd webapp && npm install
 
 package: clean buildwin build
 
 clean:
 	rm -rf bin/
-	rm -f css/main.css
+	rm -rf webapp/dist
 	rm -f src/assets.go
 	rm -f *.syso
 	go clean

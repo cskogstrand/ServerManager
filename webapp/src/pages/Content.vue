@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useContentStore } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
+import { intToggle } from "@/lib/forms";
+import type { UserConfig } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -10,7 +12,49 @@ import Select from "@/components/ui/Select.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 
 const content = useContentStore();
-onMounted(() => void content.load());
+
+// --- Installation & CSP (the content half of user_config) ---
+const config = ref<UserConfig | null>(null);
+const cspRequired = intToggle(config, "csp_required");
+const cspPhycars = intToggle(config, "csp_phycars");
+const cspPhytracks = intToggle(config, "csp_phytracks");
+const cspHidepit = intToggle(config, "csp_hidepit");
+const pathValid = ref<boolean | null>(null);
+
+onMounted(async () => {
+  void content.load();
+  config.value = await api.get<UserConfig>("/api/config");
+});
+
+async function validatePath() {
+  pathValid.value = null;
+  const data = new FormData();
+  data.append("path", config.value?.install_path ?? "");
+  const res = await fetch("/api/validate/installpath", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken() },
+    body: data,
+  });
+  const json = await res.json();
+  pathValid.value = json.result === true;
+  return pathValid.value;
+}
+
+async function saveInstall() {
+  error.value = "";
+  notice.value = "";
+  if (!config.value) return;
+  if (!(await validatePath())) {
+    error.value = "No acServer binary found under that path — expected <path>/server/acServer.";
+    return;
+  }
+  try {
+    await api.put("/api/config/content", config.value);
+    notice.value = "Installation settings saved. Rebuild the cache to import content.";
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : String(e);
+  }
+}
 
 const tab = ref<"tracks" | "cars" | "weathers">("tracks");
 const search = ref("");
@@ -171,6 +215,35 @@ function jobTone(status: string) {
 
     <!-- Upload & jobs -->
     <div class="space-y-4">
+      <Card v-if="config" title="Installation">
+        <FormRow
+          label="Assetto Corsa install path"
+          for-id="installpath"
+          hint="Folder containing server/acServer — e.g. .../steamapps/common/assettocorsa (or /corsa in docker)"
+        >
+          <div class="flex gap-1">
+            <Input id="installpath" v-model="config.install_path" class="flex-1" />
+            <Button variant="dark" size="sm" @click="validatePath">
+              {{ pathValid === null ? "Check" : pathValid ? "✓" : "✕" }}
+            </Button>
+          </div>
+        </FormRow>
+
+        <Toggle v-model="cspRequired" label="Require Custom Shaders Patch (CSP)" />
+        <div v-if="cspRequired" class="mt-3">
+          <FormRow label="Minimum CSP version" for-id="cspver" hint="Build number, e.g. 3155">
+            <Input id="cspver" v-model="config.csp_version" type="number" :min="0" />
+          </FormRow>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <Toggle v-model="cspPhycars" label="Extended car physics" />
+            <Toggle v-model="cspPhytracks" label="Extended track physics" />
+            <Toggle v-model="cspHidepit" label="Hide pitboxes" />
+          </div>
+        </div>
+
+        <Button class="mt-3" @click="saveInstall">Save installation</Button>
+      </Card>
+
       <Card title="Upload content">
         <FormRow label="Type" for-id="kind">
           <Select

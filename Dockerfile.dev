@@ -13,4 +13,4 @@ EXPOSE 9600/tcp
 EXPOSE 9600/udp
 EXPOSE 8081
 
-CMD ["sh", "-lc", "test -d node_modules/tailwindcss || npm install --include=optional && npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css && test -f src/assets.go || /go/bin/go-assets-builder schema.sql favicon.ico ini htm img css -o src/assets.go && (test -d webapp/dist || (cd webapp && npm install && npm run build)) && cd src && /usr/local/go/bin/go run . -debug -p /appdata"]
+CMD ["sh", "-lc", "(test -d webapp/dist || (cd webapp && npm install && npm run build)) && (test -f src/assets.go || /go/bin/go-assets-builder schema.sql favicon.ico ini webapp/dist -o src/assets.go) && cd src && /usr/local/go/bin/go run . -debug -p /appdata"]

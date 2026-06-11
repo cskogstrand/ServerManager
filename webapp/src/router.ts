@@ -3,7 +3,7 @@ import { useAuthStore } from "@/stores/auth";
 
 // Routes fill in over Phases 2-5.
 const router = createRouter({
-  history: createWebHistory("/app/"),
+  history: createWebHistory("/"),
   routes: [
     { path: "/login", name: "login", component: () => import("@/pages/Login.vue"), meta: { public: true } },
     { path: "/", name: "dashboard", component: () => import("@/pages/Dashboard.vue") },
@@ -15,6 +15,7 @@ const router = createRouter({
     { path: "/presets/time", name: "preset-time", component: () => import("@/pages/PresetTime.vue") },
     { path: "/presets/classes", name: "preset-classes", component: () => import("@/pages/PresetClass.vue") },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue") },
+    { path: "/settings/instances", name: "instances", component: () => import("@/pages/SettingsInstances.vue") },
     { path: "/preferences", name: "preferences", component: () => import("@/pages/SettingsUser.vue") },
     { path: "/about", name: "about", component: () => import("@/pages/About.vue") },
   ],

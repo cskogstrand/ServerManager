@@ -4,16 +4,14 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"html/template"
+	"fmt"
 	"io"
 	"log"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -55,34 +53,12 @@ func currentUserFromRequest(c *gin.Context) (string, bool) {
 	return user, true
 }
 
-func ConfigCompletedMiddlware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		configfilled, err := Dba.selectConfigFilled()
-		if err != nil {
-			log.Print("Database error: ", err)
-			configfilled = false
-		}
-		if !configfilled && c.Request.URL.Path != "/config" && c.Request.URL.Path != "/content" {
-			if debug {
-				if user, ok := currentUserFromRequest(c); ok && user == "demo" {
-					c.Set("user", user)
-					c.Next()
-					return
-				}
-			}
-			c.Redirect(http.StatusFound, "/config")
-			return
-		}
-
-		AuthenticateMiddleware(c)
-	}
-}
-
 func AuthenticateMiddleware(c *gin.Context) {
 	user, ok := currentUserFromRequest(c)
 	if !ok {
-		c.Redirect(http.StatusFound, "/login")
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "Not logged in"},
+		})
 		return
 	}
 
@@ -168,136 +144,17 @@ func main() {
 	}
 	router.Use(gin.Recovery())
 
-	funcMap := template.FuncMap{
-		"derefStr": func(t *string) string {
-			if t == nil {
-				return ""
-			}
-			return *t
-		},
-		"derefInt": func(t *int) string {
-			if t == nil {
-				return ""
-			}
-			return strconv.Itoa(*t)
-		},
-		"derefInt64": func(t *int64) string {
-			if t == nil {
-				return ""
-			}
-			return strconv.FormatInt(*t, 10)
-		},
-		"toInt": func(t *int) int {
-			if t == nil {
-				return 0
-			}
-			return *t
-		},
-		"toJsBool": func(t *int) bool {
-			if t == nil {
-				return false
-			}
-			if *t > 0 {
-				return true
-			}
-			return false
-		},
-		"toTime": func(tm int) string {
-			tdiff := time.Duration(tm) * time.Second
-			return tdiff.Round(time.Second).String()
-		},
-		"inc": func(i int) int {
-			return i + 1
-		},
-	}
-
-	t := template.New("")
-	t.Funcs(funcMap)
-	err = LoadTemplate(t, ".htm")
-	if err != nil {
-		log.Fatal("Failed to load static template", err)
-	}
-	router.SetHTMLTemplate(t)
-
 	if debug {
 		router.Static("/static", "../")
 	} else {
 		router.StaticFS("/static", Assets)
 	}
 
-	// Vue SPA (Phase 1+), served alongside the legacy UI until cutover
-	router.GET("/app/*path", routeSpa)
+	// Pre-cutover bookmarks
+	router.GET("/app/*path", routeLegacyApp)
 
-	router.GET("/login", routeLogin)
-	router.POST("/login", routeLogin)
-	router.GET("/logout", routeLogout)
+	// Login is the only unauthenticated API endpoint
 	router.POST("/api/login", apiLogin)
-
-	app := router.Group("/")
-	app.Use(ConfigCompletedMiddlware())
-	{
-		app.GET("/", routeIndex)
-
-		app.GET("/config", routeConfig)
-		app.POST("/config", routeConfig)
-
-		app.GET("/about", routeAbout)
-		app.POST("/about", routeAbout)
-
-		app.GET("/content", routeContent)
-		app.POST("/content", routeContent)
-
-		app.GET("/difficulty", routeDifficulty)
-		app.POST("/difficulty", routeDifficulty)
-		app.GET("/difficulty/:id", routeDifficulty)
-		app.POST("/difficulty/:id", routeDifficulty)
-		app.GET("/difficulty/delete/:id", routeDeleteDifficulty)
-		app.POST("/difficulty/delete/:id", routeDeleteDifficulty)
-
-		app.GET("/class", routeClass)
-		app.POST("/class", routeClass)
-		app.GET("/class/:id", routeClass)
-		app.POST("/class/:id", routeClass)
-		app.GET("/class/delete/:id", routeDeleteClass)
-		app.POST("/class/delete/:id", routeDeleteClass)
-
-		app.GET("/session", routeSession)
-		app.POST("/session", routeSession)
-		app.GET("/session/:id", routeSession)
-		app.POST("/session/:id", routeSession)
-		app.GET("/session/delete/:id", routeDeleteSession)
-		app.POST("/session/delete/:id", routeDeleteSession)
-
-		app.GET("/time", routeTime)
-		app.POST("/time", routeTime)
-		app.GET("/time/:id", routeTime)
-		app.POST("/time/:id", routeTime)
-		app.GET("/time/delete/:id", routeDeleteTime)
-		app.POST("/time/delete/:id", routeDeleteTime)
-
-		app.GET("/event", routeEventCategory)
-		app.POST("/event", routeEventCategory)
-		app.GET("/event/:id", routeEventCategory)
-		app.POST("/event/:id", routeEventCategory)
-		app.GET("/event/delete/:id", routeDeleteEventCategory)
-		app.POST("/event/delete/:id", routeDeleteEventCategory)
-
-		app.GET("/queue", routeQueue)
-		app.POST("/queue", routeQueue)
-		app.GET("/queue/delete/:id", routeDeleteQueue)
-		app.POST("/queue/delete/:id", routeDeleteQueue)
-
-		app.GET("/user", routeUser)
-		app.POST("/user", routeUser)
-
-		app.GET("/admin", routeAdmin)
-
-		app.GET("/server", routeServer)
-		app.GET("/mobile", routeMobile)
-		app.GET("/mobile/track", routeMobileTrack)
-		app.GET("/mobile/cars", routeMobileCars)
-		app.GET("/mobile/weather", routeMobileWeather)
-	}
 
 	api := router.Group("/api")
 	api.Use(AuthenticateMiddleware)
@@ -396,7 +253,8 @@ func main() {
 		api.DELETE("/instances/:id", apiInstanceDelete)
 	}
 
-	router.NoRoute(route404)
+	// Everything that is not /api or /static is the SPA
+	router.NoRoute(routeSpa)
 
 	if !debug {
 		OpenURL("http://localhost:3030")

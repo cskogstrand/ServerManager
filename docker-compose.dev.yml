@@ -7,7 +7,7 @@ services:
     working_dir: /go/src/app
     volumes:
       - ./:/go/src/app
-      - servermanager_dev_node_modules:/go/src/app/node_modules
+      - servermanager_dev_node_modules:/go/src/app/webapp/node_modules
       - servermanager_dev_go_mod_cache:/go/pkg/mod
       - servermanager_dev_go_build_cache:/root/.cache/go-build
       - ${APP_PATH:-./}/assetocorsa:/corsa/:ro

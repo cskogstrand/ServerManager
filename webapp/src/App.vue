@@ -1,21 +1,31 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
+import type { UserConfig } from "@/types/generated";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const server = useServerStore();
 
-// Live data only while logged in
+// First-run setup: until config + install path are saved, no event can run
+const setupNeeded = ref(false);
+
 watch(
   () => auth.loggedIn,
-  (loggedIn) => {
+  async (loggedIn) => {
     if (loggedIn) {
       void server.load();
       server.connect();
+      try {
+        const cfg = await api.get<UserConfig>("/api/config");
+        setupNeeded.value = cfg.cfg_filled !== 1 || cfg.mod_filled !== 1;
+      } catch {
+        setupNeeded.value = false;
+      }
     } else {
       server.disconnect();
     }
@@ -38,6 +48,7 @@ const nav = [
   { to: "/presets/sessions", label: "Sessions", icon: "◷" },
   { to: "/presets/time", label: "Time & Weather", icon: "☼" },
   { to: "/settings", label: "Configuration", icon: "⚙" },
+  { to: "/settings/instances", label: "Instances", icon: "⧉" },
   { to: "/preferences", label: "Preferences", icon: "☺" },
   { to: "/about", label: "About", icon: "ℹ" },
 ];
@@ -82,6 +93,15 @@ const nav = [
     </aside>
 
     <main class="min-w-0 flex-1 p-6">
+      <p
+        v-if="setupNeeded"
+        class="mb-4 rounded-md border border-accent/40 bg-accent-dim px-3 py-2 text-sm"
+      >
+        Finish the first-run setup:
+        <RouterLink to="/settings" class="text-accent hover:underline">save the server configuration</RouterLink>
+        and
+        <RouterLink to="/content" class="text-accent hover:underline">set the Assetto Corsa install path</RouterLink>.
+      </p>
       <RouterView />
     </main>
   </div>

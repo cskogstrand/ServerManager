@@ -350,20 +350,28 @@ func (inst *Instance) udpReceive() bool {
 	case acspNewSession:
 		sess := readSessionInfo(r)
 		inst.mu.Lock()
-		if !sess.sameAs(inst.Status.Session) {
+		changed := !sess.sameAs(inst.Status.Session)
+		if changed {
 			logSession("ACSP_NEW_SESSION", sess)
 		}
 		inst.Status.Session = sess
 		inst.mu.Unlock()
+		if changed {
+			Events.Publish("session", inst.Id(), sessionEventPayload(sess))
+		}
 
 	case acspSessionInfo:
 		sess := readSessionInfo(r)
 		inst.mu.Lock()
-		if !sess.sameAs(inst.Status.Session) {
+		changed := !sess.sameAs(inst.Status.Session)
+		if changed {
 			logSession("ACSP_SESSION_INFO", sess)
 		}
 		inst.Status.Session = sess
 		inst.mu.Unlock()
+		if changed {
+			Events.Publish("session", inst.Id(), sessionEventPayload(sess))
+		}
 
 	case acspEndSession:
 		file := r.ReadUTF32String()
@@ -423,6 +431,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.mu.Lock()
 		inst.Status.Players = inst.Status.Players + 1
 		inst.mu.Unlock()
+		inst.publishPlayers()
 		log.Print("ACSP_NEW_CONNECTION: ")
 		PrintInterface(nc)
 
@@ -436,6 +445,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.mu.Lock()
 		inst.Status.Players = inst.Status.Players - 1
 		inst.mu.Unlock()
+		inst.publishPlayers()
 		log.Print("ACSP_CONNECTION_CLOSED: ")
 		PrintInterface(cc)
 

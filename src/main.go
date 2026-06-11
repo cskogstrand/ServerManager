@@ -163,7 +163,7 @@ func main() {
 	router := gin.New()
 	if debug {
 		router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-			SkipPaths: []string{"/api/server/status", "/api/content/jobs/active"},
+			SkipPaths: []string{"/api/server/status", "/api/content/jobs/active", "/api/server/events"},
 		}))
 	}
 	router.Use(gin.Recovery())
@@ -297,6 +297,7 @@ func main() {
 
 	api := router.Group("/api")
 	api.Use(AuthenticateMiddleware)
+	api.Use(CsrfMiddleware)
 	{
 		api.GET("/car/:key", apiCar)
 		api.GET("/car/image/:car/:skin", apiCarImage)
@@ -307,21 +308,60 @@ func main() {
 		api.GET("/track/outline/:track", apiTrackOutlineImage)
 		api.GET("/weather/preview/:weather", apiWeatherPreviewImage)
 
+		api.GET("/difficulties", apiDifficultyList)
+		api.POST("/difficulties", apiDifficultyCreate)
 		api.GET("/difficulty/:id", apiDifficulty)
-		api.GET("/session/:id", apiSession)
-		api.GET("/class/:id", apiClass)
-		api.GET("/time/:id", apiTime)
+		api.PUT("/difficulty/:id", apiDifficultyUpdate)
+		api.DELETE("/difficulty/:id", apiDifficultyDelete)
 
-		api.GET("/content/recache", apiRecacheContent)
+		api.GET("/sessions", apiSessionList)
+		api.POST("/sessions", apiSessionCreate)
+		api.GET("/session/:id", apiSession)
+		api.PUT("/session/:id", apiSessionUpdate)
+		api.DELETE("/session/:id", apiSessionDelete)
+
+		api.GET("/times", apiTimeList)
+		api.POST("/times", apiTimeCreate)
+		api.GET("/time/:id", apiTime)
+		api.PUT("/time/:id", apiTimeUpdate)
+		api.DELETE("/time/:id", apiTimeDelete)
+
+		api.GET("/classes", apiClassList)
+		api.POST("/classes", apiClassCreate)
+		api.GET("/class/:id", apiClass)
+		api.PUT("/class/:id", apiClassUpdate)
+		api.DELETE("/class/:id", apiClassDelete)
+
+		api.GET("/categories", apiCategoryList)
+		api.POST("/categories", apiCategoryCreate)
+		api.GET("/category/:id", apiCategoryGet)
+		api.PUT("/category/:id", apiCategoryUpdate)
+		api.DELETE("/category/:id", apiCategoryDelete)
+
+		api.GET("/events", apiEventList)
+		api.POST("/events", apiEventCreate)
+		api.GET("/event/:id", apiEventGet)
+		api.PUT("/event/:id", apiEventUpdate)
+		api.DELETE("/event/:id", apiEventDelete)
+
+		api.GET("/config", apiConfigGet)
+		api.PUT("/config", apiConfigUpdate)
+		api.PUT("/config/content", apiConfigContentUpdate)
+
+		api.GET("/user", apiUserGet)
+		api.PUT("/user", apiUserUpdate)
+
+		api.POST("/content/recache", apiRecacheContent)
 		api.GET("/content/jobs/active", apiContentJobsActive)
 		api.GET("/content/jobs/:id", apiContentJob)
 		api.POST("/content/upload", apiContentUpload)
 
 		api.POST("/validate/installpath", apiValidateInstallpath)
 
-		api.GET("/server/start", apiServerStart)
-		api.GET("/server/stop", apiServerStop)
+		api.POST("/server/start", apiServerStart)
+		api.POST("/server/stop", apiServerStop)
 		api.GET("/server/status", apiServerStatus)
+		api.GET("/server/events", apiServerEventsSSE)
 		api.POST("/server/current-event", apiServerUpdateCurrentEvent)
 		api.GET("/server/logfile", apiServerLogfile)
 		api.GET("/server/smdata", apiServerSmdata)
@@ -330,10 +370,10 @@ func main() {
 		api.GET("/server/entry_list.ini", apiEntryList)
 		api.GET("/server/server_cfg.ini", apiServerCfg)
 
-		api.GET("/queue/moveup/:id", apiQueueMoveUp)
-		api.GET("/queue/movedown/:id", apiQueueMoveDown)
-		api.GET("/queue/skipevent", apiQueueSkipEvent)
-		api.GET("/queue/clearcompleted", apiQueueClearCompleted)
+		api.POST("/queue/moveup/:id", apiQueueMoveUp)
+		api.POST("/queue/movedown/:id", apiQueueMoveDown)
+		api.POST("/queue/skipevent", apiQueueSkipEvent)
+		api.POST("/queue/clearcompleted", apiQueueClearCompleted)
 		api.POST("/queue/event/:id", apiQueueAddEvent)
 		api.POST("/queue/category/:id", apiQueueAddCategory)
 

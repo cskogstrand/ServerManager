@@ -307,13 +307,13 @@
       },
 
       start_server() {
-        fetch("/api/server/start")
+        smPost("/api/server/start")
           .then(r => r.json())
           .then(j => this.apply(j));
       },
 
       stop_server() {
-        fetch("/api/server/stop")
+        smPost("/api/server/stop")
           .then(r => r.json())
           .then(j => this.apply(j));
       },
@@ -537,7 +537,7 @@
 
         fetch("/api/server/current-event", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": smCsrf() },
           body: JSON.stringify(Object.assign({
             event_id: this.current_event.id,
             restart_now: restartNow

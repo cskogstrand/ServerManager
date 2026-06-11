@@ -1,38 +1,38 @@
 package main
 
 type Users struct {
-	Name            *string `form:"name"`
-	Password        *string `form:"password"`
-	MeasurementUnit *int    `form:"measurement_unit"`
-	TempUnit        *int    `form:"temp_unit"`
+	Name            *string `form:"name" json:"name"`
+	Password        *string `form:"password" json:"password,omitempty"`
+	MeasurementUnit *int    `form:"measurement_unit" json:"measurement_unit"`
+	TempUnit        *int    `form:"temp_unit" json:"temp_unit"`
 }
 
 type UserConfig struct {
-	Name               *string `form:"name"`
-	Password           *string `form:"password"`
-	AdminPassword      *string `form:"admin_password"`
-	RegisterToLobby    *int    `form:"register_to_lobby"`
-	LockedEntryList    *int    `form:"locked_entry_list"`
-	ResultScreenTime   *int    `form:"result_screen_time"`
-	UdpPort            *int    `form:"udp_port"`
-	TcpPort            *int    `form:"tcp_port"`
-	HttpPort           *int    `form:"http_port"`
-	ClientSendInterval *int    `form:"client_send_interval"`
-	NumThreads         *int    `form:"num_threads"`
-	MaxClients         *int    `form:"max_clients"`
-	WelcomeMessage     *string `form:"welcome_message"`
-	AppendEventname    *int    `form:"append_eventname"`
-	AppendModlinks     *int    `form:"append_modlinks"`
-	AutoStartServer    *int    `form:"auto_start_server"`
-	InstallPath        *string `form:"install_path"`
-	CspRequired        *int    `form:"csp_required"`
-	CspVersion         *int    `form:"csp_version"`
-	CspPhycars         *int    `form:"csp_phycars"`
-	CspPhytracks       *int    `form:"csp_phytracks"`
-	CspHidepit         *int    `form:"csp_hidepit"`
-	CfgFilled          *int
-	ModFilled          *int
-	SecretKey          *string
+	Name               *string `form:"name" json:"name"`
+	Password           *string `form:"password" json:"password"`
+	AdminPassword      *string `form:"admin_password" json:"admin_password"`
+	RegisterToLobby    *int    `form:"register_to_lobby" json:"register_to_lobby"`
+	LockedEntryList    *int    `form:"locked_entry_list" json:"locked_entry_list"`
+	ResultScreenTime   *int    `form:"result_screen_time" json:"result_screen_time"`
+	UdpPort            *int    `form:"udp_port" json:"udp_port"`
+	TcpPort            *int    `form:"tcp_port" json:"tcp_port"`
+	HttpPort           *int    `form:"http_port" json:"http_port"`
+	ClientSendInterval *int    `form:"client_send_interval" json:"client_send_interval"`
+	NumThreads         *int    `form:"num_threads" json:"num_threads"`
+	MaxClients         *int    `form:"max_clients" json:"max_clients"`
+	WelcomeMessage     *string `form:"welcome_message" json:"welcome_message"`
+	AppendEventname    *int    `form:"append_eventname" json:"append_eventname"`
+	AppendModlinks     *int    `form:"append_modlinks" json:"append_modlinks"`
+	AutoStartServer    *int    `form:"auto_start_server" json:"auto_start_server"`
+	InstallPath        *string `form:"install_path" json:"install_path"`
+	CspRequired        *int    `form:"csp_required" json:"csp_required"`
+	CspVersion         *int    `form:"csp_version" json:"csp_version"`
+	CspPhycars         *int    `form:"csp_phycars" json:"csp_phycars"`
+	CspPhytracks       *int    `form:"csp_phytracks" json:"csp_phytracks"`
+	CspHidepit         *int    `form:"csp_hidepit" json:"csp_hidepit"`
+	CfgFilled          *int    `json:"cfg_filled"`
+	ModFilled          *int    `json:"mod_filled"`
+	SecretKey          *string `json:"-"`
 }
 
 type ServerEvent struct {
@@ -102,13 +102,13 @@ type UserEventList struct {
 }
 
 type UserEventCategory struct {
-	Id     *int
-	Name   *string     `form:"name"`
+	Id     *int        `json:"id"`
+	Name   *string     `form:"name" json:"name"`
 	Events []UserEvent `json:"events"`
 }
 
 type UserDifficulty struct {
-	Id                      *int    `from:"id" json:"id"`
+	Id                      *int    `form:"id" json:"id"`
 	Name                    *string `form:"name" json:"name"`
 	AbsAllowed              *int    `form:"abs_allowed" json:"abs_allowed"`
 	TcAllowed               *int    `form:"tc_allowed" json:"tc_allowed"`
@@ -137,7 +137,7 @@ type UserDifficulty struct {
 }
 
 type UserSession struct {
-	Id                    *int
+	Id                    *int    `json:"id"`
 	Name                  *string `form:"name" json:"name"`
 	BookingEnabled        *int    `form:"booking_enabled" json:"booking_enabled"`
 	BookingTime           *int    `form:"booking_time" json:"booking_time"`
@@ -160,7 +160,7 @@ type UserSession struct {
 }
 
 type UserTime struct {
-	Id             *int
+	Id             *int              `json:"id"`
 	Name           *string           `form:"name" json:"name"`
 	Time           *string           `form:"time" json:"time"`
 	TimeOfDayMulti *int              `form:"time_of_day_multi" json:"time_of_day_multi"`
@@ -187,7 +187,7 @@ type UserTimeWeather struct {
 }
 
 type UserClass struct {
-	Id      *int
+	Id      *int             `json:"id"`
 	Name    *string          `form:"name" json:"name"`
 	Entries []UserClassEntry `json:"entries"`
 }

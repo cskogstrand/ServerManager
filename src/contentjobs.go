@@ -61,24 +61,31 @@ func (s *ContentJobStore) Create(kind string, source string, sourceName string, 
 	}
 
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	s.pruneLocked()
 	s.jobs[job.ID] = job
-	return cloneContentJob(job)
+	clone := cloneContentJob(job)
+	s.mutex.Unlock()
+
+	Events.Publish("content_job", 0, clone)
+	return clone
 }
 
 func (s *ContentJobStore) Update(id string, mutator func(job *ContentJob)) (ContentJob, bool) {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
 	job, ok := s.jobs[id]
 	if !ok {
+		s.mutex.Unlock()
 		return ContentJob{}, false
 	}
 
 	mutator(job)
 	job.UpdatedAt = time.Now().Unix()
-	return cloneContentJob(job), true
+	clone := cloneContentJob(job)
+	s.mutex.Unlock()
+
+	Events.Publish("content_job", 0, clone)
+	return clone, true
 }
 
 func (s *ContentJobStore) Get(id string) (ContentJob, bool) {

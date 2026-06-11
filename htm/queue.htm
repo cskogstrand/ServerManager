@@ -42,18 +42,18 @@
       skipping: false,
       server_start: function() {
         this.loading = true;
-        fetch("/api/server/start").then(x => { window.location = window.location; });
+        smPost("/api/server/start").then(x => { window.location = window.location; });
       },
       server_stop: function() {
         this.loading = true;
-        fetch("/api/server/stop").then(x => { window.location = window.location; });
+        smPost("/api/server/stop").then(x => { window.location = window.location; });
       },
 
       move_up: function(id) {
-        fetch("/api/queue/moveup/" + id).then(x => { window.location = window.location; });
+        smPost("/api/queue/moveup/" + id).then(x => { window.location = window.location; });
       },
       move_down: function(id) {
-        fetch("/api/queue/movedown/" + id).then(x => { window.location = window.location; });
+        smPost("/api/queue/movedown/" + id).then(x => { window.location = window.location; });
       },
 
       skip_event: function() {
@@ -62,11 +62,11 @@
           this.skipping = false;
           return;
         }
-        fetch("/api/queue/skipevent").then(x => { window.location = window.location; });
+        smPost("/api/queue/skipevent").then(x => { window.location = window.location; });
       },
       clear_completed: function() {
         if (!confirm("Remove all completed events from the queue?")) return;
-        fetch("/api/queue/clearcompleted").then(x => { window.location = window.location; });
+        smPost("/api/queue/clearcompleted").then(x => { window.location = window.location; });
       }
     };
   }

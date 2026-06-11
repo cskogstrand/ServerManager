@@ -96,13 +96,13 @@
       },
 
       start_server() {
-        fetch("/api/server/start")
+        smPost("/api/server/start")
           .then((r) => r.json())
           .then((j) => this.apply(j));
       },
 
       stop_server() {
-        fetch("/api/server/stop")
+        smPost("/api/server/stop")
           .then((r) => r.json())
           .then((j) => this.apply(j));
       },

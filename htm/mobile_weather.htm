@@ -135,7 +135,7 @@
         }
         fetch("/api/server/current-event", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": (document.cookie.match(/(?:^|; )csrf_token=([^;]+)/) || [])[1] || "" },
           body: JSON.stringify(payload)
         })
           .then((r) => r.json().then((b) => ({ ok: r.ok, b })))

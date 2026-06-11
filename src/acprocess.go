@@ -82,6 +82,8 @@ func (inst *Instance) start() {
 
 	go inst.appendOutput(stdOut, "stdout")
 	go inst.appendOutput(stdErr, "stderr")
+
+	inst.publishRunning(true)
 }
 
 func (inst *Instance) logContent() string {
@@ -98,8 +100,8 @@ func (inst *Instance) isRunning() bool {
 
 func (inst *Instance) stop() {
 	inst.mu.Lock()
-	defer inst.mu.Unlock()
 
+	stopped := false
 	if inst.cmd != nil && inst.cmd.Process != nil {
 		err := inst.cmd.Process.Kill()
 
@@ -109,5 +111,11 @@ func (inst *Instance) stop() {
 		inst.cmd = nil
 		inst.Udp.online = false
 		inst.Status.Players = 0
+		stopped = true
+	}
+	inst.mu.Unlock()
+
+	if stopped {
+		inst.publishRunning(false)
 	}
 }

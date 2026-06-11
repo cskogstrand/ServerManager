@@ -6,6 +6,7 @@
     data.append("path", document.getElementById("install_path").value)
     return fetch("/api/validate/installpath", {
       method: "POST",
+      headers: { "X-CSRF-Token": smCsrf() },
       body: data
     }).then((response) => response.json())
   }
@@ -71,7 +72,7 @@
         this.content_loaded = false;
         this.notice = "";
 
-        fetch("/api/content/recache")
+        smPost("/api/content/recache")
           .then((response) => response.json())
           .then((json) => {
             this.loading = false;
@@ -285,6 +286,7 @@
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/content/upload");
+        xhr.setRequestHeader("X-CSRF-Token", smCsrf());
         xhr.responseType = "json";
 
         xhr.upload.addEventListener("progress", (event) => {

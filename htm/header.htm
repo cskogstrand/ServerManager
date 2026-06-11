@@ -14,6 +14,22 @@
   <!-- Slate design system -->
   <link href="/static/css/extra.css" rel="stylesheet" />
 
+  <!-- CSRF helpers: every mutating /api call must carry X-CSRF-Token -->
+  <script>
+    function smCsrf() {
+      var m = document.cookie.match(/(?:^|; )csrf_token=([^;]+)/);
+      return m ? m[1] : "";
+    }
+    function smPost(url, body) {
+      var opts = { method: "POST", headers: { "X-CSRF-Token": smCsrf() } };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      return fetch(url, opts);
+    }
+  </script>
+
   <!-- AlpineJS -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 

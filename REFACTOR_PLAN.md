@@ -52,13 +52,18 @@ One class-entry row yields N grid slots instead of duplicating the car in the li
 
 ---
 
-## 3. Phase 0 — API completion (Go, prerequisite for SPA)
+## 3. Phase 0 — API completion (Go, prerequisite for SPA) — IMPLEMENTED ✅
 
-- [ ] JSON CRUD endpoints for everything form-POST-only today: user, config, difficulty, class, session, time, event, event category. Extract shared logic from `routes.go` handlers so old UI keeps working during migration.
-- [ ] Convert remaining GET-with-side-effects queue endpoints (`moveup`, `movedown`, `skipevent`, `clearcompleted`) to POST/PUT/DELETE.
-- [ ] Consistent error envelope `{"error": {"code", "message"}}`; replace generic `routeDbError` 500.
-- [ ] SSE stream `GET /api/server/events`: status, session changes, content-job progress (sources: UDP plugin events, `ContentJobs`). Per-instance events tagged with instance id.
-- [ ] CSRF protection for mutating endpoints (double-submit cookie) — **must land before any mutating SPA page ships**. Keep JWT HttpOnly cookie auth.
+- [x] JSON CRUD endpoints (`src/apicrud.go`) reusing the same Dbaccess functions the HTML routes use:
+  - difficulties / sessions / times / classes / categories: `GET /api/<plural>` (+`?filled=1`), `POST /api/<plural>` `{name}`, `GET|PUT|DELETE /api/<singular>/:id` (time incl. weather panels, class incl. entries+count, category incl. nested events)
+  - events: `GET /api/events`, `POST /api/events`, `GET|PUT|DELETE /api/event/:id` — clean DTO (`event_category_id`, `track_key`/`track_config`, plain-number ids), validated
+  - config: `GET /api/config` (secret key redacted via `json:"-"`), `PUT /api/config`, `PUT /api/config/content` (CSP/install-path half)
+  - user: `GET /api/user` (password never emitted), `PUT /api/user` — password bcrypt-hashed on change (the old form path stored it plaintext; API path fixes that)
+- [x] GET-with-side-effects converted to POST: `server/start`, `server/stop`, `content/recache`, `queue/moveup|movedown|skipevent|clearcompleted`; old templates patched.
+- [x] Error envelope `{"error": {"code", "message"}}` for all new endpoints (`apiError`/`apiDbError` in `src/apihelpers.go`; FK violations → 409 `in_use`). Legacy endpoints keep their shape until old UI dies.
+- [x] SSE stream `GET /api/server/events` (`src/events.go`): per-instance snapshot on connect, then `session` / `players` / `server` (running) / `content_job` events; 15s heartbeat; slow consumers dropped, never block publishers.
+- [x] CSRF: auth cookie now `SameSite=Lax`; double-submit `csrf_token` cookie + `X-CSRF-Token` header enforced on all mutating `/api` requests (`CsrfMiddleware`); cookie issued at login and back-filled on first safe request for existing sessions; old-UI fetch/XHR call sites patched (`smPost`/`smCsrf` helpers in `header.htm`, inline on standalone mobile pages).
+- [x] Smoke-tested: 403 without token, full difficulty/session/category/user CRUD round-trips, bcrypt password change verified by re-login, SSE snapshot streams, GET queue mutations 404, POST works.
 
 ### Phase 0.5 — structural cleanup (opportunistic)
 
@@ -103,7 +108,7 @@ Principles: event-centric · one responsive UI · live (SSE) not polled-and-relo
 
 Each phase ships independently; old UI keeps working until Phase 6.
 
-- [ ] **Phase 0 — API completion** (section 3) — *multi-server + car count already landed*
+- [x] **Phase 0 — API completion** (section 3) + multi-server + car count (sections 2a/2b)
 - [ ] **Phase 1 — SPA scaffold**: `webapp/` (Vite + Vue 3 + TS + Tailwind 4 + Pinia + vue-query); port `extra.css` tokens to `@theme`; base components (`Button`, `Card`, `Modal`, `FormRow`, `Toggle`, `Sheet`); tygo in Makefile; typed `apiClient` (error envelope + CSRF); Vite dev proxy → :3030; SPA served at `/app` until cutover. Vitest from day one.
 - [ ] **Phase 2 — Simple pages**: login, initial config, about, admin, user settings.
 - [ ] **Phase 3 — Presets & content**: preset editors as reusable components (Builder reuses them); content library + upload with SSE progress.
@@ -117,7 +122,7 @@ Effort: Phase 0 remainder 2 · scaffold 2 · simple pages 1 · presets/content 3
 
 ## 6. Risks & mitigations
 
-- [ ] CSRF gap goes live with SPA — Phase 0 item, blocks first mutating SPA page.
+- [x] ~~CSRF gap goes live with SPA~~ — double-submit + SameSite=Lax landed in Phase 0.
 - [ ] Demo mode (`isDemoRequest`, `withDemo*` in `routes.go`) lives in the HTML layer — API endpoints need the same injection or demo mode silently breaks in the SPA.
 - [ ] Event Builder scope creep — build on existing preset semantics first; no data-model redesign in the same phase.
 - [ ] No test suite exists — Vitest from Phase 1; Go `httptest` coverage for every endpoint touched in Phase 0.

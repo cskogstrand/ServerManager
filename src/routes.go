@@ -882,7 +882,9 @@ func routeLogin(c *gin.Context) {
 				c.String(http.StatusInternalServerError, "Error creating token")
 				return
 			}
+			c.SetSameSite(http.SameSiteLaxMode)
 			c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
+			issueCsrfCookie(c)
 
 			log.Print("Debug demo login successful")
 
@@ -916,7 +918,9 @@ func routeLogin(c *gin.Context) {
 				c.String(http.StatusInternalServerError, "Error creating token")
 				return
 			}
+			c.SetSameSite(http.SameSiteLaxMode)
 			c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
+			issueCsrfCookie(c)
 
 			log.Print("Login successful for user: " + *user.Name)
 

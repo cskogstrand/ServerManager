@@ -268,7 +268,7 @@
         this.notice = "";
         fetch("/api/server/current-event", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": (document.cookie.match(/(?:^|; )csrf_token=([^;]+)/) || [])[1] || "" },
           body: JSON.stringify({
             event_id: this.current_event_id,
             class_entries: this.entries,

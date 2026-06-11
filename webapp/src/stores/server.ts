@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { api } from "@/lib/api";
 import { subscribeServerEvents, type ServerEvent } from "@/lib/sse";
+import { useContentStore } from "@/stores/content";
 
 export interface SessionState {
   name: string;
@@ -131,7 +132,7 @@ export const useServerStore = defineStore("server", {
           inst.session = event.data;
           break;
         case "content_job":
-          // handled by the content store in Phase 3
+          useContentStore().applyJobEvent(event);
           break;
       }
     },

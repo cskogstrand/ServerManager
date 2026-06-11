@@ -161,17 +161,67 @@ func apiTimeCreate(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"id": id})
 }
 
+// timeUpdateRequest mirrors UserTime/UserTimeWeather with plain JSON numbers.
+// The model structs carry ",string" tags the old form UI depends on, which
+// reject properly-typed JSON — so the SPA endpoint binds this DTO instead.
+type timeWeatherRequest struct {
+	Graphics               *string `json:"graphics"`
+	BaseTemperatureAmbient *int    `json:"base_temperature_ambient"`
+	BaseTemperatureRoad    *int    `json:"base_temperature_road"`
+	VariationAmbient       *int    `json:"variation_ambient"`
+	VariationRoad          *int    `json:"variation_road"`
+	WindBaseSpeedMin       *int    `json:"wind_base_speed_min"`
+	WindBaseSpeedMax       *int    `json:"wind_base_speed_max"`
+	WindBaseDirection      *int    `json:"wind_base_direction"`
+	WindVariationDirection *int    `json:"wind_variation_direction"`
+	CspTime                *string `json:"csp_time"`
+	CspTimeOfDayMulti      *int    `json:"csp_time_of_day_multi"`
+	CspDate                *string `json:"csp_date"`
+}
+
+type timeUpdateRequest struct {
+	Name           *string              `json:"name"`
+	Time           *string              `json:"time"`
+	TimeOfDayMulti *int                 `json:"time_of_day_multi"`
+	CspEnabled     *int                 `json:"csp_enabled"`
+	Weathers       []timeWeatherRequest `json:"weathers"`
+}
+
 func apiTimeUpdate(c *gin.Context) {
 	id, ok := pathId(c)
 	if !ok {
 		return
 	}
-	var tm UserTime
-	if err := c.ShouldBindJSON(&tm); err != nil {
+	var req timeUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		apiBadRequest(c, "Invalid time payload: "+err.Error())
 		return
 	}
-	tm.Id = &id
+
+	tm := UserTime{
+		Id:             &id,
+		Name:           req.Name,
+		Time:           req.Time,
+		TimeOfDayMulti: req.TimeOfDayMulti,
+		CspEnabled:     req.CspEnabled,
+	}
+	for _, w := range req.Weathers {
+		tm.Weathers = append(tm.Weathers, UserTimeWeather{
+			Graphics:               w.Graphics,
+			BaseTemperatureAmbient: w.BaseTemperatureAmbient,
+			BaseTemperatureRoad:    w.BaseTemperatureRoad,
+			VariationAmbient:       w.VariationAmbient,
+			VariationRoad:          w.VariationRoad,
+			WindBaseSpeedMin:       w.WindBaseSpeedMin,
+			WindBaseSpeedMax:       w.WindBaseSpeedMax,
+			WindBaseDirection:      w.WindBaseDirection,
+			WindVariationDirection: w.WindVariationDirection,
+			CspTime:                w.CspTime,
+			CspTimeOfDayMulti:      w.CspTimeOfDayMulti,
+			CspDate:                w.CspDate,
+		})
+	}
+
 	if _, err := Dba.updateTime(tm); err != nil {
 		apiDbError(c, err)
 		return
@@ -465,6 +515,35 @@ func apiConfigContentUpdate(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
+}
+
+// --- Content caches (SPA pickers & library) ---
+
+func apiCarsList(c *gin.Context) {
+	cars, err := Dba.selectCacheCars()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": cars})
+}
+
+func apiTracksList(c *gin.Context) {
+	tracks, err := Dba.selectCacheTracks()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": tracks})
+}
+
+func apiWeathersList(c *gin.Context) {
+	weathers, err := Dba.selectCacheWeathers()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": weathers})
 }
 
 // --- Auth & meta (SPA) ---

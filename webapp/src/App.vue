@@ -30,7 +30,12 @@ async function logout() {
 
 const nav = [
   { to: "/", label: "Dashboard", icon: "▣" },
-  // Events, Content, Presets land in Phases 3-4
+  // Events (builder + queue) land in Phase 4
+  { to: "/content", label: "Content", icon: "▤" },
+  { to: "/presets/classes", label: "Car Classes", icon: "⛟" },
+  { to: "/presets/difficulty", label: "Difficulty", icon: "◔" },
+  { to: "/presets/sessions", label: "Sessions", icon: "◷" },
+  { to: "/presets/time", label: "Time & Weather", icon: "☼" },
   { to: "/settings", label: "Configuration", icon: "⚙" },
   { to: "/preferences", label: "Preferences", icon: "☺" },
   { to: "/about", label: "About", icon: "ℹ" },

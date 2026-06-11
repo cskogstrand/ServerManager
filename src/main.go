@@ -303,6 +303,10 @@ func main() {
 	api.Use(AuthenticateMiddleware)
 	api.Use(CsrfMiddleware)
 	{
+		api.GET("/cars", apiCarsList)
+		api.GET("/tracks", apiTracksList)
+		api.GET("/weathers", apiWeathersList)
+
 		api.GET("/car/:key", apiCar)
 		api.GET("/car/image/:car/:skin", apiCarImage)
 

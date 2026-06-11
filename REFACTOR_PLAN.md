@@ -1,189 +1,124 @@
 # Server Manager — Frontend Rewrite & Backend Refactor Plan
 
-Date: 2026-06-11 (updated same day: Vue 3 confirmed; multi-server + car-count features added and implemented)
+Last updated: 2026-06-11 · Branch: `ux-rewrite`
 Scope: Replace the Go-template + Alpine.js frontend with a TypeScript SPA (Vue 3), complete the JSON API in Go, and redesign the UX around the actual workflow (build event → queue → run). The Go backend stays.
 
-## Status
-
-- **DONE (Phase 0 head start, on branch `ux-rewrite`)**: multi-server instances (backend + API + minimal old-UI hooks), car count per class entry (backend + old class editor UI). See sections 2a/2b.
-- **NEXT**: remaining Phase 0 items (JSON CRUD for presets/config/users, CSRF, SSE), then Phase 1 scaffold.
+Legend: `[x]` done · `[ ]` open
 
 ---
 
-## 1. Framework Decision
+## 1. Framework Decision — SETTLED
 
-### Keep Go for the backend — do NOT port to TypeScript/Node
-
-The backend's hard parts are exactly the things Go is best at and Node is worst at:
-
-| Concern | Where | Why Go wins |
-|---|---|---|
-| Spawning/killing the `acServer` OS process | `src/acprocess.go` | `exec.Command` + cross-platform binary selection already works on Win/Linux |
-| UDP binary protocol listener (ACSP telemetry) | `src/udpplugin.go` (451 LOC) | Byte-level parsing of a binary game protocol; goroutine model fits |
-| Single-binary deployment with embedded assets | `src/embedded.go`, Makefile | One file to ship; Node equivalents (pkg/bun build) are heavier and flakier, especially with native SQLite |
-| SQLite via CGO, cross-compiled to Windows | `src/dbaccess.go`, mingw toolchain | Already solved; would need re-solving with better-sqlite3 + electron-builder-style packaging |
-
-A TS backend rewrite would cost weeks and the end state would be operationally worse. **TypeScript goes where it actually pays off: the frontend**, which is currently ~1,900 LOC of untyped, untestable inline JavaScript.
-
-### Frontend: rewrite as a TypeScript SPA (don't refactor in place)
-
-Evidence from the scan that in-place refactor ≈ 70% of a rewrite anyway:
-
-- **Mobile is a forked UI, not responsive CSS**: `mobile.htm` (362) + `mobile_cars.htm` (424) + `mobile_track.htm` (286) + `mobile_weather.htm` (244) = 1,316 LOC duplicating desktop logic (~90% overlap with `server.htm`'s dashboard object).
-- **~1,900 LOC of inline Alpine.js** across 16 `x-data` objects, no separate JS files, no types, no tests possible.
-- **Hand-rolled state management**: snapshot/dirty-tracking via `JSON.stringify` in `server.htm:141-212`, custom DOM events as a state bus (`sm-content-counts` in `content.htm:26`), three independent 1000ms polling loops.
-- **Modal markup copy-pasted 8+ times** across class/time/event/session/difficulty/server/mobile templates.
-- **CSS already SPA-ready**: `extra.css` (3,584 LOC) is a self-contained design system (`--c-*` tokens, `pw-*` components) that bypasses Tailwind — it ports cleanly.
-
-### Recommended stack
-
-| Layer | Choice | Rationale |
-|---|---|---|
-| Build | **Vite** | Fast, trivial dev proxy to `:3030`, static `dist/` output for embedding |
-| Framework | **Vue 3 + `<script setup>` + TS** | Closest mental model to Alpine (`x-data`→`ref/reactive`, `x-show`→`v-show`, `@click` identical) — fastest port of existing logic. React + TanStack Query + Zustand is a fine swap if preferred; nothing below depends on the choice. |
-| Server state | **TanStack Query (vue-query)** | Kills the hand-rolled fetch/merge/poll logic; caching, invalidation, optimistic updates for free |
-| Client state | **Pinia** | Dirty tracking, modal cascade, queue editing |
-| Styling | **Tailwind 4 with `@theme` tokens ported from `extra.css`** | Keep the existing slate design system (per established design direction: `#0d1117` bg, Plus Jakarta Sans, soft blue accent, 8px radius); delete the 44 `!important` overrides |
-| Go↔TS types | **tygo** (generate TS interfaces from `src/dbmodels.go` structs) | One source of truth; regenerated in `make run` |
-| Realtime | **SSE endpoint from Go** | Replaces all three 1s polling loops; UDP listener already produces the events |
-
-Project layout: new `webapp/` directory in this repo (not a separate project — shares Makefile, schema, release pipeline). Go serves `webapp/dist` embedded; API stays at `/api/*`.
+- [x] **Backend stays Go.** The hard parts are what Go is best at and Node is worst at:
+  - Spawning/killing the `acServer` OS process (`src/acprocess.go`)
+  - UDP binary protocol listener, ACSP telemetry (`src/udpplugin.go`)
+  - Single-binary deployment with embedded assets
+  - SQLite via CGO, cross-compiled to Windows
+- [x] **Frontend: rewrite as TypeScript SPA, not in-place refactor.** Evidence: mobile is a forked UI (1,316 LOC duplicating desktop), ~1,900 LOC inline untyped Alpine JS, hand-rolled state (JSON.stringify dirty-tracking, 3× 1s polling loops), modal markup copy-pasted 8+ times. In-place cleanup ≈ 70% of a rewrite with none of the type safety.
+- [x] **Stack confirmed**: Vite + **Vue 3** `<script setup>` + TS, TanStack Query (server state), Pinia (client state), Tailwind 4 with tokens ported from `extra.css` (keep slate dark theme, Plus Jakarta Sans, soft blue, 8px radius), tygo for Go→TS types, SSE for realtime. New `webapp/` dir in this repo; Go serves embedded `webapp/dist`.
 
 ---
 
-## 2a. Multi-server hosting — IMPLEMENTED
+## 2a. Multi-server hosting — IMPLEMENTED ✅
 
 Run several acServer processes side by side on different ports, each with its own queue.
 
-- **Schema**: new `server_instance` table (name + udp/tcp/http ports + plugin port pair); `server_event.instance_id` scopes the queue per instance. The default instance (id 1) is seeded from the ports historically stored in `user_config`, so existing installs migrate automatically.
-- **Runtime**: `src/instance.go` — `Instance` bundles the OS process handle, captured log output, UDP plugin connection, status and config renderer (all formerly package globals). `InstanceManager` syncs runtime instances with the DB and owns lifecycle (UDP listener goroutine per instance, rebind on port change, teardown on delete).
-- **Isolation**: instance 1 keeps the historical `tmp/` work dir; instance N runs from `tmp/instance_N/` with its own `cfg/`, extracted content and binary copy. `server_cfg.ini` ports and plugin addresses are templated per instance.
-- **API**: `GET/POST /api/instances`, `PUT/DELETE /api/instances/:id` (port-collision validation; edits/deletes refused while running; last instance protected). All existing `/api/server/*` and `/api/queue/*` endpoints accept `?instance=N` and default to the lowest-id instance, so the old UI keeps working unchanged. New `POST /api/queue/event/:id` and `/api/queue/category/:id`.
-- **Old UI**: queue page gets an instance selector when more than one instance exists. Full instance management UI (create/edit instances, per-instance dashboard tabs, per-instance queue views) is **Vue work — added to Phases 4 and 5**.
-- **Side fixes**: per-instance mutex around process handle/status (was an unguarded global written by the UDP goroutine); config previews (`/api/server/server_cfg.ini`, `entry_list.ini`) now render with a throwaway renderer instead of mutating live state; public-IP poller no longer dereferences a nil response on error.
+- [x] Schema: `server_instance` table (name, udp/tcp/http ports, plugin port pair); `server_event.instance_id` scopes the queue. Default instance seeded from legacy `user_config` ports — existing installs migrate automatically.
+- [x] Runtime: `src/instance.go` — `Instance` bundles process handle, log buffer, UDP plugin connection, status and config renderer (all formerly package globals). `InstanceManager` syncs runtime set with DB, owns lifecycle (UDP goroutine per instance, rebind on port change, teardown on delete).
+- [x] Isolation: instance 1 keeps historical `tmp/`; instance N runs from `tmp/instance_N/` with own cfg + content + binary copy. `server_cfg.ini` ports/plugin addresses templated per instance.
+- [x] API: `GET/POST /api/instances`, `PUT/DELETE /api/instances/:id` — port-collision validation, edits/deletes refused while running, last instance protected. All `/api/server/*` + `/api/queue/*` accept `?instance=N`, default = lowest id (old UI unaffected). New `POST /api/queue/event/:id`, `POST /api/queue/category/:id`.
+- [x] Old UI: instance selector on queue page when >1 instance exists.
+- [x] Docker: compose files map port ranges 9601-9609 (tcp+udp) and 8082-8090 for extra instances.
+- [x] Smoke-tested live: create/update/delete, per-instance status + work dirs, collision rejection, delete-last guard.
+- [ ] Full instance management UI (create/edit instances, per-instance dashboard, queue views) → Vue, Phases 4–5.
+- [ ] Old UI start/stop only reaches the default instance (others via API until Vue dashboard).
 
-## 2b. Car count per class entry — IMPLEMENTED
+## 2b. Car count per class entry — IMPLEMENTED ✅
 
-One class-entry row can produce N grid slots ("5× this car/skin") instead of duplicating the car in the list.
+One class-entry row yields N grid slots instead of duplicating the car in the list.
 
-- **Schema**: `user_class_entry.car_count` (default 1, `ensureColumn` migration).
-- **Render**: entries are expanded count-times in `ConfigRenderer.renderIni` *before* the pitbox/max-clients capping and strategy shuffle, so caps apply to real grid slots.
-- **UI**: "Number of cars" input on each entry card in the class editor; count round-trips through the existing JSON form field. The dashboard's car-list modal still submits expanded single entries (collapsing a class edited there back to counts is Vue-phase work).
+- [x] Schema: `user_class_entry.car_count` (default 1, `ensureColumn` migration).
+- [x] Render: entries expanded count-times in `ConfigRenderer.renderIni` *before* pitbox/max-clients capping and strategy shuffle; duplicate car content extracted once.
+- [x] UI: "Number of cars" input per entry card in class editor; count round-trips through existing JSON form field. Verified end to end.
+- [ ] Dashboard car-modal still submits expanded single entries (collapses counts back to 1×) → fix in Vue phase.
 
-## 2. Backend Refactor (prerequisite, Go)
+## 2c. Side fixes landed with the above ✅
 
-The SPA can only be as good as the API. Currently ~60% of functionality is HTML-form-only.
-
-### Phase 0 — API completion
-1. **Add JSON CRUD endpoints** for everything that is form-POST-only today: user, config, difficulty, class, session, time, event, event category (handlers in `src/routes.go` contain the logic; extract into shared functions called by both old routes and new `/api/*` handlers so old UI keeps working during migration).
-2. **Fix GET-with-side-effects**: queue moveup/movedown/skip/clear are GET endpoints (`src/api.go`) — convert to POST/PUT/DELETE.
-3. **Consistent error envelope**: `{"error": {"code", "message"}}` with correct status codes; replace the generic `routeDbError` 500 (`src/routes.go:1024`).
-4. **SSE stream** `GET /api/server/events`: push server status, session changes, content-job progress. Source: `udpplugin.go` events + `ContentJobs`.
-5. **Auth for SPA**: keep JWT HttpOnly cookie (works fine for same-origin SPA). Add CSRF protection for mutating endpoints (double-submit cookie) — currently absent.
-
-### Phase 0.5 — structural cleanup (do opportunistically while touching handlers)
-- Extract shared "load tracks/cars/weathers + demo data" helper (currently duplicated ~12× in `routes.go:221-280`).
-- Mutex around `ServerStatus` (written by UDP goroutine, read by handlers, currently unsynchronized) and around the process handle in `acprocess.go`.
-- Wrap multi-step operations (`applyServerEvent` in `api.go:372-429`, content upload) in SQLite transactions.
-- Optional, not blocking: service-layer extraction from the 1,615-LOC `dbaccess.go`. Defer unless it blocks API work.
-- Replace `go-assets-builder` with native `go:embed` (available since Go 1.16) — removes a build dependency and the generated 187-LOC `assets.go`.
+- [x] Mutex around process handle/status (was unguarded global written by UDP goroutine).
+- [x] Config previews (`/api/server/server_cfg.ini`, `entry_list.ini`) render with throwaway renderer — no longer mutate live state of a running server.
+- [x] Queue move-up/move-down scoped per instance (was swapping across whole table).
+- [x] Nil-deref fixed in public-IP poller error path.
+- [x] UDP read errors handled (transient → retry, closed socket → goroutine exits).
 
 ---
 
-## 3. UX Redesign
+## 3. Phase 0 — API completion (Go, prerequisite for SPA)
 
-### Core problem
-The app is organized around **database tables**, not the user's task. To run a race you visit five preset pages (difficulty, session, time/weather, class, category), then assemble them on the event page, then queue, then start. Every CRUD action is a full page reload. Mobile is a separate, second app.
+- [ ] JSON CRUD endpoints for everything form-POST-only today: user, config, difficulty, class, session, time, event, event category. Extract shared logic from `routes.go` handlers so old UI keeps working during migration.
+- [ ] Convert remaining GET-with-side-effects queue endpoints (`moveup`, `movedown`, `skipevent`, `clearcompleted`) to POST/PUT/DELETE.
+- [ ] Consistent error envelope `{"error": {"code", "message"}}`; replace generic `routeDbError` 500.
+- [ ] SSE stream `GET /api/server/events`: status, session changes, content-job progress (sources: UDP plugin events, `ContentJobs`). Per-instance events tagged with instance id.
+- [ ] CSRF protection for mutating endpoints (double-submit cookie) — **must land before any mutating SPA page ships**. Keep JWT HttpOnly cookie auth.
 
-### Design principles
-1. **Event-centric**: the primary object is "an event I want to run." Everything else is supporting material reachable from that flow.
-2. **One responsive UI** — delete the mobile fork.
-3. **Live, not polled-and-reloaded**: SSE-driven status, optimistic updates, no `window.location` reloads.
-4. **Inline creation**: never force navigation away from a flow to create a dependency.
+### Phase 0.5 — structural cleanup (opportunistic)
 
-### New information architecture
+- [x] Thread-safety for server status / process handle (done via Instance mutex).
+- [ ] Extract shared "load tracks/cars/weathers + demo data" helper (duplicated ~12× in `routes.go`).
+- [ ] Wrap multi-step operations (`applyServerEvent`, content upload) in SQLite transactions.
+- [ ] Replace `go-assets-builder` with native `go:embed` (removes build dep + generated `assets.go`).
+- [ ] (Optional, deferred) Service-layer extraction from 1,615-LOC `dbaccess.go`.
+
+---
+
+## 4. UX Redesign (target design)
+
+Core problem: app is organized around DB tables, not the user's task. To run a race: five preset pages → assemble event → queue → start. Every CRUD action reloads the page. Mobile is a second app.
+
+Principles: event-centric · one responsive UI · live (SSE) not polled-and-reloaded · inline creation, never navigate away mid-flow.
 
 ```
-┌─ Dashboard (default view)
-│   ├─ Server status card (live via SSE: session, players, time remaining)
-│   ├─ Queue (drag-to-reorder, inline skip/remove, "up next" preview)
-│   └─ Start/Stop with confirm
-├─ Events
-│   ├─ Event list (cards with track/car/weather summary chips)
-│   └─ Event Builder (wizard or single scrollable form):
-│        track picker → car classes → sessions → time/weather → difficulty
-│        Each step shows existing presets as selectable cards
-│        + "create new" inline (drawer/modal) without leaving the builder
-├─ Content (tracks/cars/weather library, upload with progress via SSE)
-├─ Presets (power-user direct access to difficulty/session/time/class —
-│   same components the builder uses, just standalone)
-└─ Settings (config, users, admin)
+┌─ Dashboard — one card per instance: live status, players, current event,
+│              start/stop; queue with drag-reorder and "up next"
+├─ Events — list + Event Builder (track → classes → sessions → time/weather
+│           → difficulty), presets selectable as cards, "create new" inline
+├─ Content — track/car/weather library, uploads with SSE progress
+├─ Presets — power-user direct access (same components the Builder uses)
+└─ Settings — config, users, admin, server instances (ports, create/delete)
 ```
-
-### Concrete UX fixes mapped to current pain
 
 | Current pain | Fix |
 |---|---|
-| 5 separate preset pages to set up one event | Event Builder with inline preset selection/creation |
-| Queue reorder = GET request + full page reload (`queue.htm:45-65`) | Drag-and-drop with optimistic reorder, PUT to API |
-| 1000ms polling ×3, status flickers, modal-open guards (`server.htm:103-116`) | Single SSE subscription in a Pinia store |
-| Unsaved-changes snapshot hack (`server.htm:141-212`) | Form-level dirty state from the store; route-leave guards |
-| Mobile = separate templates | Responsive layout: sidebar collapses to bottom nav, pickers become full-screen sheets on small viewports |
-| Track/car pickers reimplemented 2× (desktop modal + mobile page) | One `<ContentPicker>` component, responsive presentation |
-| Upload via raw XMLHttpRequest, jobs polled (`content.htm:286-332`) | Upload component with progress events; job status over SSE |
+| 5 preset pages to set up one event | Event Builder with inline preset creation |
+| Queue reorder = GET + full reload | Drag-and-drop, optimistic, PUT |
+| 1000ms polling ×3 | Single SSE subscription in a Pinia store |
+| Unsaved-changes snapshot hack | Store-level dirty state + route-leave guards |
+| Mobile = separate templates | Responsive: sidebar → bottom nav, pickers → sheets |
+| Pickers reimplemented 2× | One `<ContentPicker>` component |
+| Upload via raw XHR + polling | Upload component, job status over SSE |
+| One server only | Instance cards, per-instance queues, instance settings |
 
 ---
 
-## 4. Migration Phases
+## 5. Migration Phases
 
 Each phase ships independently; old UI keeps working until Phase 6.
 
-**Phase 0 — Backend API completion** (section 2). ~Go-only, no UI risk.
+- [ ] **Phase 0 — API completion** (section 3) — *multi-server + car count already landed*
+- [ ] **Phase 1 — SPA scaffold**: `webapp/` (Vite + Vue 3 + TS + Tailwind 4 + Pinia + vue-query); port `extra.css` tokens to `@theme`; base components (`Button`, `Card`, `Modal`, `FormRow`, `Toggle`, `Sheet`); tygo in Makefile; typed `apiClient` (error envelope + CSRF); Vite dev proxy → :3030; SPA served at `/app` until cutover. Vitest from day one.
+- [ ] **Phase 2 — Simple pages**: login, initial config, about, admin, user settings.
+- [ ] **Phase 3 — Presets & content**: preset editors as reusable components (Builder reuses them); content library + upload with SSE progress.
+- [ ] **Phase 4 — Event Builder + Queue**: wizard with inline preset creation; queue with drag-reorder, optimistic updates, per-instance assignment/filtering; car-count editing in class/entry components.
+- [ ] **Phase 5 — Dashboard**: SSE-live multi-instance dashboard (card per instance, start/stop each); instance management in Settings; port of `server.htm` last, when all components exist.
+- [ ] **Phase 6 — Cutover**: SPA at `/`; delete `htm/` (~5,800 LOC), mobile templates, `routes.go` page handlers (~1,000 LOC), Alpine/Chart.js CDN refs; swap to `go:embed`.
 
-**Phase 1 — SPA scaffold**
-- `webapp/` with Vite + Vue 3 + TS + Tailwind 4 + Pinia + vue-query.
-- Port `extra.css` tokens into Tailwind `@theme`; build `Button`, `Card`, `Modal`, `FormRow`, `Toggle`, `Sheet` components reproducing the `pw-*` design system.
-- tygo wired into Makefile; typed `apiClient` wrapper (fetch + error envelope + CSRF header).
-- Dev: Vite proxy → `:3030`. Prod: Makefile builds `webapp/dist`, Go embeds and serves it at `/` (old templates move to `/legacy/*` during migration, or SPA mounts at `/app` — pick one; recommend SPA at `/app` until Phase 6 flip).
-
-**Phase 2 — Simple pages** (proves the pipeline end-to-end)
-- Login, initial config, about, admin, user settings.
-
-**Phase 3 — Presets & content**
-- Preset editors (difficulty, session, time/weather, class) as reusable components — built *as components first* because the Event Builder reuses them.
-- Content library + upload with SSE job progress.
-
-**Phase 4 — Event Builder + Queue** (the UX centerpiece)
-- Event Builder wizard with inline preset creation.
-- Queue with drag-reorder, optimistic updates, **per-instance queue assignment and filtering**.
-
-**Phase 5 — Dashboard**
-- Live status via SSE, start/stop, session/player info, Chart.js (or replace with lighter sparklines) — port of `server.htm`, hardest page, done last when all components exist.
-- **Multi-server dashboard**: one card/tab per instance (status, players, current event, start/stop each), plus instance management (create/edit/delete instances, port settings) in Settings.
-
-**Phase 6 — Cutover & deletion**
-- SPA moves to `/`; delete `htm/` (5,776 LOC), `extra.css` overrides, mobile templates, `routes.go` page handlers (~1,000 LOC), Alpine/Chart.js CDN references.
-- Swap `go-assets-builder` → `go:embed`.
-
-### Rough effort (sessions ≈ focused work blocks)
-
-| Phase | Estimate |
-|---|---|
-| 0 — API completion | 2–3 |
-| 1 — Scaffold + design system | 2 |
-| 2 — Simple pages | 1 |
-| 3 — Presets & content | 3–4 |
-| 4 — Event Builder + queue | 3 |
-| 5 — Dashboard | 2 |
-| 6 — Cutover | 1 |
-| **Total** | **~14–16** |
+Effort: Phase 0 remainder 2 · scaffold 2 · simple pages 1 · presets/content 3–4 · builder/queue 3 · dashboard 2 · cutover 1 ≈ **14–15 sessions**.
 
 ---
 
-## 5. Risks & mitigations
+## 6. Risks & mitigations
 
-- **CSRF gap goes live with the SPA** — Phase 0 item 5 must land before any mutating SPA page ships.
-- **`ServerStatus` data races** exist today; SSE fan-out will read it more often — fix the mutex in Phase 0.5 before Phase 5.
-- **Demo mode** (`isDemoRequest`, `withDemoTracks/Cars/Weathers` in `routes.go:34-153`) is implemented in the HTML layer — the API endpoints need the same demo-data injection or demo mode silently breaks in the SPA.
-- **Scope creep in the Event Builder** — build it with existing preset semantics first; don't redesign the preset data model in the same phase.
-- **No test suite exists** — add Vitest from Phase 1 (component + store tests), and Go httptest coverage for every endpoint touched in Phase 0. The rewrite is the cheapest moment to gain tests.
+- [ ] CSRF gap goes live with SPA — Phase 0 item, blocks first mutating SPA page.
+- [ ] Demo mode (`isDemoRequest`, `withDemo*` in `routes.go`) lives in the HTML layer — API endpoints need the same injection or demo mode silently breaks in the SPA.
+- [ ] Event Builder scope creep — build on existing preset semantics first; no data-model redesign in the same phase.
+- [ ] No test suite exists — Vitest from Phase 1; Go `httptest` coverage for every endpoint touched in Phase 0.
+- [x] ~~`ServerStatus` data races~~ — fixed with per-instance mutex.

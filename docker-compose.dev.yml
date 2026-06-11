@@ -18,6 +18,11 @@ services:
       - ${AC_TCP_PORT:-9600}:9600/tcp
       - ${AC_UDP_PORT:-9600}:9600/udp
       - ${AC_HTTP_PORT:-8081}:8081/tcp
+      # Extra server instances (multi-server) bind their own ports inside the
+      # container; map them 1:1 so they are reachable from the host.
+      - 9601-9609:9601-9609/tcp
+      - 9601-9609:9601-9609/udp
+      - 8082-8090:8082-8090/tcp
 
 volumes:
   servermanager_dev_node_modules:

@@ -865,6 +865,20 @@ func (dba Dbaccess) insertEventCategory(categoryname string) (int64, error) {
 	return dba.insertNameInto(categoryname, "user_event_category")
 }
 
+func (dba Dbaccess) updateEventCategoryName(id int, name string) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE user_event_category SET name = ?, filled = 1 WHERE id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+
+	res, err := stmt.Exec(name, id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
 func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 	tx, err := dba.db.Begin()
 	if err != nil {

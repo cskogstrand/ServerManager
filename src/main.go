@@ -344,6 +344,7 @@ func main() {
 		api.POST("/categories", apiCategoryCreate)
 		api.GET("/category/:id", apiCategoryGet)
 		api.PUT("/category/:id", apiCategoryUpdate)
+		api.PATCH("/category/:id", apiCategoryRename)
 		api.DELETE("/category/:id", apiCategoryDelete)
 
 		api.GET("/events", apiEventList)
@@ -386,6 +387,8 @@ func main() {
 		api.POST("/queue/clearcompleted", apiQueueClearCompleted)
 		api.POST("/queue/event/:id", apiQueueAddEvent)
 		api.POST("/queue/category/:id", apiQueueAddCategory)
+		api.GET("/queue", apiQueueList)
+		api.DELETE("/queue/:id", apiQueueDelete)
 
 		api.GET("/instances", apiInstances)
 		api.POST("/instances", apiInstanceCreate)

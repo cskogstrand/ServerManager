@@ -30,7 +30,8 @@ async function logout() {
 
 const nav = [
   { to: "/", label: "Dashboard", icon: "▣" },
-  // Events (builder + queue) land in Phase 4
+  { to: "/events", label: "Events", icon: "⚑" },
+  { to: "/queue", label: "Queue", icon: "≡" },
   { to: "/content", label: "Content", icon: "▤" },
   { to: "/presets/classes", label: "Car Classes", icon: "⛟" },
   { to: "/presets/difficulty", label: "Difficulty", icon: "◔" },

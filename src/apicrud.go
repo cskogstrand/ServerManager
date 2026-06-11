@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -354,6 +355,25 @@ func apiCategoryUpdate(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"id": id})
 }
 
+// apiCategoryRename changes only the name. The full PUT replaces the nested
+// event list (anything not sent gets deleted), which the SPA avoids — it
+// manages events through /api/events instead.
+func apiCategoryRename(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	name, ok := bindName(c)
+	if !ok {
+		return
+	}
+	if _, err := Dba.updateEventCategoryName(id, name); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": id})
+}
+
 func apiCategoryDelete(c *gin.Context) {
 	id, ok := pathId(c)
 	if !ok {
@@ -515,6 +535,48 @@ func apiConfigContentUpdate(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
+}
+
+// --- Queue (SPA) ---
+
+// apiQueueList returns the queue with display names; ?instance=N filters.
+func apiQueueList(c *gin.Context) {
+	instanceId, _ := strconv.Atoi(c.Query("instance"))
+	events, err := Dba.selectServerEvents(false, instanceId)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	items := make([]gin.H, 0, len(events))
+	for _, se := range events {
+		items = append(items, gin.H{
+			"id":          se.Id,
+			"event_id":    se.UserEvent.Id,
+			"instance_id": se.InstanceId,
+			"category":    se.UserEvent.CategoryName,
+			"track":       se.UserEvent.TrackName,
+			"difficulty":  se.UserEvent.DifficultyName,
+			"session":     se.UserEvent.SessionName,
+			"class":       se.UserEvent.ClassName,
+			"time":        se.UserEvent.TimeName,
+			"started_at":  se.StartedAt,
+			"finished":    se.Finished,
+		})
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": items})
+}
+
+func apiQueueDelete(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	if _, err := Dba.deleteServerEvent(id); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": id})
 }
 
 // --- Content caches (SPA pickers & library) ---

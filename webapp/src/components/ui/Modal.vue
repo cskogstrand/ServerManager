@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Port of pw-modal: overlay + centered panel with head/body/footer.
 // One component replaces the 8+ copy-pasted modal markups of the old UI.
+import Icon from "@/components/ui/Icon.vue";
+
 defineProps<{
   open: boolean;
   title?: string;
@@ -23,17 +25,17 @@ const emit = defineEmits<{ close: [] }>();
         <div
           role="dialog"
           aria-modal="true"
-          class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-line bg-surface shadow-2xl"
+          class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-md border border-line bg-surface shadow-2xl"
         >
-          <header class="flex items-center border-b border-line px-4 py-3">
-            <h2 class="text-sm font-semibold">{{ title }}</h2>
+          <header class="flex min-h-12 items-center border-b border-line bg-surface-2/35 px-4 py-3">
+            <h2 class="text-sm font-bold">{{ title }}</h2>
             <button
               type="button"
-              class="ml-auto text-lg leading-none text-muted hover:text-text"
+              class="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-transparent text-muted transition-colors hover:border-line-hi hover:bg-surface-2 hover:text-text"
               aria-label="Close"
               @click="emit('close')"
             >
-              &times;
+              <Icon name="x" :size="16" />
             </button>
           </header>
           <div class="min-h-0 flex-1 overflow-y-auto p-4">

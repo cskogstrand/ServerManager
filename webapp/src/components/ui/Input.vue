@@ -7,6 +7,7 @@ const props = withDefaults(
     min?: number;
     max?: number;
     autocomplete?: string;
+    required?: boolean;
   }>(),
   { type: "text" },
 );
@@ -30,7 +31,8 @@ function onInput(e: Event) {
     :min="min"
     :max="max"
     :autocomplete="autocomplete"
-    class="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm outline-none placeholder:text-dim focus:border-accent"
+    :required="required"
+    class="min-h-9 w-full rounded-md border border-line bg-surface-2 px-3 text-sm text-text outline-none transition-colors duration-200 placeholder:text-dim hover:border-line-hi focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
     @input="onInput"
   />
 </template>

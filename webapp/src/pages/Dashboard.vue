@@ -8,6 +8,8 @@ import { api, ApiError } from "@/lib/api";
 import { useServerStore } from "@/stores/server";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 interface CurrentEvent {
   id: number;
@@ -149,12 +151,21 @@ function consoleLines(detail?: StatusPayload): string {
 </script>
 
 <template>
-  <div class="mb-5 flex items-center gap-3">
-    <h1 class="text-xl font-bold">Dashboard</h1>
-    <span v-if="details[server.instanceList[0]?.id ?? 0]?.public_ip" class="ml-auto font-mono text-xs text-dim">
-      public IP {{ details[server.instanceList[0]!.id].public_ip }}
-    </span>
-  </div>
+  <PageHeader
+    title="Dashboard"
+    subtitle="Live instance status, current event, session telemetry, grid summary and server console."
+    icon="dashboard"
+  >
+    <template #actions>
+      <span
+        v-if="details[server.instanceList[0]?.id ?? 0]?.public_ip"
+        class="inline-flex min-h-8 items-center gap-2 rounded-md border border-line bg-surface px-2.5 font-mono text-xs text-dim"
+      >
+        <Icon name="activity" :size="15" />
+        {{ details[server.instanceList[0]!.id].public_ip }}
+      </span>
+    </template>
+  </PageHeader>
 
   <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
     {{ error }}
@@ -163,8 +174,11 @@ function consoleLines(detail?: StatusPayload): string {
   <div class="space-y-4">
     <Card v-for="inst in server.instanceList" :key="inst.id">
       <template #header>
-        <span class="size-2 rounded-full" :class="inst.running ? 'bg-ok' : 'bg-dim'" />
-        <h2 class="text-sm font-semibold">{{ inst.name }}</h2>
+        <span
+          class="size-2 rounded-full"
+          :class="inst.running ? 'bg-ok shadow-[0_0_14px_rgba(79,216,132,0.55)]' : 'bg-dim'"
+        />
+        <h2 class="text-sm font-bold">{{ inst.name }}</h2>
         <span class="font-mono text-xs text-dim">:{{ inst.tcp_port }}</span>
         <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
           {{ inst.players }} player{{ inst.players === 1 ? "" : "s" }}
@@ -178,7 +192,8 @@ function consoleLines(detail?: StatusPayload): string {
           :disabled="busy[inst.id]"
           @click="skip(inst.id)"
         >
-          Skip event
+          <Icon name="skip" :size="15" />
+          Skip
         </Button>
         <Button
           :variant="inst.running ? 'danger' : 'success'"
@@ -186,7 +201,8 @@ function consoleLines(detail?: StatusPayload): string {
           :disabled="busy[inst.id]"
           @click="toggle(inst.id, inst.running)"
         >
-          {{ busy[inst.id] ? "…" : inst.running ? "■ Stop" : "▶ Start" }}
+          <Icon :name="inst.running ? 'stop' : 'power'" :size="15" />
+          {{ busy[inst.id] ? "Working" : inst.running ? "Stop" : "Start" }}
         </Button>
       </template>
 
@@ -206,10 +222,10 @@ function consoleLines(detail?: StatusPayload): string {
             <div class="text-sm font-medium">{{ details[inst.id].current_event.track }}</div>
             <div class="mb-2 text-xs text-dim">{{ details[inst.id].current_event.category }}</div>
             <div class="flex flex-wrap gap-1.5 text-xs">
-              <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.class }}</span>
-              <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.session }}</span>
-              <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.time }}</span>
-              <span v-if="details[inst.id].current_event.weather" class="rounded-full bg-surface-2 px-2 py-0.5">
+              <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.class }}</span>
+              <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.session }}</span>
+              <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ details[inst.id].current_event.time }}</span>
+              <span v-if="details[inst.id].current_event.weather" class="rounded-full border border-line bg-surface-2 px-2 py-0.5">
                 {{ details[inst.id].current_event.weather }}
               </span>
             </div>
@@ -260,10 +276,11 @@ function consoleLines(detail?: StatusPayload): string {
       <div class="mt-4 border-t border-line pt-3">
         <button
           type="button"
-          class="text-xs text-muted hover:text-text"
+          class="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
           @click="consoleOpen[inst.id] = !consoleOpen[inst.id]"
         >
-          {{ consoleOpen[inst.id] ? "▾ Hide console" : "▸ Show console" }}
+          <Icon name="terminal" :size="15" />
+          {{ consoleOpen[inst.id] ? "Hide console" : "Show console" }}
         </button>
         <pre
           v-if="consoleOpen[inst.id]"

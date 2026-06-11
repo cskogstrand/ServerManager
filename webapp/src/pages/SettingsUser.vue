@@ -7,6 +7,8 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 const auth = useAuthStore();
 
@@ -52,7 +54,11 @@ async function save() {
 </script>
 
 <template>
-  <h1 class="mb-5 text-xl font-bold">Preferences</h1>
+  <PageHeader
+    title="Preferences"
+    subtitle="Personal units and account password settings."
+    icon="user"
+  />
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">
     {{ notice }}
@@ -94,6 +100,9 @@ async function save() {
       </FormRow>
     </Card>
 
-    <Button type="submit" :disabled="busy">{{ busy ? "Saving…" : "Save preferences" }}</Button>
+    <Button type="submit" :disabled="busy">
+      <Icon name="check" :size="15" />
+      {{ busy ? "Saving…" : "Save preferences" }}
+    </Button>
   </form>
 </template>

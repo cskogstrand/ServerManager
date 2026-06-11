@@ -11,7 +11,7 @@ defineProps<{
   <div class="mb-3.5">
     <label
       :for="forId"
-      class="mb-1 block text-xs font-semibold tracking-wide text-muted uppercase"
+      class="mb-1.5 block text-xs font-bold tracking-wide text-muted uppercase"
     >
       {{ label }}
     </label>

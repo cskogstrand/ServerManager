@@ -2,6 +2,8 @@
 import { onMounted, ref } from "vue";
 import { api } from "@/lib/api";
 import Card from "@/components/ui/Card.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 interface AboutInfo {
   version: string;
@@ -23,7 +25,11 @@ const downloads = [
 </script>
 
 <template>
-  <h1 class="mb-5 text-xl font-bold">About</h1>
+  <PageHeader
+    title="About"
+    subtitle="Version, local runtime paths, and downloadable support artifacts."
+    icon="info"
+  />
 
   <div class="max-w-xl space-y-4">
     <Card title="Server Manager">
@@ -43,9 +49,10 @@ const downloads = [
           v-for="d in downloads"
           :key="d.href"
           :href="d.href"
-          class="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-muted hover:border-line-hi hover:text-text"
+          class="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-surface-2 px-3 text-sm font-semibold text-muted transition-colors hover:border-line-hi hover:text-text"
         >
-          ⬇ {{ d.label }}
+          <Icon name="content" :size="15" />
+          {{ d.label }}
         </a>
       </div>
     </Card>

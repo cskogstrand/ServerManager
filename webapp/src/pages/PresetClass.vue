@@ -11,6 +11,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
+import Icon from "@/components/ui/Icon.vue";
 
 const content = useContentStore();
 onMounted(() => void content.load());
@@ -114,7 +115,9 @@ function totalSlots(): number {
                   class="flex-1"
                   :options="skinsFor(entry.cache_car_key).map((s) => ({ value: s.key, label: s.name || s.key }))"
                 />
-                <Button variant="dark" size="sm" title="Random skin" @click="randomSkin(entry)">🎲</Button>
+                <Button variant="dark" size="sm" title="Random skin" aria-label="Random skin" @click="randomSkin(entry)">
+                  <Icon name="shuffle" :size="14" />
+                </Button>
               </div>
             </FormRow>
             <FormRow label="Cars" hint="Grid slots for this entry">
@@ -123,7 +126,9 @@ function totalSlots(): number {
           </div>
 
           <div class="flex flex-col gap-1">
-            <Button variant="dark" size="sm" :disabled="i === 0" aria-label="Move up" @click="move(i, -1)">↑</Button>
+            <Button variant="dark" size="sm" :disabled="i === 0" aria-label="Move up" @click="move(i, -1)">
+              <Icon name="arrowUp" :size="14" />
+            </Button>
             <Button
               variant="dark"
               size="sm"
@@ -131,13 +136,18 @@ function totalSlots(): number {
               aria-label="Move down"
               @click="move(i, 1)"
             >
-              ↓
+              <Icon name="arrowDown" :size="14" />
             </Button>
-            <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeEntry(i)">✕</Button>
+            <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeEntry(i)">
+              <Icon name="x" :size="14" />
+            </Button>
           </div>
         </div>
 
-        <Button variant="dark" @click="addEntry">Add car</Button>
+        <Button variant="dark" @click="addEntry">
+          <Icon name="plus" :size="15" />
+          Add car
+        </Button>
       </Card>
 
       <Button type="submit" :disabled="page.busy.value">Save class</Button>

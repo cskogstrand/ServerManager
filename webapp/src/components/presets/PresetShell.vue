@@ -5,9 +5,13 @@ import { ref } from "vue";
 import type { DropDownList } from "@/types/generated";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 defineProps<{
   title: string;
+  subtitle?: string;
+  icon?: string;
   items: DropDownList[];
   selectedId: number | null;
   busy?: boolean;
@@ -30,20 +34,26 @@ function submitCreate() {
 </script>
 
 <template>
-  <h1 class="mb-5 text-xl font-bold">{{ title }}</h1>
+  <PageHeader
+    :title="title"
+    :subtitle="subtitle ?? 'Create, select, and maintain reusable server presets.'"
+    :icon="icon ?? 'settings'"
+  />
 
   <div class="flex flex-col gap-5 lg:flex-row">
-    <aside class="w-full shrink-0 lg:w-64">
+    <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
       <form class="mb-3 flex gap-2" @submit.prevent="submitCreate">
         <Input v-model="newName" :placeholder="`New ${title.toLowerCase()}…`" />
-        <Button type="submit" variant="dark" :disabled="busy">Add</Button>
+        <Button type="submit" variant="dark" :disabled="busy" aria-label="Add">
+          <Icon name="plus" :size="15" />
+        </Button>
       </form>
 
       <ul class="space-y-1">
         <li v-for="item in items" :key="item.id ?? 0" class="group flex items-center">
           <button
             type="button"
-            class="min-w-0 flex-1 truncate rounded-md px-3 py-1.5 text-left text-sm"
+            class="min-h-9 min-w-0 flex-1 cursor-pointer truncate rounded-md px-3 text-left text-sm font-medium transition-colors"
             :class="
               item.id === selectedId
                 ? 'bg-accent-dim text-accent'
@@ -55,11 +65,11 @@ function submitCreate() {
           </button>
           <button
             type="button"
-            class="ml-1 hidden px-1 text-dim group-hover:block hover:text-danger"
+            class="ml-1 hidden size-8 cursor-pointer place-items-center rounded-md text-dim transition-colors group-hover:grid hover:bg-danger-glow hover:text-danger"
             :aria-label="`Delete ${item.name}`"
             @click="emit('remove', item.id!)"
           >
-            &times;
+            <Icon name="trash" :size="14" />
           </button>
         </li>
       </ul>

@@ -18,15 +18,15 @@ const model = defineModel<boolean>({ required: true });
       role="switch"
       :aria-checked="model"
       :disabled="disabled"
-      class="relative h-5 w-9 shrink-0 rounded-full border transition-colors"
-      :class="model ? 'border-accent/50 bg-accent/30' : 'border-line bg-surface-2'"
+      class="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed"
+      :class="model ? 'border-ok/60 bg-ok-glow' : 'border-line bg-surface-2'"
       @click="model = !model"
     >
       <span
-        class="absolute top-0.5 size-3.5 rounded-full transition-all"
-        :class="model ? 'left-[18px] bg-accent' : 'left-0.5 bg-muted'"
+        class="absolute top-0.5 size-3.5 rounded-full transition-all duration-200"
+        :class="model ? 'left-[18px] bg-ok shadow-[0_0_12px_rgba(79,216,132,0.35)]' : 'left-0.5 bg-muted'"
       />
     </button>
-    <span v-if="label" class="text-sm">{{ label }}</span>
+    <span v-if="label" class="text-sm text-text">{{ label }}</span>
   </label>
 </template>

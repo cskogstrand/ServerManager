@@ -10,6 +10,8 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Toggle from "@/components/ui/Toggle.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 const content = useContentStore();
 
@@ -144,7 +146,11 @@ function jobTone(status: string) {
 </script>
 
 <template>
-  <h1 class="mb-5 text-xl font-bold">Content</h1>
+  <PageHeader
+    title="Content"
+    subtitle="Browse installed tracks, cars, and weather; validate the AC path; upload or rebuild content cache."
+    icon="content"
+  />
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
   <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
@@ -160,7 +166,7 @@ function jobTone(status: string) {
             v-for="t in (['tracks', 'cars', 'weathers'] as const)"
             :key="t"
             type="button"
-            class="rounded-md px-3 py-1 text-sm capitalize"
+            class="min-h-8 cursor-pointer rounded-md px-3 text-sm font-semibold capitalize transition-colors"
             :class="tab === t ? 'bg-accent-dim text-accent' : 'text-muted hover:text-text'"
             @click="tab = t"
           >
@@ -224,7 +230,9 @@ function jobTone(status: string) {
           <div class="flex gap-1">
             <Input id="installpath" v-model="config.install_path" class="flex-1" />
             <Button variant="dark" size="sm" @click="validatePath">
-              {{ pathValid === null ? "Check" : pathValid ? "✓" : "✕" }}
+              <Icon v-if="pathValid === true" name="check" :size="14" />
+              <Icon v-else-if="pathValid === false" name="x" :size="14" />
+              <span>{{ pathValid === null ? "Check" : pathValid ? "Valid" : "Invalid" }}</span>
             </Button>
           </div>
         </FormRow>

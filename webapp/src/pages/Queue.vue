@@ -9,6 +9,8 @@ import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Select from "@/components/ui/Select.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 interface QueueRow {
   id: number;
@@ -128,35 +130,48 @@ watch(
 </script>
 
 <template>
-  <div class="mb-5 flex flex-wrap items-center gap-3">
-    <h1 class="text-xl font-bold">Queue</h1>
-
-    <div v-if="server.instanceList.length > 1" class="flex gap-1">
-      <button
-        v-for="inst in server.instanceList"
-        :key="inst.id"
-        type="button"
-        class="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm"
-        :class="inst.id === instanceId ? 'bg-accent-dim text-accent' : 'text-muted hover:text-text'"
-        @click="instanceId = inst.id"
-      >
-        <span class="size-1.5 rounded-full" :class="inst.running ? 'bg-ok' : 'bg-dim'" />
-        {{ inst.name }}
-      </button>
-    </div>
-
-    <div class="ml-auto flex gap-2">
-      <Button v-if="activeRow" variant="ghost" size="sm" :disabled="busy" @click="skip">Skip event</Button>
+  <PageHeader
+    title="Queue"
+    subtitle="Manage the per-instance run order, start servers, and queue individual events or full categories."
+    icon="queue"
+  >
+    <template #actions>
+      <Button v-if="activeRow" variant="ghost" size="sm" :disabled="busy" @click="skip">
+        <Icon name="skip" :size="15" />
+        Skip
+      </Button>
       <Button
         v-if="instance && !instance.running && pendingRows.length"
         variant="success"
         :disabled="busy"
         @click="start"
       >
-        ▶ Start server
+        <Icon name="power" :size="15" />
+        Start
       </Button>
-      <Button v-if="instance?.running" variant="danger" :disabled="busy" @click="stop">■ Stop server</Button>
-    </div>
+      <Button v-if="instance?.running" variant="danger" :disabled="busy" @click="stop">
+        <Icon name="stop" :size="15" />
+        Stop
+      </Button>
+    </template>
+  </PageHeader>
+
+  <div v-if="server.instanceList.length > 1" class="mb-4 flex flex-wrap gap-1">
+    <button
+      v-for="inst in server.instanceList"
+      :key="inst.id"
+      type="button"
+      class="flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors"
+      :class="
+        inst.id === instanceId
+          ? 'border-accent/45 bg-accent-dim text-accent'
+          : 'border-line bg-surface text-muted hover:border-line-hi hover:text-text'
+      "
+      @click="instanceId = inst.id"
+    >
+      <span class="size-1.5 rounded-full" :class="inst.running ? 'bg-ok' : 'bg-dim'" />
+      {{ inst.name }}
+    </button>
   </div>
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
@@ -167,11 +182,13 @@ watch(
   <div class="grid items-start gap-5 xl:grid-cols-[1fr_340px]">
     <Card>
       <template #header>
-        <h2 class="text-sm font-semibold">Server queue</h2>
+        <Icon name="queue" :size="16" class="text-accent" />
+        <h2 class="text-sm font-bold">Server queue</h2>
         <span v-if="instance" class="text-xs text-dim">{{ instance.name }}</span>
       </template>
       <template #actions>
         <Button v-if="rows.some((r) => r.finished)" variant="ghost" size="sm" @click="clearCompleted">
+          <Icon name="trash" :size="14" />
           Clear completed
         </Button>
       </template>
@@ -197,8 +214,8 @@ watch(
             }"
           >
             <td class="py-2 pr-2">
-              <span v-if="rowState(r) === 'active'" class="text-ok">▶</span>
-              <span v-else-if="rowState(r) === 'done'" class="text-dim">✓</span>
+              <Icon v-if="rowState(r) === 'active'" name="activity" :size="15" class="text-ok" />
+              <Icon v-else-if="rowState(r) === 'done'" name="check" :size="15" class="text-dim" />
               <span v-else class="text-muted">{{ pendingRows.indexOf(r) + 1 }}</span>
             </td>
             <td class="py-2 pr-2">
@@ -211,7 +228,9 @@ watch(
             </td>
             <td class="py-2 text-right whitespace-nowrap">
               <template v-if="rowState(r) === 'pending'">
-                <Button variant="dark" size="sm" :disabled="i === 0 || busy" aria-label="Move up" @click="moveUp(r.id)">↑</Button>
+                <Button variant="dark" size="sm" :disabled="i === 0 || busy" aria-label="Move up" @click="moveUp(r.id)">
+                  <Icon name="arrowUp" :size="14" />
+                </Button>
                 <Button
                   variant="dark"
                   size="sm"
@@ -220,9 +239,11 @@ watch(
                   aria-label="Move down"
                   @click="moveDown(r.id)"
                 >
-                  ↓
+                  <Icon name="arrowDown" :size="14" />
                 </Button>
-                <Button variant="ghost" size="sm" class="ml-1" aria-label="Remove" @click="removeRow(r.id)">✕</Button>
+                <Button variant="ghost" size="sm" class="ml-1" aria-label="Remove" @click="removeRow(r.id)">
+                  <Icon name="x" :size="14" />
+                </Button>
               </template>
             </td>
           </tr>
@@ -241,6 +262,7 @@ watch(
         />
       </FormRow>
       <Button variant="dark" class="mb-4 w-full" :disabled="!addCategory || busy" @click="addCategoryToQueue">
+        <Icon name="plus" :size="15" />
         Add all from category
       </Button>
 
@@ -251,7 +273,10 @@ watch(
           :options="eventsInCategory.map((e) => ({ value: e.id ?? 0, label: e.track_name ?? '' }))"
         />
       </FormRow>
-      <Button class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">Add event</Button>
+      <Button class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">
+        <Icon name="plus" :size="15" />
+        Add event
+      </Button>
     </Card>
   </div>
 </template>

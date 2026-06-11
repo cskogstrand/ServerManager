@@ -15,6 +15,7 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Sheet from "@/components/ui/Sheet.vue";
+import Icon from "@/components/ui/Icon.vue";
 
 interface EventRow {
   id: number | null;
@@ -235,6 +236,8 @@ onMounted(() =>
 <template>
   <PresetShell
     title="Events"
+    subtitle="Build race events from track, class, session, time/weather, and difficulty presets."
+    icon="events"
     :items="categories"
     :selected-id="selectedId"
     :busy="busy"
@@ -259,13 +262,19 @@ onMounted(() =>
       <div class="mb-4 grid gap-4 md:grid-cols-2">
         <Card v-for="e in events" :key="e.id ?? 0">
           <template #header>
-            <h2 class="truncate text-sm font-semibold">{{ e.track_name }}</h2>
+            <Icon name="events" :size="16" class="text-accent" />
+            <h2 class="truncate text-sm font-bold">{{ e.track_name }}</h2>
             <span v-if="e.track_config" class="text-xs text-dim">{{ e.track_config }}</span>
           </template>
           <template #actions>
-            <Button variant="success" size="sm" @click="queueEvent(e)">Queue</Button>
+            <Button variant="success" size="sm" @click="queueEvent(e)">
+              <Icon name="queue" :size="14" />
+              Queue
+            </Button>
             <Button variant="dark" size="sm" @click="openBuilder(e)">Edit</Button>
-            <Button variant="ghost" size="sm" aria-label="Delete event" @click="deleteEvent(e)">✕</Button>
+            <Button variant="ghost" size="sm" aria-label="Delete event" @click="deleteEvent(e)">
+              <Icon name="trash" :size="14" />
+            </Button>
           </template>
 
           <img
@@ -275,18 +284,21 @@ onMounted(() =>
             class="mb-3 aspect-video w-full rounded-sm border border-line object-cover"
           />
           <div class="flex flex-wrap gap-1.5 text-xs">
-            <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ e.class_name }} ({{ e.entries }})</span>
-            <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ e.session_name }}</span>
-            <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ e.time_name }}</span>
-            <span class="rounded-full bg-surface-2 px-2 py-0.5">{{ e.difficulty_name }}</span>
-            <span class="rounded-full bg-surface-2 px-2 py-0.5">
+            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.class_name }} ({{ e.entries }})</span>
+            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.session_name }}</span>
+            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.time_name }}</span>
+            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.difficulty_name }}</span>
+            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">
               {{ e.race_laps ? `${e.race_laps} laps` : "timed race" }}
             </span>
           </div>
         </Card>
       </div>
 
-      <Button @click="openBuilder()">+ Add event</Button>
+      <Button @click="openBuilder()">
+        <Icon name="plus" :size="15" />
+        Add event
+      </Button>
     </template>
 
     <p v-else class="text-muted">
@@ -300,7 +312,7 @@ onMounted(() =>
       <FormRow label="Track">
         <button
           type="button"
-          class="w-full overflow-hidden rounded-md border border-line text-left hover:border-line-hi"
+          class="w-full cursor-pointer overflow-hidden rounded-md border border-line bg-surface-2 text-left transition-colors hover:border-line-hi focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           @click="trackPickerOpen = true"
         >
           <img
@@ -316,7 +328,7 @@ onMounted(() =>
                 {{ editing.track_config || "default" }} · {{ editing.pitboxes }} pits — tap to change
               </span>
             </template>
-            <span v-else class="text-muted">Tap to choose a track…</span>
+            <span v-else class="text-muted">Choose a track…</span>
           </div>
         </button>
       </FormRow>

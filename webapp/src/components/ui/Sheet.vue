@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Responsive picker container: side panel on desktop, full-screen sheet on
 // mobile. Replaces the old UI's separate mobile_*.htm picker pages.
+import Icon from "@/components/ui/Icon.vue";
+
 defineProps<{
   open: boolean;
   title?: string;
@@ -19,17 +21,17 @@ const emit = defineEmits<{ close: [] }>();
         v-if="open"
         role="dialog"
         aria-modal="true"
-        class="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-surface sm:max-w-md"
+        class="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-surface shadow-2xl sm:max-w-md"
       >
-        <header class="flex items-center border-b border-line px-4 py-3">
-          <h2 class="text-sm font-semibold">{{ title }}</h2>
+        <header class="flex min-h-12 items-center border-b border-line bg-surface-2/35 px-4 py-3">
+          <h2 class="text-sm font-bold">{{ title }}</h2>
           <button
             type="button"
-            class="ml-auto text-lg leading-none text-muted hover:text-text"
+            class="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-transparent text-muted transition-colors hover:border-line-hi hover:bg-surface-2 hover:text-text"
             aria-label="Close"
             @click="emit('close')"
           >
-            &times;
+            <Icon name="x" :size="16" />
           </button>
         </header>
         <div class="min-h-0 flex-1 overflow-y-auto p-4">

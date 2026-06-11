@@ -41,8 +41,8 @@ function isSelected(t: { key?: string; config?: string }) {
         v-for="t in filtered"
         :key="`${t.key}:${t.config}`"
         type="button"
-        class="overflow-hidden rounded-md border text-left"
-        :class="isSelected(t) ? 'border-accent' : 'border-line hover:border-line-hi'"
+        class="cursor-pointer overflow-hidden rounded-md border bg-surface-2 text-left transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        :class="isSelected(t) ? 'border-accent shadow-[0_0_0_1px_rgba(98,179,232,0.25)]' : 'border-line hover:border-line-hi'"
         @click="
           emit('select', {
             key: t.key ?? '',

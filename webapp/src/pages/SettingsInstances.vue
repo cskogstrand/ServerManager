@@ -9,6 +9,8 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Modal from "@/components/ui/Modal.vue";
+import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 const server = useServerStore();
 onMounted(() => void server.load());
@@ -111,10 +113,18 @@ const remove = (inst: InstanceState) =>
 </script>
 
 <template>
-  <div class="mb-5 flex items-center gap-3">
-    <h1 class="text-xl font-bold">Server Instances</h1>
-    <Button class="ml-auto" @click="openCreate">+ Add instance</Button>
-  </div>
+  <PageHeader
+    title="Server Instances"
+    subtitle="Create and maintain independent acServer processes, ports, plugin pairs, and queues."
+    icon="instances"
+  >
+    <template #actions>
+      <Button @click="openCreate">
+        <Icon name="plus" :size="15" />
+        Add instance
+      </Button>
+    </template>
+  </PageHeader>
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
   <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
@@ -125,7 +135,7 @@ const remove = (inst: InstanceState) =>
     <Card v-for="inst in server.instanceList" :key="inst.id">
       <template #header>
         <span class="size-2 rounded-full" :class="inst.running ? 'bg-ok' : 'bg-dim'" />
-        <h2 class="text-sm font-semibold">{{ inst.name }}</h2>
+        <h2 class="text-sm font-bold">{{ inst.name }}</h2>
       </template>
       <template #actions>
         <Button variant="dark" size="sm" :disabled="inst.running" @click="openEdit(inst)">Edit</Button>

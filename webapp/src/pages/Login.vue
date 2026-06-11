@@ -5,6 +5,8 @@ import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/lib/api";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
+import Icon from "@/components/ui/Icon.vue";
+import Input from "@/components/ui/Input.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -33,11 +35,18 @@ async function submit() {
 <template>
   <div class="fixed inset-0 flex items-center justify-center bg-bg p-4">
     <form
-      class="w-full max-w-sm rounded-lg border border-line bg-surface p-6"
+      class="w-full max-w-sm rounded-md border border-line bg-surface p-6 shadow-2xl"
       @submit.prevent="submit"
     >
-      <h1 class="mb-1 text-lg font-bold">Server Manager</h1>
-      <p class="mb-5 text-sm text-muted">Sign in to manage your servers</p>
+      <div class="mb-5 flex items-center gap-3">
+        <div class="grid size-10 place-items-center rounded-md border border-accent/30 bg-accent-dim text-sm font-black text-accent">
+          SM
+        </div>
+        <div>
+          <h1 class="text-lg font-black tracking-tight">Server Manager</h1>
+          <p class="text-sm text-muted">Sign in to manage your race servers</p>
+        </div>
+      </div>
 
       <p
         v-if="error"
@@ -47,26 +56,25 @@ async function submit() {
       </p>
 
       <FormRow label="Username" for-id="name">
-        <input
+        <Input
           id="name"
           v-model="name"
           required
           autocomplete="username"
-          class="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
       </FormRow>
       <FormRow label="Password" for-id="password">
-        <input
+        <Input
           id="password"
           v-model="password"
           type="password"
           required
           autocomplete="current-password"
-          class="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
       </FormRow>
 
       <Button type="submit" :disabled="busy" class="mt-2 w-full">
+        <Icon name="power" :size="16" />
         {{ busy ? "Signing in…" : "Sign in" }}
       </Button>
     </form>

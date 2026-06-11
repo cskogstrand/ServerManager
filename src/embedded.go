@@ -1,34 +1,52 @@
 package main
 
 import (
+	"embed"
 	"io"
+	"io/fs"
+	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/jessevdk/go-assets"
 )
 
-// Find a file in the embedded assets file
-func FindFile(filePath string) *assets.File {
-	for _, file := range Assets.Files {
-		if file.Path == filePath {
-			return file
-		}
+//go:embed embed/schema.sql embed/favicon.ico embed/ini embed/webapp
+var embeddedAssets embed.FS
+
+func assetPath(filePath string) string {
+	cleaned := path.Clean("/" + strings.TrimPrefix(filepath.ToSlash(filePath), "/"))
+	return path.Join("embed", strings.TrimPrefix(cleaned, "/"))
+}
+
+func assetExists(filePath string) bool {
+	_, err := fs.Stat(embeddedAssets, assetPath(filePath))
+	return err == nil
+}
+
+func assetSubFS(dir string) http.FileSystem {
+	sub, err := fs.Sub(embeddedAssets, path.Join("embed", dir))
+	if err != nil {
+		return http.FS(embeddedAssets)
 	}
-	return nil
+	return http.FS(sub)
 }
 
 func OpenAsset(filePath string) (io.ReadCloser, error) {
 	if debug {
-		diskPath := filepath.Join("..", strings.TrimPrefix(filepath.FromSlash(filePath), "/"))
-		return os.Open(diskPath)
+		return os.Open(filepath.FromSlash(assetPath(filePath)))
 	}
 
-	file := FindFile(filePath)
-	if file == nil {
-		return nil, os.ErrNotExist
-	}
+	return embeddedAssets.Open(assetPath(filePath))
+}
 
-	return file, nil
+func StaticAssetsFS() http.FileSystem {
+	if debug {
+		return http.Dir("embed")
+	}
+	return assetSubFS("")
+}
+
+func SpaAssetsFS() http.FileSystem {
+	return assetSubFS("webapp/dist")
 }

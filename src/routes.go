@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// routeSpa serves the Vue SPA (webapp/dist) for every non-API GET. Unknown
+// routeSpa serves the Vue SPA for every non-API GET. Unknown
 // paths fall back to index.html so vue-router history mode survives reloads.
 func routeSpa(c *gin.Context) {
 	if strings.HasPrefix(c.Request.URL.Path, "/api") {
@@ -30,7 +30,7 @@ func routeSpa(c *gin.Context) {
 	}
 
 	if debug {
-		base := filepath.Join("..", "webapp", "dist")
+		base := filepath.Join("embed", "webapp", "dist")
 		full := filepath.Join(base, filepath.FromSlash(p))
 		if st, err := os.Stat(full); err != nil || st.IsDir() {
 			full = filepath.Join(base, "index.html")
@@ -39,11 +39,11 @@ func routeSpa(c *gin.Context) {
 		return
 	}
 
-	asset := "/webapp/dist" + p
-	if FindFile(asset) == nil {
-		asset = "/webapp/dist/index.html"
+	asset := p
+	if !assetExists("/webapp/dist" + asset) {
+		asset = "/index.html"
 	}
-	c.FileFromFS(asset, Assets)
+	c.FileFromFS(asset, SpaAssetsFS())
 }
 
 // routeLegacyApp redirects pre-cutover /app/* bookmarks to the new root.

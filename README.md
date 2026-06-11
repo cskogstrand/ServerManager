@@ -2,11 +2,10 @@
 
 ![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white)
 ![HTML5](https://img.shields.io/badge/html5-%23E34F26.svg?style=for-the-badge&logo=html5&logoColor=white)
-![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E)
+![TypeScript](https://img.shields.io/badge/typescript-%233178C6.svg?style=for-the-badge&logo=typescript&logoColor=white)
 ![CSS3](https://img.shields.io/badge/css3-%231572B6.svg?style=for-the-badge&logo=css3&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
-![Alpine.js](https://img.shields.io/badge/alpinejs-white.svg?style=for-the-badge&logo=alpinedotjs&logoColor=%238BC0D0)
-![Chart.js](https://img.shields.io/badge/chart.js-F5788D.svg?style=for-the-badge&logo=chart.js&logoColor=white)
+![Vue.js](https://img.shields.io/badge/vue.js-%234FC08D.svg?style=for-the-badge&logo=vuedotjs&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
 
@@ -70,8 +69,9 @@ Use the pre-built binaries provided in the release tab.
 
 ## Building the project
 
-The project depends on tailwindcss to generate `/css/main.css`, and go-assets-builder to generate `assets.go`. npm is required for tailwindcss.
-Run the following to install the dependencies
+The project builds the Vue SPA first and embeds the production output with
+native Go `embed`. npm is required for the webapp build.
+Run the following to install the dependencies:
 
 ```sh
 make deps
@@ -87,7 +87,7 @@ make build
 
 ### Local dev mode
 
-For faster UI iteration, you can run the app in local dev mode without regenerating embedded assets on every template change.
+For faster UI iteration, you can run the app in local dev mode without rebuilding the Go binary on every UI change.
 
 ```sh
 make rundebug
@@ -95,15 +95,15 @@ make rundebug
 
 This runs the app with `-debug`, which serves:
 
-- templates from `./htm`
-- static files from the repo root under `/static`
-- config templates like `ini/server_cfg.ini` and `ini/entry_list.ini` from disk
+- the built SPA from `src/embed/webapp/dist`
+- static files from `src/embed` under `/static`
+- config templates like `src/embed/ini/server_cfg.ini` and `src/embed/ini/entry_list.ini` from disk
 
 Notes:
 
 - run it from the repository root
-- HTML, CSS, image, and INI template changes are picked up after restarting the app
-- `css/main.css` is still generated before startup
+- Vue/CSS changes require rebuilding the SPA, or use `make webapp-dev` for Vite's dev server
+- image and INI template changes under `src/embed` are picked up after restarting the app
 
 ### Docker dev mode
 
@@ -117,7 +117,7 @@ This starts a dev container that:
 
 - mounts the repository into `/go/src/app`
 - runs the app with `-debug`
-- serves templates, static files, and INI templates directly from your working tree
+- serves static files and INI templates directly from `src/embed`
 - exposes the Web UI on `http://localhost:3030`
 
 To stop it:

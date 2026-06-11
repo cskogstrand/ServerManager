@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-**Server Manager (SM)** is a web-based control panel for managing Assetto Corsa dedicated racing servers. It is a single Go binary with all assets (HTML templates, CSS, images) embedded at build time. The web UI runs on `http://localhost:3030`.
+**Server Manager (SM)** is a web-based control panel for managing Assetto Corsa dedicated racing servers. It is a single Go binary with the Vue SPA, schema, INI templates, and static assets embedded at build time. The web UI runs on `http://localhost:3030`.
 
 ## Commands
 
@@ -18,19 +18,18 @@ All build and dev commands go through `make`:
 | `make buildwin` | Cross-compile Windows binary to `bin/sm_win.exe` |
 | `make all` | Clean full build for both platforms |
 | `make package` | Production package (buildwin + build) |
-
-**No test suite exists.** There are no lint or test make targets.
+| `make test` | Build SPA, run Vitest, then run Go vet |
 
 The build pipeline always runs before Go compilation:
-1. Compile TailwindCSS (`css/input.css` → `css/main.css`)
-2. Embed assets via `go-assets-builder` (generates `src/embedded.go`)
+1. Build the Vue SPA with Vite into `src/embed/webapp/dist`
+2. Embed assets with native Go `embed` from `src/embed`
 3. Compile Go binary with version ldflags
 
 ## Architecture
 
 ### Entry Points
 - `src/main.go` — Gin router setup, middleware (JWT cookie auth), graceful shutdown, public IP polling goroutine
-- `src/routes.go` — HTML page handlers (GET/POST returning full pages)
+- `src/routes.go` — SPA fallback and legacy `/app/*` redirect handlers
 - `src/api.go` — REST API handlers under `/api/*` (JSON responses, JWT-authenticated)
 
 ### Key Packages / Files
@@ -46,7 +45,7 @@ The build pipeline always runs before Go compilation:
 | `src/zipfile.go` | Archive extraction for mod management |
 
 ### Frontend
-Templates in `htm/` are loaded from the embedded filesystem. Pages use **Alpine.js** for reactivity and **TailwindCSS** for styling. **Chart.js** is used for metrics visualizations on the status page. There is no build step for JS — it loads from CDN in dev and should be embedded or CDN in production.
+The frontend lives in `webapp/` and is a Vue 3 + TypeScript SPA built by Vite. Production assets are generated into `src/embed/webapp/dist` and served by the Go binary. In local UI development, use `make webapp-dev` for Vite and `make rundebug` for the Go API/static backend.
 
 ### Database
 Embedded SQLite (`schema.sql` defines the schema). Two categories of tables:
@@ -65,15 +64,14 @@ Embedded SQLite (`schema.sql` defines the schema). Two categories of tables:
 When an event requires CSP, the app creates filesystem symlinks/aliases for track folders (`cspTrackBase()`, `ensureCspTrackAliases()` in `server.go`). This is handled transparently.
 
 ### Asset Embedding
-`go-assets-builder` embeds all `htm/`, `css/`, and static files into `src/embedded.go` during build. In dev (`make run`), assets are re-embedded before `go run`. Never edit `src/embedded.go` manually.
+Native Go `embed` embeds `src/embed/schema.sql`, `src/embed/ini`, `src/embed/favicon.ico`, and the generated `src/embed/webapp/dist` tree. `make webapp`, `make run`, `make build`, and `make test` rebuild the SPA before Go commands that need embedded UI assets.
 
 ## Stack
 
 - **Go 1.23.2** (Gin web framework, golang-jwt/v5, bcrypt, SQLite3, archiver)
-- **Alpine.js** — frontend reactivity
-- **TailwindCSS 4** — utility CSS (compiled via npm/npx)
+- **Vue 3 + TypeScript** — frontend SPA
+- **TailwindCSS 4** — utility CSS (compiled by Vite)
 - **SQLite** — embedded DB, no external database
-- **go-assets-builder** — embeds assets into binary
 - **go-winres** — Windows binary resources for cross-compilation
 
 ## Platform Notes

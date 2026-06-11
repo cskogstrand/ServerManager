@@ -144,7 +144,7 @@ func (r *UdpReader) New(p []byte) {
 	r.data = p
 }
 
-func (r *UdpReader) ReadByte() int {
+func (r *UdpReader) ReadUint8() int {
 	val := r.data[r.readIndex]
 	r.readIndex = r.readIndex + 1
 	return int(val)
@@ -157,13 +157,13 @@ func (r *UdpReader) ReadBytes(bytes int) []byte {
 }
 
 func (r *UdpReader) ReadString() string {
-	length := int(r.ReadByte())
+	length := int(r.ReadUint8())
 	bytes := r.ReadBytes(length)
 	return string(bytes)
 }
 
 func (r *UdpReader) ReadUTF32String() string {
-	length := int(r.ReadByte() * 4)
+	length := int(r.ReadUint8() * 4)
 	bytes := r.ReadBytes(length)
 
 	val, err := utf32.UTF32(utf32.LittleEndian, utf32.IgnoreBOM).NewDecoder().Bytes(bytes)
@@ -204,8 +204,9 @@ type UdpWriter struct {
 	data []byte
 }
 
-func (w *UdpWriter) WriteByte(d byte) {
+func (w *UdpWriter) WriteByte(d byte) error {
 	w.data = append(w.data, d)
+	return nil
 }
 
 func (w *UdpWriter) WriteUTF32String(str string) {
@@ -221,20 +222,20 @@ func (w *UdpWriter) WriteUTF32String(str string) {
 
 func readSessionInfo(r UdpReader) SessionInfo {
 	var s SessionInfo
-	s.version = r.ReadByte()
-	s.sessionIndex = r.ReadByte()
-	s.currentSessionIndex = r.ReadByte()
-	s.sessionCount = r.ReadByte()
+	s.version = r.ReadUint8()
+	s.sessionIndex = r.ReadUint8()
+	s.currentSessionIndex = r.ReadUint8()
+	s.sessionCount = r.ReadUint8()
 	s.serverName = r.ReadUTF32String()
 	s.track = r.ReadString()
 	s.trackConfig = r.ReadString()
 	s.name = r.ReadString()
-	s.typ = r.ReadByte()
+	s.typ = r.ReadUint8()
 	s.time = r.ReadUint16()
 	s.laps = r.ReadUint16()
 	s.waitTime = r.ReadUint16()
-	s.ambientTemp = r.ReadByte()
-	s.roadTemp = r.ReadByte()
+	s.ambientTemp = r.ReadUint8()
+	s.roadTemp = r.ReadUint8()
 	s.weatherGraphics = r.ReadString()
 	s.elapsedMs = r.ReadInt32()
 	return s
@@ -326,7 +327,7 @@ func (inst *Instance) udpReceive() bool {
 	r := UdpReader{}
 	r.New(data)
 
-	acsp := r.ReadByte()
+	acsp := r.ReadUint8()
 
 	switch acsp {
 	case acspError:
@@ -334,16 +335,16 @@ func (inst *Instance) udpReceive() bool {
 		log.Print("ACSP_ERROR: ", err)
 
 	case acspChat:
-		car := r.ReadByte()
+		car := r.ReadUint8()
 		msg := r.ReadUTF32String()
 		log.Print("ACSP_CHAT: " + strconv.Itoa(car) + "; " + msg)
 
 	case acspClientLoaded:
-		car := r.ReadByte()
+		car := r.ReadUint8()
 		log.Print("ACSP_CLIENT_LOADED: ", car)
 
 	case acspVersion:
-		v := r.ReadByte()
+		v := r.ReadUint8()
 		log.Print("ACSP_VERSION: ", v)
 		udp.online = true
 
@@ -387,10 +388,10 @@ func (inst *Instance) udpReceive() bool {
 
 	case acspClientEvent:
 		var ce ClientEvent
-		ce.eventType = r.ReadByte()
-		ce.carId = r.ReadByte()
+		ce.eventType = r.ReadUint8()
+		ce.carId = r.ReadUint8()
 		if ce.eventType == acspCeCollisionWithCar {
-			ce.otherCarId = r.ReadByte()
+			ce.otherCarId = r.ReadUint8()
 		}
 		ce.impactSpeed = r.ReadFloat()
 		ce.worldPos = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
@@ -400,8 +401,8 @@ func (inst *Instance) udpReceive() bool {
 
 	case acspCarInfo:
 		var ci CarInfo
-		ci.carId = r.ReadByte()
-		ci.isConnected = r.ReadByte() != 0
+		ci.carId = r.ReadUint8()
+		ci.isConnected = r.ReadUint8() != 0
 		ci.carModel = r.ReadUTF32String()
 		ci.carSkin = r.ReadUTF32String()
 		ci.driverName = r.ReadUTF32String()
@@ -412,10 +413,10 @@ func (inst *Instance) udpReceive() bool {
 
 	case acspCarUpdate:
 		var cu CarUpdate
-		cu.carId = r.ReadByte()
+		cu.carId = r.ReadUint8()
 		cu.position = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
 		cu.velocity = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
-		cu.gear = r.ReadByte()
+		cu.gear = r.ReadUint8()
 		cu.engineRpm = r.ReadUint16()
 		cu.normalizedSplinePos = r.ReadFloat()
 		log.Print("ACSP_CAR_UPDATE: ")
@@ -425,7 +426,7 @@ func (inst *Instance) udpReceive() bool {
 		var nc NewConnection
 		nc.driverName = r.ReadUTF32String()
 		nc.driverGuid = r.ReadUTF32String()
-		nc.carId = r.ReadByte()
+		nc.carId = r.ReadUint8()
 		nc.carModel = r.ReadString()
 		nc.carSkin = r.ReadString()
 		inst.mu.Lock()
@@ -439,7 +440,7 @@ func (inst *Instance) udpReceive() bool {
 		var cc ConnectionClosed
 		cc.driverName = r.ReadUTF32String()
 		cc.driverGuid = r.ReadUTF32String()
-		cc.carId = r.ReadByte()
+		cc.carId = r.ReadUint8()
 		cc.carModel = r.ReadString()
 		cc.carSkin = r.ReadString()
 		inst.mu.Lock()
@@ -451,9 +452,9 @@ func (inst *Instance) udpReceive() bool {
 
 	case acspLapCompleted:
 		var lc LapCompleted
-		lc.carId = r.ReadByte()
+		lc.carId = r.ReadUint8()
 		lc.laptime = r.ReadUint32()
-		lc.cuts = r.ReadByte()
+		lc.cuts = r.ReadUint8()
 		log.Print("ACSP_LAP_COMPLETED: ")
 		PrintInterface(lc)
 

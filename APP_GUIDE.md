@@ -280,9 +280,9 @@ Things that aren't obvious from the UI but matter:
   served in the dashboard console.
 - **SQLite locking**: one writer at a time — don't run external `sqlite3`
   writes against a live server.
-- **`-debug` flag**: serves `webapp/dist`, `ini/`, `schema.sql` from disk
-  instead of the embedded copies and skips opening the browser; this is what
-  the dev Docker container runs.
+- **`-debug` flag**: serves the built SPA, schema, static assets, and INI
+  templates from `src/embed` on disk instead of the embedded copies; it also
+  skips opening the browser. This is what the dev Docker container runs.
 - **Auto-start**: with the toggle on, the binary starts the default
   instance's queue at boot — combined with Docker `restart: unless-stopped`
   that gives unattended recovery.
@@ -371,5 +371,6 @@ Things that aren't obvious from the UI but matter:
   the error envelope — converge on the envelope, then simplify the SPA client.
 - `GET` payloads with quoted numbers (the `",string"` tags) should get clean
   DTO twins like the time-update endpoint, then the SPA normalizers can go.
-- `go:embed` swap (drop the go-assets-builder build dependency) still pends
-  an asset-layout restructure; tracked in `REFACTOR_PLAN.md`.
+- Native `go:embed` now owns schema, INI templates, favicon, and the SPA
+  production bundle. If Go tooling fails after `make clean`, run
+  `make webapp` first so `src/embed/webapp/dist` exists.

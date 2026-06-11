@@ -4,6 +4,7 @@ go.sum
 go.mod
 bin/*
 src/assets.go
+src/embed/webapp/dist
 *.syso
 
 .idea

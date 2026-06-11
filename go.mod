@@ -7,7 +7,6 @@ require (
 	github.com/cheggaaa/pb/v3 v3.1.5
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/jessevdk/go-assets v0.0.0-20160921144138-4f4301a06e15
 	github.com/kaptinlin/jsonrepair v0.1.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/ztrue/tracerr v0.4.0

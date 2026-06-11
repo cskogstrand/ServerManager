@@ -71,7 +71,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	showVersion := flag.Bool("v", false, "display version information")
-	flag.BoolVar(&debug, "debug", false, "serve templates and static files from disk for local development")
+	flag.BoolVar(&debug, "debug", false, "serve embedded assets from disk for local development")
 	flag.StringVar(&ConfigFolder, "p", "", "Configuration path")
 	flag.Parse()
 
@@ -144,11 +144,7 @@ func main() {
 	}
 	router.Use(gin.Recovery())
 
-	if debug {
-		router.Static("/static", "../")
-	} else {
-		router.StaticFS("/static", Assets)
-	}
+	router.StaticFS("/static", StaticAssetsFS())
 
 	// Pre-cutover bookmarks
 	router.GET("/app/*path", routeLegacyApp)

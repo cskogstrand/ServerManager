@@ -1,5 +1,6 @@
 FROM golang:alpine AS build
 RUN apk --no-cache add gcc g++ make git npm p7zip
+ENV PATH="/usr/local/go/bin:${PATH}"
 WORKDIR /go/src/app
 COPY . .
 RUN make deps && make build

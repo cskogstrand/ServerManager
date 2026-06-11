@@ -1,7 +1,7 @@
 FROM golang:alpine
 
 RUN apk --no-cache add gcc g++ make git npm p7zip
-RUN /usr/local/go/bin/go install github.com/jessevdk/go-assets-builder@latest
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /go/src/app
 
@@ -13,4 +13,4 @@ EXPOSE 9600/tcp
 EXPOSE 9600/udp
 EXPOSE 8081
 
-CMD ["sh", "-lc", "(test -d webapp/dist || (cd webapp && npm install && npm run build)) && (test -f src/assets.go || /go/bin/go-assets-builder schema.sql favicon.ico ini webapp/dist -o src/assets.go) && cd src && /usr/local/go/bin/go run . -debug -p /appdata"]
+CMD ["sh", "-lc", "(test -f src/embed/webapp/dist/index.html || (cd webapp && npm install && npm run build)) && cd src && /usr/local/go/bin/go run . -debug -p /appdata"]

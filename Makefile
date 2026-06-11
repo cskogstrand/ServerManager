@@ -1,25 +1,33 @@
 VERSION ?= dev-build
 
-.PHONY: all build buildwin run rundebug rundebug-docker rundebug-docker-cold stopdebug-docker deps package clean
+.PHONY: all build buildwin run rundebug rundebug-docker rundebug-docker-cold stopdebug-docker deps package clean webapp webapp-dev types
 
 all: deps clean buildwin build
 
+webapp:
+	cd webapp && (test -d node_modules || npm install) && npm run build
 
-build:
+webapp-dev:
+	cd webapp && (test -d node_modules || npm install) && npm run dev
+
+types:
+	tygo generate
+
+build: webapp
 	mkdir -p bin/
 	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css --minify
-	go-assets-builder schema.sql favicon.ico ini htm img css -o src/assets.go
+	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
 	cd src; CGO_ENABLED=1 go build -o ../bin/sm_linux -ldflags="-w -s -X 'main.Version=$(VERSION)'" .
 
-buildwin:
+buildwin: webapp
 	mkdir -p bin/
 	npx @tailwindcss/cli -i ./css/input.css -o ./css/main.css --minify
-	go-assets-builder schema.sql favicon.ico ini htm img css -o src/assets.go
+	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
 	go-winres make
 	cd src; CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -o ../bin/sm_win.exe -ldflags="-w -s -X 'main.Version=$(VERSION)'" .
 
-run:
-	go-assets-builder schema.sql favicon.ico ini htm img css -o src/assets.go
+run: webapp
+	go-assets-builder schema.sql favicon.ico ini htm img css webapp/dist -o src/assets.go
 	cd src; go run .
 
 rundebug:

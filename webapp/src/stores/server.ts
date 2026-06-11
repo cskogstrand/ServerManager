@@ -1,0 +1,149 @@
+import { defineStore } from "pinia";
+import { api } from "@/lib/api";
+import { subscribeServerEvents, type ServerEvent } from "@/lib/sse";
+
+export interface SessionState {
+  name: string;
+  type: number;
+  index: number;
+  current_session_index: number;
+  session_count: number;
+  track: string;
+  track_config: string;
+  server_name: string;
+  time: number;
+  laps: number;
+  wait_time: number;
+  ambient_temp: number;
+  road_temp: number;
+  weather_graphics: string;
+  elapsed_ms: number;
+}
+
+export interface InstanceState {
+  id: number;
+  name: string;
+  udp_port: number | null;
+  tcp_port: number | null;
+  http_port: number | null;
+  plugin_port: number | null;
+  plugin_listen_port: number | null;
+  running: boolean;
+  players: number;
+  session: SessionState | null;
+}
+
+interface InstanceListItem {
+  id: number;
+  name: string;
+  udp_port: number | null;
+  tcp_port: number | null;
+  http_port: number | null;
+  plugin_port: number | null;
+  plugin_listen_port: number | null;
+  is_running: boolean;
+  players: number;
+}
+
+// One live store for everything the SSE stream feeds: per-instance status,
+// players, current session. Replaces the old UI's 1s polling loops.
+export const useServerStore = defineStore("server", {
+  state: () => ({
+    instances: {} as Record<number, InstanceState>,
+    connected: false,
+    loaded: false,
+    unsubscribe: null as null | (() => void),
+  }),
+
+  getters: {
+    instanceList(state): InstanceState[] {
+      return Object.values(state.instances).sort((a, b) => a.id - b.id);
+    },
+  },
+
+  actions: {
+    async load() {
+      const res = await api.get<{ instances: InstanceListItem[] }>("/api/instances");
+      for (const item of res.instances) {
+        this.instances[item.id] = {
+          ...this.instances[item.id],
+          id: item.id,
+          name: item.name,
+          udp_port: item.udp_port,
+          tcp_port: item.tcp_port,
+          http_port: item.http_port,
+          plugin_port: item.plugin_port,
+          plugin_listen_port: item.plugin_listen_port,
+          running: item.is_running,
+          players: item.players,
+          session: this.instances[item.id]?.session ?? null,
+        };
+      }
+      for (const id of Object.keys(this.instances).map(Number)) {
+        if (!res.instances.some((i) => i.id === id)) {
+          delete this.instances[id];
+        }
+      }
+      this.loaded = true;
+    },
+
+    connect() {
+      if (this.unsubscribe) return;
+      this.unsubscribe = subscribeServerEvents(
+        (event) => this.applyEvent(event),
+        (connected) => {
+          this.connected = connected;
+          // Re-sync after a reconnect: events may have been missed
+          if (connected && this.loaded) void this.load();
+        },
+      );
+    },
+
+    disconnect() {
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      this.connected = false;
+    },
+
+    applyEvent(event: ServerEvent) {
+      const inst = this.instances[event.instance_id];
+      switch (event.type) {
+        case "snapshot":
+          if (!inst) return;
+          inst.running = event.data.running;
+          inst.players = event.data.players;
+          inst.session = event.data.session;
+          break;
+        case "server":
+          if (!inst) return;
+          inst.running = event.data.running;
+          if (!event.data.running) {
+            inst.players = 0;
+            inst.session = null;
+          }
+          break;
+        case "players":
+          if (!inst) return;
+          inst.players = event.data.players;
+          break;
+        case "session":
+          if (!inst) return;
+          inst.session = event.data;
+          break;
+        case "content_job":
+          // handled by the content store in Phase 3
+          break;
+      }
+    },
+
+    async start(id: number) {
+      await api.post(`/api/server/start?instance=${id}`);
+      await this.load();
+    },
+
+    async stop(id: number) {
+      await api.post(`/api/server/stop?instance=${id}`);
+      await this.load();
+    },
+  },
+});

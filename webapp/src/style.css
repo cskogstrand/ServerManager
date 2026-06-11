@@ -1,0 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+/* ============================================================
+   SLATE — ServerManager Design System v2 (Tailwind 4 port)
+   Same tokens as css/extra.css, exposed as utility classes:
+   bg-surface, text-muted, border-line, rounded-md (8px), etc.
+   ============================================================ */
+@theme {
+  /* Backgrounds */
+  --color-bg: #0d1117;
+  --color-surface: #141d27;
+  --color-surface-2: #1a2636;
+  --color-surface-3: #1f2e40;
+
+  /* Borders */
+  --color-line: #1e2f42;
+  --color-line-hi: #2a4058;
+
+  /* Accent — dusty sky blue */
+  --color-accent: #4a9ed6;
+  --color-accent-glow: rgba(74, 158, 214, 0.12);
+  --color-accent-dim: rgba(74, 158, 214, 0.07);
+
+  /* Status — muted, not neon */
+  --color-ok: #48cc72;
+  --color-ok-glow: rgba(72, 204, 114, 0.1);
+  --color-danger: #e06058;
+  --color-danger-glow: rgba(224, 96, 88, 0.11);
+
+  /* Typography */
+  --color-text: #c6d8ea;
+  --color-muted: #7a90a8;
+  --color-dim: #3a5068;
+
+  --font-ui: "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Shape — 8px default radius per design direction */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}

@@ -9,3 +9,5 @@ src/assets.go
 .idea
 /data
 /assetocorsa
+webapp/node_modules
+webapp/dist

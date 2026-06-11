@@ -225,6 +225,9 @@ func main() {
 		router.StaticFS("/static", Assets)
 	}
 
+	// Vue SPA (Phase 1+), served alongside the legacy UI until cutover
+	router.GET("/app/*path", routeSpa)
+
 	router.GET("/login", routeLogin)
 	router.POST("/login", routeLogin)
 	router.GET("/logout", routeLogout)

@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -1018,6 +1022,31 @@ func routeAdmin(c *gin.Context) {
 }
 
 // Error routing
+
+// routeSpa serves the Vue SPA (webapp/dist) at /app. Unknown paths fall back
+// to index.html so vue-router history mode works on hard reloads.
+func routeSpa(c *gin.Context) {
+	p := path.Clean("/" + strings.TrimPrefix(c.Param("path"), "/"))
+	if p == "/" {
+		p = "/index.html"
+	}
+
+	if debug {
+		base := filepath.Join("..", "webapp", "dist")
+		full := filepath.Join(base, filepath.FromSlash(p))
+		if _, err := os.Stat(full); err != nil {
+			full = filepath.Join(base, "index.html")
+		}
+		c.File(full)
+		return
+	}
+
+	asset := "/webapp/dist" + p
+	if FindFile(asset) == nil {
+		asset = "/webapp/dist/index.html"
+	}
+	c.FileFromFS(asset, Assets)
+}
 
 func routeDbError(c *gin.Context, err error) {
 	git := "Hello! I've encountered the following error:\n\n```\n" + FormatError(err) + "\n```\n\nHere are the steps I was taking while this happened:\n(PLEASE FILL IN)"

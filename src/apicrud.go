@@ -467,6 +467,54 @@ func apiConfigContentUpdate(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
 }
 
+// --- Auth & meta (SPA) ---
+
+type loginRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+// apiLogin is the JSON twin of routeLogin; registered outside the auth group.
+func apiLogin(c *gin.Context) {
+	var req loginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid login payload")
+		return
+	}
+
+	user, err := Dba.selectUser(req.Name)
+	if err != nil || user.Name == nil || user.Password == nil {
+		apiError(c, http.StatusUnauthorized, "bad_credentials", "Wrong username or password")
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(req.Password)) != nil {
+		apiError(c, http.StatusUnauthorized, "bad_credentials", "Wrong username or password")
+		return
+	}
+
+	if err := issueAuthCookies(c, *user.Name, "admin"); err != nil {
+		apiError(c, http.StatusInternalServerError, "token_error", err.Error())
+		return
+	}
+
+	c.PureJSON(http.StatusOK, gin.H{"success": true, "name": *user.Name})
+}
+
+func apiLogout(c *gin.Context) {
+	c.SetCookie("token", "", -1, "/", "", false, true)
+	c.SetCookie(csrfCookieName, "", -1, "/", "", false, false)
+	c.PureJSON(http.StatusOK, gin.H{"success": true})
+}
+
+func apiAbout(c *gin.Context) {
+	c.PureJSON(http.StatusOK, gin.H{
+		"version":       Version,
+		"config_folder": ConfigFolder,
+		"temp_folder":   TempFolder,
+	})
+}
+
 // --- Current user ---
 
 func apiUserGet(c *gin.Context) {

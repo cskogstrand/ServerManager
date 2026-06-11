@@ -231,6 +231,7 @@ func main() {
 	router.GET("/login", routeLogin)
 	router.POST("/login", routeLogin)
 	router.GET("/logout", routeLogout)
+	router.POST("/api/login", apiLogin)
 
 	app := router.Group("/")
 	app.Use(ConfigCompletedMiddlware())
@@ -353,6 +354,8 @@ func main() {
 
 		api.GET("/user", apiUserGet)
 		api.PUT("/user", apiUserUpdate)
+		api.POST("/logout", apiLogout)
+		api.GET("/about", apiAbout)
 
 		api.POST("/content/recache", apiRecacheContent)
 		api.GET("/content/jobs/active", apiContentJobsActive)

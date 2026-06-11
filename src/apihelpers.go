@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // apiError is the error envelope all new JSON endpoints use:
@@ -71,6 +73,28 @@ func newCsrfToken() string {
 func issueCsrfCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(csrfCookieName, newCsrfToken(), 3600*24*30, "/", "", false, false)
+}
+
+// issueAuthCookies sets the JWT session cookie plus the CSRF cookie.
+// Shared by the HTML form login and the SPA JSON login.
+func issueAuthCookies(c *gin.Context, sub string, aud string) error {
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": sub,
+		"iss": "servermanager",
+		"aud": aud,
+		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
+		"iat": time.Now().Unix(),
+	})
+
+	tokenString, err := claims.SignedString(SecretKey)
+	if err != nil {
+		return err
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
+	issueCsrfCookie(c)
+	return nil
 }
 
 // CsrfMiddleware enforces double-submit on mutating API requests: the

@@ -10,10 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -873,22 +871,10 @@ func routeLogin(c *gin.Context) {
 		pwd := c.PostForm("password")
 
 		if debug && usr == "demo" && pwd == "demo" {
-			claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"sub": "demo",
-				"iss": "servermanager",
-				"aud": "demo",
-				"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
-				"iat": time.Now().Unix(),
-			})
-
-			tokenString, err := claims.SignedString(SecretKey)
-			if err != nil {
+			if err := issueAuthCookies(c, "demo", "demo"); err != nil {
 				c.String(http.StatusInternalServerError, "Error creating token")
 				return
 			}
-			c.SetSameSite(http.SameSiteLaxMode)
-			c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
-			issueCsrfCookie(c)
 
 			log.Print("Debug demo login successful")
 
@@ -909,22 +895,10 @@ func routeLogin(c *gin.Context) {
 		res := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(pwd))
 
 		if res == nil {
-			claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"sub": user.Name,
-				"iss": "servermanager",
-				"aud": "admin",
-				"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
-				"iat": time.Now().Unix(),
-			})
-
-			tokenString, err := claims.SignedString(SecretKey)
-			if err != nil {
+			if err := issueAuthCookies(c, *user.Name, "admin"); err != nil {
 				c.String(http.StatusInternalServerError, "Error creating token")
 				return
 			}
-			c.SetSameSite(http.SameSiteLaxMode)
-			c.SetCookie("token", tokenString, 3600*24*30, "/", "", false, true)
-			issueCsrfCookie(c)
 
 			log.Print("Login successful for user: " + *user.Name)
 

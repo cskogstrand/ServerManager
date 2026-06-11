@@ -1,23 +1,47 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
 const server = useServerStore();
 
-onMounted(() => {
-  void server.load();
-  server.connect();
-});
+// Live data only while logged in
+watch(
+  () => auth.loggedIn,
+  (loggedIn) => {
+    if (loggedIn) {
+      void server.load();
+      server.connect();
+    } else {
+      server.disconnect();
+    }
+  },
+  { immediate: true },
+);
+
+async function logout() {
+  await auth.logout();
+  await router.push({ name: "login" });
+}
 
 const nav = [
   { to: "/", label: "Dashboard", icon: "▣" },
-  // Events, Content, Presets, Settings arrive in Phases 2-5
+  // Events, Content, Presets land in Phases 3-4
+  { to: "/settings", label: "Configuration", icon: "⚙" },
+  { to: "/preferences", label: "Preferences", icon: "☺" },
+  { to: "/about", label: "About", icon: "ℹ" },
 ];
 </script>
 
 <template>
-  <div class="flex min-h-screen">
-    <aside class="w-[228px] shrink-0 border-r border-line bg-surface px-3 py-4 max-md:hidden">
+  <RouterView v-if="route.meta.public" />
+
+  <div v-else class="flex min-h-screen">
+    <aside class="flex w-[228px] shrink-0 flex-col border-r border-line bg-surface px-3 py-4 max-md:hidden">
       <div class="mb-6 flex items-center gap-2 px-2">
         <span class="text-lg font-bold tracking-tight">Server Manager</span>
         <span
@@ -38,6 +62,17 @@ const nav = [
           {{ item.label }}
         </RouterLink>
       </nav>
+
+      <div class="mt-auto border-t border-line px-2 pt-3">
+        <div class="mb-2 truncate text-xs text-muted">{{ auth.user?.name }}</div>
+        <button
+          type="button"
+          class="text-xs text-dim hover:text-text"
+          @click="logout"
+        >
+          Sign out
+        </button>
+      </div>
     </aside>
 
     <main class="min-w-0 flex-1 p-6">

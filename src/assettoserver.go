@@ -428,6 +428,12 @@ func iniHasSection(content, section string) bool {
 	return false
 }
 
+// extraCfgMinSize is the floor below which an extra_cfg.yml can't be a real
+// AssettoServer config (its default dump is several KB). Anything smaller is a
+// stub — e.g. one an older Server Manager build wrote — which AssettoServer's
+// YAML parser rejects ("unresolved tag '!extra_cfg.yml'").
+const extraCfgMinSize = 400
+
 // ensureAssettoServerExtraCfg reconciles cfg/extra_cfg.yml so the relaxable
 // IgnoreConfigurationErrors keys match the operator's choice. Many
 // community/drift mods ship cars without a packed data.acd and tracks without
@@ -435,9 +441,12 @@ func iniHasSection(content, section string) bool {
 // found", "No track params found"). Relaxing weakens that validation — intended
 // for trusted/LAN servers.
 //
-// The existing file (AssettoServer writes a full default on first run) is
-// patched in place to preserve any other operator edits; only when absent is a
-// minimal override written, letting AssettoServer default everything else.
+// Server Manager never authors the file from scratch — a partial YAML document
+// is not accepted by AssettoServer. It only patches a full, valid config:
+// AssettoServer generates one on first run, and a fresh instance is seeded from
+// the default instance's working config so the relax keys apply on the first
+// start. If neither is available the (possibly stub) file is removed so
+// AssettoServer regenerates its own valid default.
 func ensureAssettoServerExtraCfg(dir string, relax bool) {
 	path := filepath.Join(dir, "cfg", "extra_cfg.yml")
 	desired := "false"
@@ -445,34 +454,53 @@ func ensureAssettoServerExtraCfg(dir string, relax bool) {
 		desired = "true"
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		var b strings.Builder
-		b.WriteString("!extra_cfg.yml\nIgnoreConfigurationErrors:\n")
-		for _, k := range relaxableConfigErrors {
-			b.WriteString("  " + k + ": " + desired + "\n")
+	data, _ := os.ReadFile(path)
+	if len(data) < extraCfgMinSize {
+		// Not a real config (missing, or a stub). Seed from the default
+		// instance's valid config if we have one; otherwise drop it and let
+		// AssettoServer create a valid default on startup.
+		seed := seedExtraCfgFromDefault(dir)
+		if seed == "" {
+			if len(data) > 0 {
+				os.Remove(path)
+			}
+			return
 		}
+		data = []byte(seed)
 		if mkErr := os.MkdirAll(filepath.Dir(path), 0755); mkErr != nil {
 			log.Print("Could not create cfg dir for extra_cfg.yml: ", mkErr)
 			return
 		}
-		if wErr := os.WriteFile(path, []byte(b.String()), 0644); wErr != nil {
-			log.Print("Could not write extra_cfg.yml: ", wErr)
+		if wErr := os.WriteFile(path, data, 0644); wErr != nil {
+			log.Print("Could not seed extra_cfg.yml: ", wErr)
+			return
 		}
-		return
 	}
 
 	content := string(data)
 	for _, k := range relaxableConfigErrors {
 		content = setIgnoreConfigError(content, k, desired)
 	}
-
-	if string(data) == content {
+	if content == string(data) {
 		return
 	}
 	if wErr := os.WriteFile(path, []byte(content), 0644); wErr != nil {
 		log.Print("Could not update extra_cfg.yml: ", wErr)
 	}
+}
+
+// seedExtraCfgFromDefault returns the default instance's extra_cfg.yml (a real
+// AssettoServer-generated config) to seed a fresh instance, or "" if this is
+// the default instance or no valid source exists.
+func seedExtraCfgFromDefault(dir string) string {
+	if filepath.Clean(dir) == filepath.Clean(TempFolder) {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(TempFolder, "cfg", "extra_cfg.yml"))
+	if err != nil || len(data) < extraCfgMinSize {
+		return ""
+	}
+	return string(data)
 }
 
 // setIgnoreConfigError ensures `key: value` exists under the

@@ -11,6 +11,7 @@ import { useConfirmStore } from "@/stores/confirm";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
+import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 
@@ -133,6 +134,59 @@ async function skip(id: number) {
   } finally {
     busy.value[id] = false;
   }
+}
+
+// --- Race control (live UDP commands; only meaningful while running) ---
+const raceOpen = ref<Record<number, boolean>>({});
+const broadcastMsg = ref<Record<number, string>>({});
+const adminCmd = ref<Record<number, string>>({});
+
+async function raceAction(id: number, fn: () => Promise<unknown>, ok: string) {
+  busy.value[id] = true;
+  try {
+    await fn();
+    toast.success(ok);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value[id] = false;
+  }
+}
+
+function broadcast(id: number) {
+  const message = (broadcastMsg.value[id] ?? "").trim();
+  if (!message) return;
+  void raceAction(id, () => api.post(`/api/server/broadcast?instance=${id}`, { message }), "Message broadcast.").then(
+    () => (broadcastMsg.value[id] = ""),
+  );
+}
+
+function runAdmin(id: number) {
+  const command = (adminCmd.value[id] ?? "").trim();
+  if (!command) return;
+  void raceAction(id, () => api.post(`/api/server/admin-command?instance=${id}`, { command }), "Command sent.").then(
+    () => (adminCmd.value[id] = ""),
+  );
+}
+
+async function nextSession(id: number) {
+  const ok = await confirm.ask({
+    title: "Advance session",
+    message: "Skip to the next session now?",
+    detail: "The current session ends immediately for everyone.",
+    confirmLabel: "Next session",
+  });
+  if (ok) void raceAction(id, () => api.post(`/api/server/next-session?instance=${id}`), "Advancing to next session.");
+}
+
+async function restartSession(id: number) {
+  const ok = await confirm.ask({
+    title: "Restart session",
+    message: "Restart the current session?",
+    detail: "Everyone returns to the start of the current session.",
+    confirmLabel: "Restart session",
+  });
+  if (ok) void raceAction(id, () => api.post(`/api/server/restart-session?instance=${id}`), "Restarting session.");
 }
 
 // Console auto-refresh while any panel is open
@@ -340,6 +394,44 @@ function consoleLines(detail?: StatusPayload): string {
             </li>
           </ul>
           <p v-else class="text-sm text-dim">No entry list rendered yet.</p>
+        </div>
+      </div>
+
+      <!-- Race control -->
+      <div v-if="inst.running" class="mt-4 border-t border-line pt-3">
+        <button
+          type="button"
+          class="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          @click="raceOpen[inst.id] = !raceOpen[inst.id]"
+        >
+          <Icon name="activity" :size="15" />
+          {{ raceOpen[inst.id] ? "Hide race control" : "Race control" }}
+        </button>
+
+        <div v-if="raceOpen[inst.id]" class="mt-3 space-y-3">
+          <div class="flex flex-wrap gap-2">
+            <Button variant="dark" size="sm" :disabled="busy[inst.id]" @click="nextSession(inst.id)">
+              <Icon name="skip" :size="14" />
+              Next session
+            </Button>
+            <Button variant="dark" size="sm" :disabled="busy[inst.id]" @click="restartSession(inst.id)">
+              <Icon name="repeat" :size="14" />
+              Restart session
+            </Button>
+          </div>
+
+          <form class="flex gap-2" @submit.prevent="broadcast(inst.id)">
+            <Input v-model="broadcastMsg[inst.id]" placeholder="Broadcast a message to all drivers…" class="flex-1" />
+            <Button type="submit" size="sm" :disabled="busy[inst.id] || !(broadcastMsg[inst.id] ?? '').trim()">Send</Button>
+          </form>
+
+          <form class="flex gap-2" @submit.prevent="runAdmin(inst.id)">
+            <Input v-model="adminCmd[inst.id]" placeholder="Admin command, e.g. /kick name or /ballast 0 50" class="flex-1 font-mono" />
+            <Button type="submit" variant="dark" size="sm" :disabled="busy[inst.id] || !(adminCmd[inst.id] ?? '').trim()">Run</Button>
+          </form>
+          <p class="text-xs text-dim">
+            Admin commands run through the server's ACSP plugin — the same ones the in-game admin uses.
+          </p>
         </div>
       </div>
 

@@ -1177,6 +1177,73 @@ func apiServerReadiness(c *gin.Context) {
 	})
 }
 
+// --- Race control: live commands over the ACSP UDP plugin ---
+
+// raceControlInstance resolves the target instance and rejects when it is not
+// running (the UDP plugin only reaches a live acServer).
+func raceControlInstance(c *gin.Context) (*Instance, bool) {
+	inst, err := instanceFromRequest(c)
+	if err != nil {
+		apiInstanceError(c, err)
+		return nil, false
+	}
+	if !inst.isRunning() {
+		apiError(c, http.StatusConflict, "not_running", "The server is not running.")
+		return nil, false
+	}
+	return inst, true
+}
+
+func apiRaceBroadcast(c *gin.Context) {
+	inst, ok := raceControlInstance(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Message) == "" {
+		apiBadRequest(c, "A message is required")
+		return
+	}
+	inst.Udp.WriteBroadcastChat(body.Message)
+	c.PureJSON(http.StatusOK, gin.H{"sent": true})
+}
+
+func apiRaceNextSession(c *gin.Context) {
+	inst, ok := raceControlInstance(c)
+	if !ok {
+		return
+	}
+	inst.Udp.WriteNextSession()
+	c.PureJSON(http.StatusOK, gin.H{"sent": true})
+}
+
+func apiRaceRestartSession(c *gin.Context) {
+	inst, ok := raceControlInstance(c)
+	if !ok {
+		return
+	}
+	inst.Udp.WriteRestartSession()
+	c.PureJSON(http.StatusOK, gin.H{"sent": true})
+}
+
+func apiRaceAdminCommand(c *gin.Context) {
+	inst, ok := raceControlInstance(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Command string `json:"command"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Command) == "" {
+		apiBadRequest(c, "A command is required")
+		return
+	}
+	inst.Udp.WriteAdminCommand(body.Command)
+	c.PureJSON(http.StatusOK, gin.H{"sent": true})
+}
+
 func apiServerLogfile(c *gin.Context) {
 	logpath := filepath.Join(ConfigFolder, "logfile.log")
 	c.FileAttachment(logpath, "logfile.log")

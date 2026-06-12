@@ -336,12 +336,12 @@ These are high-value, lower-risk improvements.
 
 ## 8. Bigger Bets from APP_GUIDE.md
 
-- [ ] Live race control.
-      - driver list
-      - ping/kick
-      - broadcast chat
-      - next/restart session
-      - admin commands
+- [~] Live race control.
+      - [ ] driver list (needs a live UDP roster — follow-up)
+      - [~] ping/kick (via admin command field; dedicated kick needs the roster)
+      - [x] broadcast chat
+      - [x] next/restart session
+      - [x] admin commands
 - [ ] Real-time lap/position widget.
       - use ACSP lap completed and car updates
       - show position, last lap, and gaps
@@ -440,13 +440,20 @@ repeat panel (Queue), badge + stop-repeat (Dashboard), "Run repeatedly" picker
 
 ### Phase E - Queue, Scheduling, and Race Operations
 
-- [ ] Drag-and-drop reorder.
+- [x] Drag-and-drop reorder.
 - [ ] Queue ETA and scheduled starts.
 - [ ] Dashboard grid editor.
-- [ ] Race control panel.
+- [~] Race control panel. (Broadcast chat, next/restart session, admin command
+      live on the Dashboard; driver list + dedicated kick are the follow-up.)
 - [ ] Live timing widget.
 
 Why fifth: improves live operations after the setup and event model are stable.
+
+**Phase E status: partial.** Done: drag-and-drop reorder (`PUT
+/api/queue/order`) and a race-control panel over the existing ACSP UDP writers
+(`/api/server/broadcast`, `/next-session`, `/restart-session`,
+`/admin-command`, all guarded to running instances). Open: queue ETA/scheduled
+starts, dashboard grid editor, live timing, driver roster + kick UI.
 
 ### Phase F - Administration and Reliability
 

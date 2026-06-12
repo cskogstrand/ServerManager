@@ -17,6 +17,7 @@ const router = createRouter({
     { path: "/setup", name: "setup", component: () => import("@/pages/ServerSetup.vue") },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue") },
     { path: "/settings/instances", name: "instances", component: () => import("@/pages/SettingsInstances.vue") },
+    { path: "/maintenance", name: "maintenance", component: () => import("@/pages/Maintenance.vue") },
     { path: "/preferences", name: "preferences", component: () => import("@/pages/SettingsUser.vue") },
     { path: "/about", name: "about", component: () => import("@/pages/About.vue") },
   ],

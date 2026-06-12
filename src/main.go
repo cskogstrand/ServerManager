@@ -115,6 +115,9 @@ func main() {
 	}
 
 	dbpath := filepath.Join(ConfigFolder, "smdata.db")
+	// A restore staged via the maintenance page is swapped in here, before the
+	// DB is opened, so we never replace a file held open by *sql.DB.
+	applyStagedRestore(dbpath)
 	log.Print("Opening database file located at: " + dbpath)
 	Dba = open(dbpath)
 	Dba.applySchema("/schema.sql")
@@ -236,6 +239,7 @@ func main() {
 		api.GET("/server/logfile", apiServerLogfile)
 		api.GET("/server/smdata", apiServerSmdata)
 		api.GET("/server/smcontent", apiServerSmcontent)
+		api.POST("/maintenance/restore", apiMaintenanceRestore)
 
 		api.GET("/server/entry_list.ini", apiEntryList)
 		api.GET("/server/server_cfg.ini", apiServerCfg)

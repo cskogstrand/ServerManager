@@ -11,7 +11,7 @@ Last updated: 2026-06-12
 | C — Event builder | **largely done** | inline preset creation + ini preview done; group duplication/templates open |
 | D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
 | E — Queue / race ops | **mostly done** | reorder, race control (+kick), live timing/roster done; ETA/scheduling, grid editor, position/gaps open |
-| F — Admin / reliability | open | results/history, roles, backup, health, envelope cleanup |
+| F — Admin / reliability | started | backup/restore done; results/history, roles, health, envelope cleanup open |
 
 Verified live against a migrated test DB (run-mode round-trip, queue 409
 guards, reorder, readiness, race-control guards). Commits are split per phase.
@@ -373,10 +373,11 @@ These are high-value, lower-risk improvements.
       - race steward
       - read-only
       - protect admin-only routes/actions
-- [ ] Backup/restore in-app.
-      - download full backup zip
-      - restore upload flow
-      - confirmation diff before replacing data
+- [x] Backup/restore in-app.
+      - [x] download backup (database, content archive, log)
+      - [x] restore upload flow (staged + swapped in at next boot, validated as
+        SQLite, current DB kept as smdata.db.prev)
+      - [~] confirmation before replacing (strong confirm; field-level diff open)
 - [ ] Health panel.
       - external port reachability
       - UDP reachability
@@ -485,11 +486,16 @@ editor, live position/gaps.
 
 - [ ] Results/history.
 - [ ] Multi-user roles.
-- [ ] Backup/restore.
-- [ ] Health panel.
+- [x] Backup/restore.
+- [ ] Health panel. (Partly covered by Server Setup readiness.)
 - [ ] API consistency cleanup.
 
 Why last: these are high-value but depend on stable core workflows.
+
+**Phase F status: started.** Backup & Restore done (`/maintenance`, staged
+restore via `applyStagedRestore` on boot + `POST /api/maintenance/restore`).
+Open: results/history, multi-user roles, dedicated health panel, error-envelope
+convergence.
 
 ---
 

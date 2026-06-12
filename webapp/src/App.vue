@@ -66,6 +66,7 @@ const navSections = [
       { to: "/settings", label: "Configuration", icon: "settings" },
       { to: "/settings/instances", label: "Instances", icon: "instances" },
       { to: "/content", label: "Content", icon: "content" },
+      { to: "/maintenance", label: "Backup & Restore", icon: "content" },
       { to: "/preferences", label: "Preferences", icon: "user" },
       { to: "/about", label: "About", icon: "info" },
     ],

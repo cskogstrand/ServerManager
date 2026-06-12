@@ -18,7 +18,10 @@ import (
 	"sync"
 )
 
-var missingChecksumsRe = regexp.MustCompile(`(?m)^(\s*MissingCarChecksums:\s*).*$`)
+// IgnoreConfigurationErrors keys relaxed together by the "allow mod content"
+// toggle. Both are "missing metadata" errors common to community/drift mods:
+// cars without a packed data.acd, and tracks without lat/lon/timezone params.
+var relaxableConfigErrors = []string{"MissingCarChecksums", "MissingTrackParams"}
 
 // assettoServerMu serialises the one-time download/extract of the shared
 // install dir across concurrently-starting instances.
@@ -337,11 +340,12 @@ func linkInto(src, dst string) error {
 	return os.Symlink(src, dst)
 }
 
-// ensureAssettoServerExtraCfg reconciles cfg/extra_cfg.yml so that
-// IgnoreConfigurationErrors.MissingCarChecksums matches the operator's choice.
-// Many community/drift mods ship an unpacked data/ folder instead of a packed
-// data.acd; without this AssettoServer refuses to start ("No data.acd found").
-// Relaxing it disables that one anti-cheat — intended for trusted/LAN servers.
+// ensureAssettoServerExtraCfg reconciles cfg/extra_cfg.yml so the relaxable
+// IgnoreConfigurationErrors keys match the operator's choice. Many
+// community/drift mods ship cars without a packed data.acd and tracks without
+// params; without relaxing, AssettoServer refuses to start ("No data.acd
+// found", "No track params found"). Relaxing weakens that validation — intended
+// for trusted/LAN servers.
 //
 // The existing file (AssettoServer writes a full default on first run) is
 // patched in place to preserve any other operator edits; only when absent is a
@@ -355,38 +359,51 @@ func ensureAssettoServerExtraCfg(dir string, relax bool) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		minimal := "!extra_cfg.yml\nIgnoreConfigurationErrors:\n  MissingCarChecksums: " + desired + "\n"
+		var b strings.Builder
+		b.WriteString("!extra_cfg.yml\nIgnoreConfigurationErrors:\n")
+		for _, k := range relaxableConfigErrors {
+			b.WriteString("  " + k + ": " + desired + "\n")
+		}
 		if mkErr := os.MkdirAll(filepath.Dir(path), 0755); mkErr != nil {
 			log.Print("Could not create cfg dir for extra_cfg.yml: ", mkErr)
 			return
 		}
-		if wErr := os.WriteFile(path, []byte(minimal), 0644); wErr != nil {
+		if wErr := os.WriteFile(path, []byte(b.String()), 0644); wErr != nil {
 			log.Print("Could not write extra_cfg.yml: ", wErr)
 		}
 		return
 	}
 
 	content := string(data)
-	var updated string
-	switch {
-	case missingChecksumsRe.MatchString(content):
-		updated = missingChecksumsRe.ReplaceAllString(content, "${1}"+desired)
-	case strings.Contains(content, "IgnoreConfigurationErrors:"):
-		updated = strings.Replace(content, "IgnoreConfigurationErrors:",
-			"IgnoreConfigurationErrors:\n  MissingCarChecksums: "+desired, 1)
-	default:
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		updated = content + "IgnoreConfigurationErrors:\n  MissingCarChecksums: " + desired + "\n"
+	for _, k := range relaxableConfigErrors {
+		content = setIgnoreConfigError(content, k, desired)
 	}
 
-	if updated == content {
+	if string(data) == content {
 		return
 	}
-	if wErr := os.WriteFile(path, []byte(updated), 0644); wErr != nil {
+	if wErr := os.WriteFile(path, []byte(content), 0644); wErr != nil {
 		log.Print("Could not update extra_cfg.yml: ", wErr)
 	}
+}
+
+// setIgnoreConfigError ensures `key: value` exists under the
+// IgnoreConfigurationErrors mapping, patching the value in place if present,
+// inserting it under an existing section, or appending the section otherwise.
+func setIgnoreConfigError(content, key, value string) string {
+	re := regexp.MustCompile(`(?m)^(\s*` + key + `:\s*).*$`)
+	if re.MatchString(content) {
+		return re.ReplaceAllString(content, "${1}"+value)
+	}
+	line := "  " + key + ": " + value
+	if strings.Contains(content, "IgnoreConfigurationErrors:") {
+		return strings.Replace(content, "IgnoreConfigurationErrors:",
+			"IgnoreConfigurationErrors:\n"+line, 1)
+	}
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return content + "IgnoreConfigurationErrors:\n" + line + "\n"
 }
 
 // unlinkIfSymlink removes path only if it is a symlink, so the Kunos extraction

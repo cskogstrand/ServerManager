@@ -175,11 +175,13 @@ async function save() {
       <div v-if="serverEngine === 'assettoserver'" class="pt-1">
         <Toggle
           v-model="relaxChecksums"
-          label="Allow cars without data.acd checksum"
+          label="Allow mod content without checksums / track params"
         />
         <p class="pt-1 text-xs text-muted">
-          Lets mod cars that ship an unpacked <code>data/</code> folder (no packed
-          <code>data.acd</code>) start. Disables that one anti-cheat — enable only on trusted/LAN servers.
+          Lets mod cars without a packed <code>data.acd</code> and mod tracks without
+          location/timezone params start (sets <code>MissingCarChecksums</code> and
+          <code>MissingTrackParams</code>). Weakens AssettoServer's content validation — enable only
+          on trusted/LAN servers.
         </p>
       </div>
 

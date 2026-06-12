@@ -62,6 +62,7 @@ interface StatusPayload {
     road_temp: number;
     elapsed_ms: number;
   };
+  positions: import("@/stores/server").CarPositionState[];
 }
 
 interface StreamHealth {
@@ -79,6 +80,15 @@ interface DriverStream {
   stream_status_url?: string;
 }
 
+interface TrackMapMeta {
+  width: number;
+  height: number;
+  x_offset: number;
+  z_offset: number;
+  scale_factor: number;
+  margin: number;
+}
+
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
@@ -92,6 +102,7 @@ const instanceStreamHealth = ref<Record<number, StreamHealth>>({});
 const driverStreamHealth = ref<Record<number, Record<string, StreamHealth>>>({});
 const driverStreams = ref<DriverStream[]>([]);
 const streamViewer = ref<{ title: string; url: string; health?: StreamHealth } | null>(null);
+const trackMapMeta = ref<Record<number, TrackMapMeta | null>>({});
 
 async function fetchDetail(id: number) {
   try {
@@ -99,9 +110,28 @@ async function fetchDetail(id: number) {
     details.value[id] = payload;
     // Seed the live roster; SSE "drivers" events keep it fresh after this.
     const inst = server.instances[id];
-    if (inst) inst.drivers = payload.drivers ?? [];
+    if (inst) {
+      inst.drivers = payload.drivers ?? [];
+      inst.positions = payload.positions ?? [];
+    }
+    await fetchTrackMapMeta(id, payload);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+async function fetchTrackMapMeta(id: number, payload?: StatusPayload) {
+  const detail = payload ?? details.value[id];
+  const event = detail?.current_event;
+  if (!event?.track_key) {
+    trackMapMeta.value[id] = null;
+    return;
+  }
+  const config = event.track_config ? `/${encodeURIComponent(event.track_config)}` : "";
+  try {
+    trackMapMeta.value[id] = await api.get<TrackMapMeta>(`/api/track/mapmeta/${encodeURIComponent(event.track_key)}${config}`);
+  } catch {
+    trackMapMeta.value[id] = null;
   }
 }
 
@@ -452,6 +482,33 @@ function consoleLines(detail?: StatusPayload): string {
   const text = detail?.text ?? "";
   return text.split("\n").slice(-200).join("\n").trim() || "No output yet.";
 }
+
+function mapImageUrl(detail?: StatusPayload): string {
+  const event = detail?.current_event;
+  if (!event?.track_key) return "";
+  const config = event.track_config ? `/${encodeURIComponent(event.track_config)}` : "";
+  return `/api/track/map/${encodeURIComponent(event.track_key)}${config}`;
+}
+
+function positionFor(inst: import("@/stores/server").InstanceState, carId: number) {
+  return inst.positions.find((p) => p.car_id === carId);
+}
+
+function mapPoint(pos: import("@/stores/server").CarPositionState, meta: TrackMapMeta) {
+  const scale = meta.scale_factor || 1;
+  const x = ((pos.x + meta.x_offset) * scale) / meta.width;
+  const y = (meta.height - (pos.z + meta.z_offset) * scale) / meta.height;
+  return {
+    left: `${Math.max(0, Math.min(100, x * 100))}%`,
+    top: `${Math.max(0, Math.min(100, y * 100))}%`,
+  };
+}
+
+function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
+  if (!pos) return 0;
+  const ms = Math.sqrt(pos.velocity_x ** 2 + pos.velocity_y ** 2 + pos.velocity_z ** 2);
+  return Math.round(ms * 3.6);
+}
 </script>
 
 <template>
@@ -610,6 +667,41 @@ function consoleLines(detail?: StatusPayload): string {
           </ul>
           <p v-else class="text-sm text-dim">No entry list rendered yet.</p>
         </div>
+      </div>
+
+      <!-- Track map -->
+      <div v-if="details[inst.id]?.current_event?.track_key" class="mt-4 border-t border-line pt-3">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Track map</h3>
+          <span class="font-mono text-xs text-dim">
+            {{ inst.positions.length }} live position{{ inst.positions.length === 1 ? "" : "s" }}
+          </span>
+        </div>
+        <div
+          v-if="trackMapMeta[inst.id]"
+          class="relative overflow-hidden rounded-md border border-line bg-bg"
+          :style="{ aspectRatio: `${trackMapMeta[inst.id]?.width ?? 16} / ${trackMapMeta[inst.id]?.height ?? 9}` }"
+        >
+          <img
+            :src="mapImageUrl(details[inst.id])"
+            alt=""
+            class="absolute inset-0 size-full object-fill opacity-80"
+          />
+          <template v-for="d in inst.drivers" :key="d.car_id">
+            <button
+              v-if="positionFor(inst, d.car_id)"
+              type="button"
+              class="absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[10px] font-black text-bg shadow-[0_0_18px_rgba(91,141,239,0.65)] transition-transform hover:z-10 hover:scale-110"
+              :style="mapPoint(positionFor(inst, d.car_id)!, trackMapMeta[inst.id]!)"
+              :title="`${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(inst, d.car_id))} km/h · gear ${positionFor(inst, d.car_id)?.gear ?? 0}`"
+            >
+              {{ (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
+            </button>
+          </template>
+        </div>
+        <p v-else class="rounded-md border border-line bg-surface px-3 py-3 text-sm text-dim">
+          Track map metadata is not available for this layout.
+        </p>
       </div>
 
       <!-- Spectator stream -->

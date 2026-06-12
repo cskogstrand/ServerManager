@@ -38,6 +38,7 @@ func (inst *Instance) driverLeave(carId int) {
 	inst.mu.Lock()
 	delete(inst.drivers, carId)
 	inst.mu.Unlock()
+	inst.removeCarPosition(carId)
 	inst.publishDrivers()
 }
 
@@ -71,6 +72,7 @@ func (inst *Instance) clearDrivers() {
 	inst.mu.Lock()
 	inst.drivers = make(map[int]*DriverState)
 	inst.mu.Unlock()
+	inst.clearPositions()
 	inst.publishDrivers()
 }
 

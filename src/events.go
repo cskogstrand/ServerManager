@@ -115,6 +115,7 @@ func apiServerEventsSSE(c *gin.Context) {
 				"running": st.Status,
 				"players": st.Players,
 				"session": sessionEventPayload(st.Session),
+				"positions": inst.positionsSnapshot(),
 			},
 		})
 		if err == nil {

@@ -33,6 +33,20 @@ export interface DriverState {
   connected: boolean;
 }
 
+export interface CarPositionState {
+  car_id: number;
+  x: number;
+  y: number;
+  z: number;
+  velocity_x: number;
+  velocity_y: number;
+  velocity_z: number;
+  gear: number;
+  engine_rpm: number;
+  normalized_spline_pos: number;
+  updated_at: number;
+}
+
 export type RunMode = "manual_queue" | "repeat_event";
 
 export interface RepeatEventInfo {
@@ -54,6 +68,7 @@ export interface InstanceState {
   players: number;
   session: SessionState | null;
   drivers: DriverState[];
+  positions: CarPositionState[];
   run_mode: RunMode;
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
@@ -125,6 +140,7 @@ export const useServerStore = defineStore("server", {
           players: item.players,
           session: this.instances[item.id]?.session ?? null,
           drivers: this.instances[item.id]?.drivers ?? [],
+          positions: this.instances[item.id]?.positions ?? [],
           run_mode: item.run_mode ?? "manual_queue",
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
@@ -173,6 +189,7 @@ export const useServerStore = defineStore("server", {
           inst.running = event.data.running;
           inst.players = event.data.players;
           inst.session = event.data.session;
+          inst.positions = event.data.positions ?? [];
           break;
         case "server":
           if (!inst) return;
@@ -181,6 +198,7 @@ export const useServerStore = defineStore("server", {
             inst.players = 0;
             inst.session = null;
             inst.drivers = [];
+            inst.positions = [];
           }
           break;
         case "players":
@@ -190,6 +208,10 @@ export const useServerStore = defineStore("server", {
         case "drivers":
           if (!inst) return;
           inst.drivers = event.data.drivers ?? [];
+          break;
+        case "positions":
+          if (!inst) return;
+          inst.positions = event.data.positions ?? [];
           break;
         case "session":
           if (!inst) return;

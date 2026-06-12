@@ -209,6 +209,12 @@ func (w *UdpWriter) WriteByte(d byte) error {
 	return nil
 }
 
+func (w *UdpWriter) WriteUint16(d int) {
+	var b [2]byte
+	binary.LittleEndian.PutUint16(b[:], uint16(d))
+	w.data = append(w.data, b[:]...)
+}
+
 func (w *UdpWriter) WriteUTF32String(str string) {
 	val, err := utf32.UTF32(utf32.LittleEndian, utf32.IgnoreBOM).NewEncoder().Bytes([]byte(str))
 
@@ -347,6 +353,7 @@ func (inst *Instance) udpReceive() bool {
 		v := r.ReadUint8()
 		log.Print("ACSP_VERSION: ", v)
 		udp.online = true
+		udp.WriteRealtimePositionInterval(200)
 
 	case acspNewSession:
 		sess := readSessionInfo(r)
@@ -420,8 +427,7 @@ func (inst *Instance) udpReceive() bool {
 		cu.gear = r.ReadUint8()
 		cu.engineRpm = r.ReadUint16()
 		cu.normalizedSplinePos = r.ReadFloat()
-		log.Print("ACSP_CAR_UPDATE: ")
-		PrintInterface(cu)
+		inst.updateCarPosition(cu)
 
 	case acspNewConnection:
 		var nc NewConnection
@@ -487,6 +493,13 @@ func (udp UdpPlugin) WriteGetCarInfo(carid int) {
 	var w UdpWriter
 	w.WriteByte(acspGetCarInfo)
 	w.WriteByte(byte(carid))
+	udp.write(w.data)
+}
+
+func (udp UdpPlugin) WriteRealtimePositionInterval(intervalMs int) {
+	var w UdpWriter
+	w.WriteByte(acspRealtimeposInterval)
+	w.WriteUint16(intervalMs)
 	udp.write(w.data)
 }
 

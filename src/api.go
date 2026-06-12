@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -35,6 +36,15 @@ type DashboardClassEntryUpdate struct {
 	CacheCarKey string `json:"cache_car_key"`
 	SkinKey     string `json:"skin_key"`
 	Count       int    `json:"count"`
+}
+
+type TrackMapMeta struct {
+	Width       float64 `json:"width"`
+	Height      float64 `json:"height"`
+	XOffset     float64 `json:"x_offset"`
+	ZOffset     float64 `json:"z_offset"`
+	ScaleFactor float64 `json:"scale_factor"`
+	Margin      float64 `json:"margin"`
 }
 
 type StreamHealth struct {
@@ -518,6 +528,7 @@ func serverStatusPayload(inst *Instance) gin.H {
 		},
 		"current_event": currentEvent,
 		"drivers":       inst.driversSnapshot(),
+		"positions":     inst.positionsSnapshot(),
 		"current_cars": func() []DashboardClassEntryUpdate {
 			entries, err := parseEntryListFile(filepath.Join(dir, "cfg", "entry_list.ini"))
 			if err != nil {
@@ -685,6 +696,105 @@ func serveContentDiskFile(c *gin.Context, relCandidates [][]string) bool {
 	return false
 }
 
+func readContentDiskFile(relCandidates [][]string) ([]byte, bool) {
+	base, err := Dba.basepath()
+	if err != nil {
+		return nil, false
+	}
+	for _, parts := range relCandidates {
+		p := filepath.Join(append([]string{base, "content"}, parts...)...)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			data, err := os.ReadFile(p)
+			return data, err == nil
+		}
+	}
+	return nil, false
+}
+
+func readZipFile(filePath string) ([]byte, bool) {
+	var zf ZipFile
+	defer zf.Close()
+	f := zf.FindZipFile(filePath)
+	if f == nil {
+		return nil, false
+	}
+	rc, err := f.Open()
+	if err != nil {
+		return nil, false
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	return data, err == nil
+}
+
+func readTrackMapMeta(track string, config string) (TrackMapMeta, error) {
+	var data []byte
+	var ok bool
+	if config != "" {
+		data, ok = readContentDiskFile([][]string{{"tracks", track, config, "data", "map.ini"}})
+		if !ok {
+			data, ok = readZipFile("tracks/" + track + "/" + config + "/data/map.ini")
+		}
+	} else {
+		data, ok = readContentDiskFile([][]string{{"tracks", track, "data", "map.ini"}})
+		if !ok {
+			data, ok = readZipFile("tracks/" + track + "/data/map.ini")
+		}
+	}
+	if !ok {
+		return TrackMapMeta{}, errors.New("track map metadata is not available")
+	}
+	return parseTrackMapMeta(string(data))
+}
+
+func parseTrackMapMeta(data string) (TrackMapMeta, error) {
+	meta := TrackMapMeta{ScaleFactor: 1}
+	inParameters := false
+	scanner := bufio.NewScanner(strings.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			inParameters = strings.EqualFold(strings.Trim(line, "[]"), "PARAMETERS")
+			continue
+		}
+		if !inParameters {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		val, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+		if err != nil {
+			continue
+		}
+		switch strings.ToUpper(strings.TrimSpace(parts[0])) {
+		case "WIDTH":
+			meta.Width = val
+		case "HEIGHT":
+			meta.Height = val
+		case "X_OFFSET":
+			meta.XOffset = val
+		case "Z_OFFSET":
+			meta.ZOffset = val
+		case "SCALE_FACTOR":
+			meta.ScaleFactor = val
+		case "MARGIN":
+			meta.Margin = val
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return TrackMapMeta{}, err
+	}
+	if meta.Width <= 0 || meta.Height <= 0 || meta.ScaleFactor <= 0 {
+		return TrackMapMeta{}, errors.New("track map metadata is incomplete")
+	}
+	return meta, nil
+}
+
 func serveZipImage(c *gin.Context, zipPath string, contentType string) {
 	var zf ZipFile
 	defer zf.Close()
@@ -818,6 +928,53 @@ func apiTrackOutlineImage(c *gin.Context) {
 		return
 	}
 	serveZipImage(c, "tracks/"+track+"/ui/outline.png", "image/png")
+}
+
+func apiTrackMapImage(c *gin.Context) {
+	track := c.Param("track")
+	config := c.Param("config")
+
+	if strings.HasPrefix(track, "demo_") {
+		serveDemoSvg(c, track, "Map")
+		return
+	}
+	if !safeSegment(track) || (config != "" && !safeSegment(config)) {
+		noRoute(c)
+		return
+	}
+
+	if config != "" {
+		if serveContentDiskFile(c, [][]string{{"tracks", track, config, "map.png"}}) {
+			return
+		}
+		serveZipImage(c, "tracks/"+track+"/"+config+"/map.png", "image/png")
+		return
+	}
+	if serveContentDiskFile(c, [][]string{{"tracks", track, "map.png"}}) {
+		return
+	}
+	serveZipImage(c, "tracks/"+track+"/map.png", "image/png")
+}
+
+func apiTrackMapMeta(c *gin.Context) {
+	track := c.Param("track")
+	config := c.Param("config")
+
+	if strings.HasPrefix(track, "demo_") {
+		c.PureJSON(http.StatusOK, TrackMapMeta{Width: 640, Height: 360, ScaleFactor: 1})
+		return
+	}
+	if !safeSegment(track) || (config != "" && !safeSegment(config)) {
+		noRoute(c)
+		return
+	}
+
+	meta, err := readTrackMapMeta(track, config)
+	if err != nil {
+		apiError(c, http.StatusNotFound, "map_meta_not_found", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, meta)
 }
 
 func apiWeatherPreviewImage(c *gin.Context) {

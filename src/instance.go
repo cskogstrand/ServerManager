@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // Instance bundles everything one acServer process needs: its DB-backed
@@ -16,11 +17,13 @@ import (
 type Instance struct {
 	Conf ServerInstance
 
-	// mu guards cmd, lines, Status and drivers
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	lines   string
-	drivers map[int]*DriverState
+	// mu guards cmd, lines, Status, drivers and positions.
+	mu                  sync.Mutex
+	cmd                 *exec.Cmd
+	lines               string
+	drivers             map[int]*DriverState
+	positions           map[int]*CarPositionState
+	lastPositionPublish time.Time
 
 	Udp    *UdpPlugin
 	Status ServerStatus

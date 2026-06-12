@@ -54,7 +54,17 @@ type ServerInstance struct {
 	PluginPort       *int    `json:"plugin_port" form:"plugin_port"`
 	PluginListenPort *int    `json:"plugin_listen_port" form:"plugin_listen_port"`
 	Enabled          *int    `json:"enabled" form:"enabled"`
+	// RunMode is "manual_queue" (default) or "repeat_event". In repeat mode the
+	// instance re-applies RepeatEventId every time a session ends instead of
+	// advancing the manual queue.
+	RunMode       *string `json:"run_mode" form:"run_mode"`
+	RepeatEventId *int    `json:"repeat_event_id" form:"repeat_event_id"`
 }
+
+const (
+	runModeManualQueue = "manual_queue"
+	runModeRepeatEvent = "repeat_event"
+)
 
 type UserEvent struct {
 	Id                *int `form:"id"`

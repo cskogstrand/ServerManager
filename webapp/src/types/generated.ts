@@ -55,6 +55,13 @@ export interface ServerInstance {
   plugin_port?: number /* int */;
   plugin_listen_port?: number /* int */;
   enabled?: number /* int */;
+  /**
+   * RunMode is "manual_queue" (default) or "repeat_event". In repeat mode the
+   * instance re-applies RepeatEventId every time a session ends instead of
+   * advancing the manual queue.
+   */
+  run_mode?: string;
+  repeat_event_id?: number /* int */;
 }
 export interface UserEvent {
   Id?: number /* int */;

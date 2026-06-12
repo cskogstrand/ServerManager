@@ -16,6 +16,7 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Sheet from "@/components/ui/Sheet.vue";
+import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
@@ -280,6 +281,26 @@ const queueEvent = (e: EventRow) =>
     toast.success(`Queued ${e.track_name} on ${inst?.name ?? "the default instance"}.`);
   });
 
+// --- Repeat-on-instance picker ---
+const repeatPickerOpen = ref(false);
+const repeatTarget = ref<EventRow | null>(null);
+const repeatInstanceId = ref<number | null>(null);
+
+function openRepeat(e: EventRow) {
+  repeatTarget.value = e;
+  repeatInstanceId.value = server.instanceList[0]?.id ?? null;
+  repeatPickerOpen.value = true;
+}
+
+const confirmRepeat = () =>
+  guard(async () => {
+    if (!repeatTarget.value?.id || repeatInstanceId.value === null) return;
+    await server.setRunMode(repeatInstanceId.value, "repeat_event", repeatTarget.value.id);
+    const inst = server.instanceList.find((i) => i.id === repeatInstanceId.value);
+    repeatPickerOpen.value = false;
+    toast.success(`${inst?.name ?? "Instance"} will repeat ${repeatTarget.value.track_name}. Start it from the dashboard.`);
+  });
+
 onMounted(() =>
   guard(async () => {
     await Promise.all([loadCategories(), loadPresetLists(), server.load()]);
@@ -339,6 +360,9 @@ onMounted(() =>
             <Button variant="success" size="sm" @click="queueEvent(e)">
               <Icon name="queue" :size="14" />
               Queue
+            </Button>
+            <Button variant="dark" size="sm" aria-label="Run repeatedly" title="Run repeatedly on an instance" @click="openRepeat(e)">
+              <Icon name="repeat" :size="14" />
             </Button>
             <Button variant="dark" size="sm" @click="openBuilder(e)">Edit</Button>
             <Button variant="ghost" size="sm" aria-label="Duplicate event" @click="duplicateEvent(e)">
@@ -474,4 +498,29 @@ onMounted(() =>
     @close="trackPickerOpen = false"
     @select="onTrackPicked"
   />
+
+  <!-- Run repeatedly: pin this event to an instance's repeat mode -->
+  <Modal :open="repeatPickerOpen" title="Run repeatedly" @close="repeatPickerOpen = false">
+    <p class="mb-3 text-sm text-muted">
+      The chosen instance re-runs <span class="font-medium text-text">{{ repeatTarget?.track_name }}</span>
+      every time the race finishes. Its manual queue is paused until you switch back.
+    </p>
+    <FormRow label="Instance" for-id="repeatinst">
+      <Select
+        id="repeatinst"
+        v-model="repeatInstanceId"
+        :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
+      />
+    </FormRow>
+    <p class="text-xs text-muted">
+      If the instance is already running, the new event applies on the next restart.
+    </p>
+    <template #footer>
+      <Button variant="ghost" @click="repeatPickerOpen = false">Cancel</Button>
+      <Button :disabled="busy || repeatInstanceId === null" @click="confirmRepeat">
+        <Icon name="repeat" :size="15" />
+        Set repeat
+      </Button>
+    </template>
+  </Modal>
 </template>

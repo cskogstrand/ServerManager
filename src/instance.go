@@ -50,6 +50,16 @@ func (inst *Instance) Dir() string {
 	return filepath.Join(TempFolder, "instance_"+strconv.Itoa(inst.Id()))
 }
 
+// repeatEventId returns the event id this instance auto-repeats, and whether
+// repeat mode is active. In repeat mode the queue is left untouched.
+func (inst *Instance) repeatEventId() (int, bool) {
+	if inst.Conf.RunMode != nil && *inst.Conf.RunMode == runModeRepeatEvent &&
+		inst.Conf.RepeatEventId != nil && *inst.Conf.RepeatEventId > 0 {
+		return *inst.Conf.RepeatEventId, true
+	}
+	return 0, false
+}
+
 func (inst *Instance) pluginPorts() (int, int) {
 	listen := 5001
 	server := 5000

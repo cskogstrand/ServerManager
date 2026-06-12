@@ -246,6 +246,7 @@ func main() {
 		api.GET("/instances", apiInstances)
 		api.POST("/instances", apiInstanceCreate)
 		api.PUT("/instances/:id", apiInstanceUpdate)
+		api.PUT("/instances/:id/runmode", apiInstanceRunMode)
 		api.DELETE("/instances/:id", apiInstanceDelete)
 	}
 

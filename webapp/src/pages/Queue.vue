@@ -43,6 +43,7 @@ const addCategory = ref<number | null>(null);
 const addEvent = ref<number | null>(null);
 
 const instance = computed(() => server.instanceList.find((i) => i.id === instanceId.value) ?? null);
+const repeatMode = computed(() => instance.value?.run_mode === "repeat_event");
 const eventsInCategory = computed(() =>
   allEvents.value.filter((e) => e.event_category_id === addCategory.value),
 );
@@ -106,6 +107,20 @@ const stop = () =>
     await server.stop(instanceId.value!);
   });
 
+const switchToManual = () =>
+  act(async () => {
+    if (instanceId.value === null) return;
+    const ok = await confirm.ask({
+      title: "Switch to manual queue",
+      message: `Stop repeating and return ${instance.value?.name ?? "this instance"} to manual queue?`,
+      detail: "Any previously queued events are kept and become editable again.",
+      confirmLabel: "Switch to manual",
+    });
+    if (!ok) return;
+    await server.setRunMode(instanceId.value, "manual_queue");
+    toast.success("Switched to manual queue.");
+  });
+
 const addEventToQueue = () =>
   act(async () => {
     if (!addEvent.value) return;
@@ -161,7 +176,7 @@ watch(
         Skip
       </Button>
       <Button
-        v-if="instance && !instance.running && pendingRows.length"
+        v-if="instance && !instance.running && (pendingRows.length || repeatMode)"
         variant="success"
         :disabled="busy"
         @click="start"
@@ -194,7 +209,40 @@ watch(
     </button>
   </div>
 
-  <div class="grid items-start gap-5 xl:grid-cols-[1fr_340px]">
+  <!-- Repeat mode: the manual queue is frozen while one event auto-repeats -->
+  <Card v-if="repeatMode">
+    <template #header>
+      <Icon name="repeat" :size="16" class="text-accent" />
+      <h2 class="text-sm font-bold">Repeat mode</h2>
+      <span v-if="instance" class="text-xs text-dim">{{ instance.name }}</span>
+    </template>
+    <template #actions>
+      <Button variant="dark" size="sm" :disabled="busy" @click="switchToManual">
+        <Icon name="queue" :size="14" />
+        Switch to manual queue
+      </Button>
+    </template>
+
+    <div class="flex items-start gap-3">
+      <Icon name="repeat" :size="20" class="mt-0.5 shrink-0 text-accent" />
+      <div>
+        <p class="text-sm">
+          This instance re-runs the same event continuously. It restarts automatically when the
+          race finishes; manual queueing is disabled.
+        </p>
+        <p v-if="instance?.repeat_event" class="mt-2 text-sm font-medium">
+          {{ instance.repeat_event.track || "Event #" + instance.repeat_event.id }}
+          <span v-if="instance.repeat_event.category" class="text-dim">· {{ instance.repeat_event.category }}</span>
+        </p>
+        <p class="mt-2 text-xs text-muted">
+          <Icon name="lock" :size="12" class="-mt-0.5 mr-1 inline" />
+          Any previously queued events are preserved and return when you switch back to manual.
+        </p>
+      </div>
+    </div>
+  </Card>
+
+  <div v-else class="grid items-start gap-5 xl:grid-cols-[1fr_340px]">
     <Card>
       <template #header>
         <Icon name="queue" :size="16" class="text-accent" />

@@ -1141,9 +1141,24 @@ func apiServerCfg(c *gin.Context) {
 	c.String(http.StatusOK, cr.serverCfgResult)
 }
 
+// queueRowRepeatLocked reports whether the queue row's instance is in repeat
+// mode, in which case its manual queue is frozen.
+func queueRowRepeatLocked(rowId int) bool {
+	se, err := Dba.selectServerEvent(rowId)
+	if err != nil || se.InstanceId == nil {
+		return false
+	}
+	return instanceInRepeatMode(*se.InstanceId)
+}
+
 func apiQueueMoveUp(c *gin.Context) {
 	id := c.Param("id")
 	idInt, _ := strconv.Atoi(id)
+
+	if queueRowRepeatLocked(idInt) {
+		apiError(c, http.StatusConflict, "repeat_locked", "This instance is in repeat mode. Switch it back to manual queue first.")
+		return
+	}
 
 	Dba.updateServerEventMoveUp(idInt)
 
@@ -1153,6 +1168,11 @@ func apiQueueMoveUp(c *gin.Context) {
 func apiQueueMoveDown(c *gin.Context) {
 	id := c.Param("id")
 	idInt, _ := strconv.Atoi(id)
+
+	if queueRowRepeatLocked(idInt) {
+		apiError(c, http.StatusConflict, "repeat_locked", "This instance is in repeat mode. Switch it back to manual queue first.")
+		return
+	}
 
 	Dba.updateServerEventMoveDown(idInt)
 
@@ -1188,6 +1208,11 @@ func apiQueueAddEvent(c *gin.Context) {
 		return
 	}
 
+	if _, repeat := inst.repeatEventId(); repeat {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "This instance is in repeat mode. Switch it back to manual queue first."})
+		return
+	}
+
 	if _, err := Dba.insertServerEvent(eventId, inst.Id()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
@@ -1209,6 +1234,11 @@ func apiQueueAddCategory(c *gin.Context) {
 		return
 	}
 
+	if _, repeat := inst.repeatEventId(); repeat {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "This instance is in repeat mode. Switch it back to manual queue first."})
+		return
+	}
+
 	if _, err := Dba.insertServerEventCategory(categoryId, inst.Id()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
@@ -1222,6 +1252,22 @@ func apiInstances(c *gin.Context) {
 	for _, inst := range Instances.All() {
 		inst.refresh()
 		st := inst.statusSnapshot()
+
+		runMode := runModeManualQueue
+		if inst.Conf.RunMode != nil && *inst.Conf.RunMode != "" {
+			runMode = *inst.Conf.RunMode
+		}
+
+		var repeatEvent gin.H
+		if eventId, repeat := inst.repeatEventId(); repeat {
+			repeatEvent = gin.H{"id": eventId}
+			if se, err := Dba.selectServerEventForEvent(eventId); err == nil {
+				repeatEvent["track"] = se.UserEvent.TrackName
+				repeatEvent["category"] = se.UserEvent.CategoryName
+				repeatEvent["class"] = se.UserEvent.ClassName
+			}
+		}
+
 		list = append(list, gin.H{
 			"id":                 inst.Id(),
 			"name":               inst.Name(),
@@ -1232,10 +1278,87 @@ func apiInstances(c *gin.Context) {
 			"plugin_listen_port": inst.Conf.PluginListenPort,
 			"is_running":         st.Status,
 			"players":            st.Players,
+			"run_mode":           runMode,
+			"repeat_event_id":    inst.Conf.RepeatEventId,
+			"repeat_event":       repeatEvent,
 		})
 	}
 
 	c.PureJSON(http.StatusOK, gin.H{"instances": list})
+}
+
+// instanceInRepeatMode reports whether the given queue mutation should be
+// blocked because the instance is auto-repeating one event.
+func instanceInRepeatMode(instanceId int) bool {
+	if instanceId <= 0 {
+		return false
+	}
+	inst := Instances.Get(instanceId)
+	if inst == nil {
+		return false
+	}
+	_, repeat := inst.repeatEventId()
+	return repeat
+}
+
+// apiInstanceRunMode switches an instance between manual_queue and
+// repeat_event. Switching to repeat pins repeat_event_id and (when running)
+// applies it immediately; switching back to manual leaves the queue intact.
+func apiInstanceRunMode(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apiBadRequest(c, "Invalid instance id")
+		return
+	}
+
+	inst := Instances.Get(id)
+	if inst == nil {
+		apiNotFound(c)
+		return
+	}
+
+	var body struct {
+		RunMode       string `json:"run_mode"`
+		RepeatEventId *int   `json:"repeat_event_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		apiBadRequest(c, "Invalid request payload")
+		return
+	}
+
+	switch body.RunMode {
+	case runModeManualQueue:
+		if _, err := Dba.updateServerInstanceRunMode(id, runModeManualQueue, nil); err != nil {
+			apiDbError(c, err)
+			return
+		}
+	case runModeRepeatEvent:
+		if body.RepeatEventId == nil || *body.RepeatEventId <= 0 {
+			apiBadRequest(c, "repeat_event_id is required for repeat mode")
+			return
+		}
+		if _, err := Dba.selectServerEventForEvent(*body.RepeatEventId); err != nil {
+			apiBadRequest(c, "That event does not exist or is missing a preset")
+			return
+		}
+		if _, err := Dba.updateServerInstanceRunMode(id, runModeRepeatEvent, body.RepeatEventId); err != nil {
+			apiDbError(c, err)
+			return
+		}
+	default:
+		apiBadRequest(c, "run_mode must be manual_queue or repeat_event")
+		return
+	}
+
+	if err := Instances.LoadFromDb(); err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	// If the instance is already running, apply the new mode on the next
+	// rotation; restarting here would kick players unexpectedly. The dashboard
+	// surfaces that a restart is needed.
+	c.PureJSON(http.StatusOK, gin.H{"run_mode": body.RunMode, "repeat_event_id": body.RepeatEventId})
 }
 
 func apiInstanceCreate(c *gin.Context) {

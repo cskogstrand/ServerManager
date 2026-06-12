@@ -21,6 +21,15 @@ export interface SessionState {
   elapsed_ms: number;
 }
 
+export type RunMode = "manual_queue" | "repeat_event";
+
+export interface RepeatEventInfo {
+  id: number;
+  track?: string | null;
+  category?: string | null;
+  class?: string | null;
+}
+
 export interface InstanceState {
   id: number;
   name: string;
@@ -32,6 +41,9 @@ export interface InstanceState {
   running: boolean;
   players: number;
   session: SessionState | null;
+  run_mode: RunMode;
+  repeat_event_id: number | null;
+  repeat_event: RepeatEventInfo | null;
 }
 
 interface InstanceListItem {
@@ -44,6 +56,9 @@ interface InstanceListItem {
   plugin_listen_port: number | null;
   is_running: boolean;
   players: number;
+  run_mode: RunMode;
+  repeat_event_id: number | null;
+  repeat_event: RepeatEventInfo | null;
 }
 
 // One live store for everything the SSE stream feeds: per-instance status,
@@ -78,6 +93,9 @@ export const useServerStore = defineStore("server", {
           running: item.is_running,
           players: item.players,
           session: this.instances[item.id]?.session ?? null,
+          run_mode: item.run_mode ?? "manual_queue",
+          repeat_event_id: item.repeat_event_id ?? null,
+          repeat_event: item.repeat_event ?? null,
         };
       }
       for (const id of Object.keys(this.instances).map(Number)) {
@@ -144,6 +162,14 @@ export const useServerStore = defineStore("server", {
 
     async stop(id: number) {
       await api.post(`/api/server/stop?instance=${id}`);
+      await this.load();
+    },
+
+    async setRunMode(id: number, mode: RunMode, eventId?: number) {
+      await api.put(`/api/instances/${id}/runmode`, {
+        run_mode: mode,
+        repeat_event_id: mode === "repeat_event" ? (eventId ?? null) : null,
+      });
       await this.load();
     },
   },

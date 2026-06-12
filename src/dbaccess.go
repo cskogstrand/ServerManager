@@ -85,6 +85,12 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_event", "instance_id", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		log.Fatal("Error applying database migration for server_event.instance_id: ", err)
 	}
+	if err := dba.ensureColumn("server_instance", "run_mode", "TEXT NOT NULL DEFAULT 'manual_queue'"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.run_mode: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "repeat_event_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.repeat_event_id: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -1352,7 +1358,7 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 }
 
 func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
-	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled FROM server_instance ORDER BY id ASC")
+	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled, run_mode, repeat_event_id FROM server_instance ORDER BY id ASC")
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -1361,7 +1367,7 @@ func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
 	list := make([]ServerInstance, 0)
 	for rows.Next() {
 		si := ServerInstance{}
-		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled)
+		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled, &si.RunMode, &si.RepeatEventId)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -1402,6 +1408,47 @@ func (dba Dbaccess) updateServerInstance(si ServerInstance) (int64, error) {
 	}
 
 	return res.RowsAffected()
+}
+
+// updateServerInstanceRunMode flips an instance between manual_queue and
+// repeat_event without touching its ports. repeatEventId may be nil when
+// switching back to manual_queue.
+func (dba Dbaccess) updateServerInstanceRunMode(id int, runMode string, repeatEventId *int) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE server_instance SET run_mode = ?, repeat_event_id = ? WHERE id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+
+	res, err := stmt.Exec(runMode, repeatEventId, id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+
+	return res.RowsAffected()
+}
+
+// selectServerEventForEvent builds a ServerEvent (with display names) directly
+// from a user_event id, without a server_event queue row. Used by repeat mode,
+// which re-applies the same event without consuming the queue.
+func (dba Dbaccess) selectServerEventForEvent(eventId int) (ServerEvent, error) {
+	row := dba.db.QueryRow(`
+SELECT u.id, t.name, d.name, e.name, c.name, tw.name, ct.name
+FROM user_event u
+JOIN user_event_category ct on u.event_category_id = ct.id
+JOIN cache_track t on u.cache_track_key = t.key AND u.cache_track_config = t.config
+JOIN user_difficulty d on u.difficulty_id = d.id
+JOIN user_session e on u.session_id = e.id
+JOIN user_class c on u.class_id = c.id
+JOIN user_time tw on u.time_id = tw.id
+WHERE u.id = ?`, eventId)
+
+	se := ServerEvent{}
+	err := row.Scan(&se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName)
+	if err != nil {
+		return ServerEvent{}, tracerr.Wrap(err)
+	}
+	return se, nil
 }
 
 func (dba Dbaccess) deleteServerInstance(id int) (int64, error) {

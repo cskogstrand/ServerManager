@@ -572,6 +572,10 @@ func apiQueueDelete(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if queueRowRepeatLocked(id) {
+		apiError(c, http.StatusConflict, "repeat_locked", "This instance is in repeat mode. Switch it back to manual queue first.")
+		return
+	}
 	if _, err := Dba.deleteServerEvent(id); err != nil {
 		apiDbError(c, err)
 		return

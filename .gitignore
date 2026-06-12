@@ -17,3 +17,4 @@ webapp/dist
 **/.DS_Store
 __pycache__/
 *.pyc
+src/src

@@ -227,40 +227,40 @@ event it is already running, disabling manual queueing.
 
 Proposed model: per-instance **Run Mode**.
 
-- [ ] Add run mode to `server_instance`:
+- [x] Add run mode to `server_instance`:
       - `manual_queue`
       - `repeat_event`
       - later: `scheduled_queue`
-- [ ] Add `repeat_event_id` to `server_instance` or a dedicated
-      `server_instance_run_mode` table.
-- [ ] When `repeat_event` is enabled:
-      - the selected event is rendered and started
-      - on event/session completion, the same event is applied again
-      - manual queue add/reorder/remove controls are disabled for that instance
-      - Queue page shows a locked/repeat state instead of an editable queue
-- [ ] Dashboard shows:
-      - "Repeat mode"
-      - repeated event name/track
-      - action to stop repeat
-      - action to switch back to manual queue
-- [ ] Events page adds:
-      - "Run repeatedly on..." action
-      - instance picker
-- [ ] API safeguards:
-      - reject manual queue mutations for repeat-mode instances with 409
-      - allow explicit "switch to manual queue" endpoint/action
-      - do not silently delete existing queue rows when switching modes
-- [ ] Decide queue preservation behavior:
-      - recommended: keep manual queue rows paused/hidden while repeat mode is
-        active, then restore them when switching back.
+- [x] Add `repeat_event_id` to `server_instance` or a dedicated
+      `server_instance_run_mode` table. (Columns on `server_instance`.)
+- [x] When `repeat_event` is enabled:
+      - [x] the selected event is rendered and started
+      - [x] on event/session completion, the same event is applied again
+      - [x] manual queue add/reorder/remove controls are disabled for that instance
+      - [x] Queue page shows a locked/repeat state instead of an editable queue
+- [x] Dashboard shows:
+      - [x] "Repeat mode" badge
+      - [x] repeated event name/track
+      - [x] action to stop repeat
+      - [x] action to switch back to manual queue
+- [x] Events page adds:
+      - [x] "Run repeatedly on..." action
+      - [x] instance picker
+- [x] API safeguards:
+      - [x] reject manual queue mutations for repeat-mode instances with 409
+      - [x] allow explicit "switch to manual queue" endpoint/action
+      - [x] do not silently delete existing queue rows when switching modes
+- [x] Decide queue preservation behavior:
+      - chose: keep manual queue rows untouched (not dequeued/marked finished)
+        while repeat mode is active; they reappear on switch back.
 
 Acceptance criteria:
 
-- [ ] A user can set one server to repeat one event forever.
-- [ ] Manual queue controls for that server are visibly disabled and API
-      mutations are rejected.
-- [ ] Other instances can still use manual queues.
-- [ ] Stopping the server does not forget the selected repeat event.
+- [x] A user can set one server to repeat one event forever.
+- [x] Manual queue controls for that server are visibly disabled and API
+      mutations are rejected (verified: 409 on add/move/delete).
+- [x] Other instances can still use manual queues.
+- [x] Stopping the server does not forget the selected repeat event.
 
 ---
 
@@ -416,13 +416,20 @@ Why third: events become the central object users understand and run.
 
 ### Phase D - Run Modes and Auto-Repeat
 
-- [ ] Add per-instance run mode to DB/API.
-- [ ] Implement repeat-event engine behavior.
-- [ ] Disable manual queue controls and mutations for repeat-mode instances.
-- [ ] Add Dashboard/Events/Queue controls for switching modes.
+- [x] Add per-instance run mode to DB/API.
+- [x] Implement repeat-event engine behavior.
+- [x] Disable manual queue controls and mutations for repeat-mode instances.
+- [x] Add Dashboard/Events/Queue controls for switching modes.
 
 Why fourth: auto-repeat touches backend lifecycle, queue semantics, and UI
 state, so it should land after terminology and event editing are clear.
+
+**Phase D status: done.** `server_instance.run_mode` + `repeat_event_id`
+(migrated via ensureColumn); `serverApplyTrack`/`serverChangeTrack` re-apply the
+pinned event without consuming the queue; `PUT /api/instances/:id/runmode`;
+409 guards on queue add/category/move/delete for repeat-mode instances; SPA
+repeat panel (Queue), badge + stop-repeat (Dashboard), "Run repeatedly" picker
+(Events). Decision: repeat re-applies the full event (not a single session).
 
 ### Phase E - Queue, Scheduling, and Race Operations
 
@@ -453,10 +460,12 @@ Why last: these are high-value but depend on stable core workflows.
       - alternatives: Series, Collections, Championships
 - [ ] Whether event name should be required or auto-generated from
       track/class/session.
-- [ ] Whether repeat mode should repeat the full event or only the current
-      session inside the event.
-- [ ] What happens to existing queue rows when repeat mode is enabled:
-      - recommended: preserve but disable/hide while repeat mode is active
+- [x] Whether repeat mode should repeat the full event or only the current
+      session inside the event. (Decided: full event — re-applied on the same
+      end-of-event rotation hook.)
+- [x] What happens to existing queue rows when repeat mode is enabled:
+      (Decided: preserved untouched — never dequeued or marked finished — and
+      shown again when switching back to manual.)
 - [ ] Whether scheduled starts should be part of queue mode only or a separate
       per-instance run mode.
 

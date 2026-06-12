@@ -90,9 +90,13 @@ func (inst *Instance) serverChangeTrack() {
 	time.Sleep(3 * time.Second)
 
 	inst.stop()
-	val := 1
-	inst.Cr.serverEvent.Finished = &val
-	Dba.updateServerEvent(inst.Cr.serverEvent)
+	// Repeat mode re-runs the same event, so the queue is never consumed and
+	// nothing is marked finished.
+	if _, repeat := inst.repeatEventId(); !repeat {
+		val := 1
+		inst.Cr.serverEvent.Finished = &val
+		Dba.updateServerEvent(inst.Cr.serverEvent)
+	}
 	if inst.serverApplyTrack() {
 		inst.start()
 	} else {
@@ -101,6 +105,16 @@ func (inst *Instance) serverChangeTrack() {
 }
 
 func (inst *Instance) serverApplyTrack() bool {
+	// Repeat mode: re-apply the pinned event regardless of the manual queue.
+	if eventId, repeat := inst.repeatEventId(); repeat {
+		se, err := Dba.selectServerEventForEvent(eventId)
+		if err != nil {
+			log.Print("Repeat event unavailable for instance ", inst.Name(), ": ", err)
+			return false
+		}
+		return applyServerEvent(inst, se)
+	}
+
 	nextevents, err := Dba.selectServerEvents(true, inst.Id())
 
 	if err != nil {

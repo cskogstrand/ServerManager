@@ -95,6 +95,26 @@ async function toggle(id: number, running: boolean) {
   }
 }
 
+async function stopRepeat(id: number) {
+  const inst = server.instanceList.find((i) => i.id === id);
+  const ok = await confirm.ask({
+    title: "Stop repeat mode",
+    message: `Return ${inst?.name ?? "this instance"} to manual queue?`,
+    detail: "It stops re-running the same event. Previously queued events are preserved.",
+    confirmLabel: "Switch to manual",
+  });
+  if (!ok) return;
+  busy.value[id] = true;
+  try {
+    await server.setRunMode(id, "manual_queue");
+    toast.success("Switched to manual queue.");
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value[id] = false;
+  }
+}
+
 async function skip(id: number) {
   const ok = await confirm.ask({
     title: "Skip current event",
@@ -216,8 +236,26 @@ function consoleLines(detail?: StatusPayload): string {
         <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
           {{ inst.players }} player{{ inst.players === 1 ? "" : "s" }}
         </span>
+        <span
+          v-if="inst.run_mode === 'repeat_event'"
+          class="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent"
+          :title="inst.repeat_event?.track ? `Repeating ${inst.repeat_event.track}` : 'Repeat mode'"
+        >
+          <Icon name="repeat" :size="12" />
+          Repeat
+        </span>
       </template>
       <template #actions>
+        <Button
+          v-if="inst.run_mode === 'repeat_event'"
+          variant="ghost"
+          size="sm"
+          :disabled="busy[inst.id]"
+          @click="stopRepeat(inst.id)"
+        >
+          <Icon name="queue" :size="15" />
+          Stop repeat
+        </Button>
         <Button
           v-if="inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
           variant="ghost"

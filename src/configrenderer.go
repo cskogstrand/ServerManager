@@ -33,9 +33,14 @@ type ConfigRenderer struct {
 // 18:00 PM = 80
 // increment of 8 every 30 minutes
 func (cr *ConfigRenderer) timeToSunAngle(timeStr *string) int {
-	time, err := time.Parse("15:04", *timeStr)
+	// 13:00 maps to a sun angle of 0 — a safe default when no time is set.
+	s := "13:00"
+	if timeStr != nil && *timeStr != "" {
+		s = *timeStr
+	}
+	time, err := time.Parse("15:04", s)
 	if err != nil {
-		log.Print("Could not parse time: ", *timeStr, err)
+		log.Print("Could not parse time: ", s, err)
 	}
 
 	angle := -80 + (16 * (time.Hour() - 8))
@@ -167,7 +172,7 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 	}
 
 	// Weather CSP? build new graphics string
-	if *tm.CspEnabled == 1 {
+	if tm.CspEnabled != nil && *tm.CspEnabled == 1 {
 		t := "13:00" // sets the sun angle to zero; a "nice" default/backup value
 		tm.Time = &t
 		todm := 1

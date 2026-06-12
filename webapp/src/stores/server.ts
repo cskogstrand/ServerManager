@@ -73,6 +73,7 @@ export interface InstanceState {
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
   scheduled_start: number | null;
+  start_on_boot: number | null;
   stream_enabled: number | null;
   stream_embed_url: string | null;
   stream_status_url: string | null;
@@ -97,6 +98,7 @@ interface InstanceListItem {
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
   scheduled_start: number | null;
+  start_on_boot: number | null;
   stream_enabled: number | null;
   stream_embed_url: string | null;
   stream_status_url: string | null;
@@ -145,6 +147,7 @@ export const useServerStore = defineStore("server", {
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
           scheduled_start: item.scheduled_start ?? null,
+          start_on_boot: item.start_on_boot ?? 0,
           stream_enabled: item.stream_enabled ?? 0,
           stream_embed_url: item.stream_embed_url ?? null,
           stream_status_url: item.stream_status_url ?? null,

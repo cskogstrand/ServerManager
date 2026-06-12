@@ -79,6 +79,10 @@ export interface ServerInstance {
    * or after this time, then clears it. nil/0 means no schedule.
    */
   scheduled_start?: number /* int64 */;
+  /**
+   * StartOnBoot auto-starts this instance from its queue when SM launches.
+   */
+  start_on_boot?: number /* int */;
 }
 export interface DriverStream {
   id?: number /* int */;

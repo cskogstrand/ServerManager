@@ -248,7 +248,8 @@ CREATE TABLE IF NOT EXISTS server_instance (
   spectator_driver_name TEXT,
   spectator_guid TEXT,
   spectator_car_key TEXT,
-  spectator_skin_key TEXT
+  spectator_skin_key TEXT,
+  start_on_boot INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS driver_stream (

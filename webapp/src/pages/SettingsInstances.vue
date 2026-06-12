@@ -36,6 +36,7 @@ interface InstanceForm {
   http_port: number | null;
   plugin_port: number | null;
   plugin_listen_port: number | null;
+  start_on_boot: boolean;
   stream_enabled: boolean;
   stream_embed_url: string;
   stream_status_url: string;
@@ -85,6 +86,7 @@ function openCreate() {
     plugin_port: nextFree([...list.map((i) => i.plugin_port), ...list.map((i) => i.plugin_listen_port)], 5000),
     plugin_listen_port:
       nextFree([...list.map((i) => i.plugin_port), ...list.map((i) => i.plugin_listen_port)], 5000) + 1,
+    start_on_boot: false,
     stream_enabled: false,
     stream_embed_url: "",
     stream_status_url: "",
@@ -106,6 +108,7 @@ function openEdit(inst: InstanceState) {
     http_port: inst.http_port,
     plugin_port: inst.plugin_port,
     plugin_listen_port: inst.plugin_listen_port,
+    start_on_boot: inst.start_on_boot === 1,
     stream_enabled: inst.stream_enabled === 1,
     stream_embed_url: inst.stream_embed_url ?? "",
     stream_status_url: inst.stream_status_url ?? "",
@@ -142,6 +145,7 @@ const save = () =>
       http_port: f.http_port,
       plugin_port: f.plugin_port,
       plugin_listen_port: f.plugin_listen_port,
+      start_on_boot: f.start_on_boot ? 1 : 0,
       stream_enabled: f.stream_enabled ? 1 : 0,
       stream_embed_url: f.stream_embed_url,
       stream_status_url: f.stream_status_url,
@@ -293,6 +297,8 @@ const removeDriverStream = (stream: DriverStream) =>
         <dd>{{ inst.http_port }}</dd>
         <dt class="font-sans text-muted">Plugin ports</dt>
         <dd>{{ inst.plugin_port }} → {{ inst.plugin_listen_port }}</dd>
+        <dt class="font-sans text-muted">Start on boot</dt>
+        <dd>{{ inst.start_on_boot === 1 ? "On" : "Off" }}</dd>
         <dt class="font-sans text-muted">Stream</dt>
         <dd>{{ inst.stream_enabled === 1 ? "Configured" : "Off" }}</dd>
         <dt class="font-sans text-muted">Spectator slot</dt>
@@ -362,6 +368,10 @@ const removeDriverStream = (stream: DriverStream) =>
         <FormRow label="Plugin listen port (SM)" for-id="ipluginl">
           <Input id="ipluginl" v-model="form.plugin_listen_port" type="number" :min="1024" :max="65535" />
         </FormRow>
+      </div>
+      <div class="mt-2 border-t border-line pt-4">
+        <Toggle v-model="form.start_on_boot" label="Start this server when Server Manager launches" />
+        <p class="mt-1 text-xs text-dim">Picks up the next queued event (or the repeat event) automatically on boot.</p>
       </div>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.stream_enabled" label="Show fixed spectator stream on dashboard" />

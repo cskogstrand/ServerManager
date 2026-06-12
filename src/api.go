@@ -1858,6 +1858,7 @@ func apiInstances(c *gin.Context) {
 			"repeat_event_id":    inst.Conf.RepeatEventId,
 			"repeat_event":       repeatEvent,
 			"scheduled_start":    inst.Conf.ScheduledStart,
+			"start_on_boot":      inst.Conf.StartOnBoot,
 			"stream_enabled":     inst.Conf.StreamEnabled,
 			"stream_embed_url":   inst.Conf.StreamEmbedUrl,
 			"stream_status_url":  inst.Conf.StreamStatusUrl,

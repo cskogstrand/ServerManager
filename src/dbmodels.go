@@ -82,6 +82,8 @@ type ServerInstance struct {
 	// ScheduledStart is a unix timestamp; the scheduler starts the instance at
 	// or after this time, then clears it. nil/0 means no schedule.
 	ScheduledStart *int64 `json:"scheduled_start" form:"scheduled_start"`
+	// StartOnBoot auto-starts this instance from its queue when SM launches.
+	StartOnBoot *int `json:"start_on_boot" form:"start_on_boot"`
 }
 
 type DriverStream struct {

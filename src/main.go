@@ -311,22 +311,28 @@ func main() {
 	updatePublicIp()
 	startScheduler()
 
-	if cfg.AutoStartServer != nil && *cfg.AutoStartServer > 0 {
-		go func() {
-			inst := Instances.Default()
-			if inst == nil || inst.isRunning() {
-				return
+	go func() {
+		// Legacy global toggle keeps starting the default instance; the
+		// per-instance start_on_boot flag covers everything else.
+		globalAutoStart := cfg.AutoStartServer != nil && *cfg.AutoStartServer > 0
+		for _, inst := range Instances.All() {
+			onBoot := inst.Conf.StartOnBoot != nil && *inst.Conf.StartOnBoot > 0
+			if !onBoot && !(globalAutoStart && inst == Instances.Default()) {
+				continue
+			}
+			if inst.isRunning() {
+				continue
 			}
 			if ok, err := inst.serverApplyTrack(); ok {
-				log.Print("Auto-starting server from queue on launch")
+				log.Printf("Auto-starting instance %q from queue on launch", inst.Name())
 				inst.start()
 			} else if err != nil {
-				log.Print("Auto-start failed: ", err)
+				log.Printf("Auto-start of instance %q failed: %v", inst.Name(), err)
 			} else {
-				log.Print("Auto-start enabled but no unfinished queue event was available")
+				log.Printf("Auto-start enabled for instance %q but no unfinished queue event was available", inst.Name())
 			}
-		}()
-	}
+		}
+	}()
 
 	main := &http.Server{
 		Addr:    ":3030",

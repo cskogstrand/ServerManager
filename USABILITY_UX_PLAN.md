@@ -291,10 +291,11 @@ These are high-value, lower-risk improvements.
       - [x] global toast stack (`stores/toast.ts` + `Toaster.vue`)
       - [x] success/error handling through a shared store
       - [ ] SSE-driven toasts for import finished and event rotated
-- [ ] Unsaved-changes guards.
-      - dirty flag per form
-      - route-leave confirmation
-      - shared helper for form snapshot comparison
+- [x] Unsaved-changes guards.
+      - [x] dirty flag per form (preset editors)
+      - [x] route-leave confirmation (+ beforeunload)
+      - [x] shared helper for form snapshot comparison (`useUnsavedGuard` +
+        usePresetPage snapshot)
 - [x] Confirm dialogs in-app.
       - [x] replace `window.confirm` (Events/Queue/Dashboard)
       - [x] reuse `Modal` (`ConfirmDialog.vue` + `stores/confirm.ts`)

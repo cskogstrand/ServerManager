@@ -16,6 +16,12 @@ export function usePresetPage<T extends { id?: number }>(
   const notice = ref("");
   const error = ref("");
 
+  // Snapshot of the form as last loaded/saved, for unsaved-changes detection.
+  let baseline = "";
+  const snapshot = () => (form.value ? JSON.stringify(form.value) : "");
+  const markClean = () => (baseline = snapshot());
+  const isDirty = () => form.value !== null && snapshot() !== baseline;
+
   async function guard(fn: () => Promise<void>) {
     busy.value = true;
     notice.value = "";
@@ -38,6 +44,7 @@ export function usePresetPage<T extends { id?: number }>(
       const data = await resource.get(id);
       form.value = prepare ? prepare(data) : data;
       selectedId.value = id;
+      markClean();
     });
 
   const create = (name: string) =>
@@ -63,10 +70,11 @@ export function usePresetPage<T extends { id?: number }>(
       if (!form.value || selectedId.value === null) return;
       await resource.update(selectedId.value, form.value);
       await reloadList();
+      markClean();
       notice.value = "Saved.";
     });
 
   onMounted(() => guard(reloadList));
 
-  return { items, selectedId, form, busy, notice, error, select, create, remove, save };
+  return { items, selectedId, form, busy, notice, error, select, create, remove, save, isDirty };
 }

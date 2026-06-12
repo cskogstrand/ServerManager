@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { presetResource } from "@/lib/presets";
 import { usePresetPage } from "@/lib/usePresetPage";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import type { UserSession } from "@/types/generated";
 import PresetShell from "@/components/presets/PresetShell.vue";
 import PresetNotices from "@/components/presets/PresetNotices.vue";
@@ -10,6 +11,7 @@ import Button from "@/components/ui/Button.vue";
 const resource = presetResource<UserSession>("sessions", "session");
 const page = usePresetPage(resource);
 const { form } = page;
+useUnsavedGuard(page.isDirty);
 </script>
 
 <template>

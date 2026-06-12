@@ -205,7 +205,7 @@ func writeModLinks(dir string, cfg UserConfig, cr *ConfigRenderer) {
 		}
 		seen[k] = true
 		if !have(filepath.Join("cars", k)) {
-			log.Printf("mod links: skipping car %q — not found under %s/content/cars", k, base)
+			log.Printf("mod links: skipping car %q — not found at %s", k, filepath.Join(base, "content", "cars", k))
 			continue
 		}
 		carURLs[k] = carDownloadURL(cfg, k)

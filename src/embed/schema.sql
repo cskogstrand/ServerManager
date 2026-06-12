@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS user_config (
   append_eventname INTEGER,
   append_modlinks INTEGER,
   mod_download_url TEXT,
+  server_engine TEXT DEFAULT 'kunos',
   auto_start_server INTEGER DEFAULT 0,
 
   install_path TEXT,

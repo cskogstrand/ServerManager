@@ -559,6 +559,32 @@ func apiConfigContentUpdate(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
 }
 
+// apiServerEngine reports the selected dedicated-server engine and, for
+// AssettoServer, whether its binary is already downloaded.
+func apiServerEngine(c *gin.Context) {
+	engine := engineKunos
+	if cfg, err := Dba.selectConfig(); err == nil && cfg.ServerEngine != nil && *cfg.ServerEngine != "" {
+		engine = *cfg.ServerEngine
+	}
+	c.PureJSON(http.StatusOK, gin.H{
+		"engine":                  engine,
+		"assettoserver_version":   assettoServerVersion,
+		"assettoserver_installed": assettoServerInstalled(),
+	})
+}
+
+// apiAssettoServerInstall downloads + extracts the AssettoServer release so the
+// first server start doesn't block on it (and so download errors surface in the
+// UI rather than only the logs).
+func apiAssettoServerInstall(c *gin.Context) {
+	bin, err := ensureAssettoServerInstalled()
+	if err != nil {
+		apiError(c, http.StatusBadGateway, "download_failed", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"installed": true, "path": bin, "version": assettoServerVersion})
+}
+
 // --- Queue (SPA) ---
 
 // apiQueueList returns the queue with display names; ?instance=N filters.

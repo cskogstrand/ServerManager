@@ -29,6 +29,7 @@ export interface UserConfig {
   append_eventname?: number /* int */;
   append_modlinks?: number /* int */;
   mod_download_url?: string;
+  server_engine?: string;
   auto_start_server?: number /* int */;
   install_path?: string;
   csp_required?: number /* int */;

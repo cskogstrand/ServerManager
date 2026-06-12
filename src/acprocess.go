@@ -31,14 +31,25 @@ func (inst *Instance) appendOutput(pipe io.ReadCloser, label string) {
 	}
 }
 
-func (inst *Instance) start() {
+// serverExecutable returns the path to the dedicated-server binary to spawn for
+// this instance, honouring the configured engine. The AssettoServer binary is
+// copied into the run dir by provisionAssettoServerRunDir so it sits next to
+// its native libs and the cfg/content trees.
+func (inst *Instance) serverExecutable(dir string) string {
+	if cfg, err := Dba.selectConfig(); err == nil &&
+		cfg.ServerEngine != nil && *cfg.ServerEngine == engineAssettoServer {
+		return filepath.Join(dir, assettoServerBinaryName())
+	}
 	binary := "acServer"
 	if runtime.GOOS == "windows" {
 		binary = "acServer.exe"
 	}
+	return filepath.Join(dir, binary)
+}
 
+func (inst *Instance) start() {
 	dir := inst.Dir()
-	fpath := filepath.Join(dir, binary)
+	fpath := inst.serverExecutable(dir)
 	if _, err := os.Stat(fpath); errors.Is(err, os.ErrNotExist) {
 		log.Print("Could not find executable: ", fpath, err)
 	}

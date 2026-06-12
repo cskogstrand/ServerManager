@@ -233,6 +233,8 @@ func main() {
 		api.GET("/config", apiConfigGet)
 		api.PUT("/config", apiConfigUpdate)
 		api.PUT("/config/content", apiConfigContentUpdate)
+		api.GET("/server/engine", apiServerEngine)
+		api.POST("/server/assettoserver/install", apiAssettoServerInstall)
 
 		api.GET("/user", apiUserGet)
 		api.PUT("/user", apiUserUpdate)

@@ -33,6 +33,7 @@ type UserConfig struct {
 	AppendEventname    *int    `form:"append_eventname" json:"append_eventname"`
 	AppendModlinks     *int    `form:"append_modlinks" json:"append_modlinks"`
 	ModDownloadUrl     *string `form:"mod_download_url" json:"mod_download_url"`
+	ServerEngine       *string `form:"server_engine" json:"server_engine"`
 	AutoStartServer    *int    `form:"auto_start_server" json:"auto_start_server"`
 	InstallPath        *string `form:"install_path" json:"install_path"`
 	CspRequired        *int    `form:"csp_required" json:"csp_required"`
@@ -77,6 +78,14 @@ type ServerInstance struct {
 const (
 	runModeManualQueue = "manual_queue"
 	runModeRepeatEvent = "repeat_event"
+)
+
+// Dedicated-server engine. Kunos is the stock acServer; AssettoServer is the
+// drop-in replacement that natively serves the Content Manager /api/details
+// "content" field (the "Install missing content" button).
+const (
+	engineKunos         = "kunos"
+	engineAssettoServer = "assettoserver"
 )
 
 type UserEvent struct {

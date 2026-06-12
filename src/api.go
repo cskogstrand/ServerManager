@@ -423,6 +423,26 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 		log.Print("Could not update server event: ", err)
 	}
 
+	if cfg.ServerEngine != nil && *cfg.ServerEngine == engineAssettoServer {
+		if _, err := ensureAssettoServerInstalled(); err != nil {
+			log.Print("AssettoServer unavailable, cannot start: ", err)
+			return false
+		}
+		if err := provisionAssettoServerRunDir(dir); err != nil {
+			log.Print("Could not provision AssettoServer run dir: ", err)
+			return false
+		}
+		// AssettoServer reads content/system straight from the symlinked
+		// install, so there is nothing to extract from smcontent.zip.
+		return true
+	}
+
+	// Kunos acServer path. A prior AssettoServer run may have symlinked
+	// content/system to the live install — undo that before extracting, or we
+	// would write mod files into the user's real content tree.
+	unlinkIfSymlink(contentDir)
+	unlinkIfSymlink(filepath.Join(dir, "system"))
+
 	exec := "acServer"
 	if runtime.GOOS == "windows" {
 		exec = "acServer.exe"

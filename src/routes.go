@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path"
@@ -39,11 +41,28 @@ func routeSpa(c *gin.Context) {
 		return
 	}
 
-	asset := p
-	if !assetExists("/webapp/dist" + asset) {
-		asset = "/index.html"
+	// Serve embedded bytes directly. Using http.FileServer here (c.FileFromFS)
+	// would 301-redirect "/index.html" -> "./", breaking every SPA route.
+	asset := "/webapp/dist" + p
+	if !assetExists(asset) {
+		asset = "/webapp/dist/index.html"
 	}
-	c.FileFromFS(asset, SpaAssetsFS())
+	f, err := OpenAsset(asset)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	ctype := mime.TypeByExtension(path.Ext(asset))
+	if ctype == "" {
+		ctype = http.DetectContentType(data)
+	}
+	c.Data(http.StatusOK, ctype, data)
 }
 
 // routeLegacyApp redirects pre-cutover /app/* bookmarks to the new root.

@@ -488,6 +488,8 @@ SELECT
 	s.id as id,
 	u.id as event_id,
 	t.name as track_name,
+	u.cache_track_key as track_key,
+	u.cache_track_config as track_config,
 	d.name as difficulty_name,
 	e.name as session_name,
 	c.name as class_name,
@@ -526,7 +528,7 @@ JOIN user_time tw
 	list := make([]ServerEvent, 0)
 	for rows.Next() {
 		se := ServerEvent{}
-		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
+		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}

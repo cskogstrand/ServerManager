@@ -568,6 +568,12 @@ function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
         </span>
       </template>
       <template #actions>
+        <RouterLink :to="`/server/${inst.id}`">
+          <Button variant="dark" size="sm">
+            <Icon name="dashboard" :size="15" />
+            Details
+          </Button>
+        </RouterLink>
         <Button
           v-if="inst.run_mode === 'repeat_event'"
           variant="ghost"

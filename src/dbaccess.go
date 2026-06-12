@@ -1483,16 +1483,40 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 		return -1, tracerr.Wrap(err)
 	}
 
+	// Merge identical car+skin rows, summing their counts: the count field is
+	// the quantity control, so the same car+skin must never be listed twice
+	// (otherwise a duplicate row silently doubles the grid).
+	type entryKey struct {
+		car  string
+		skin string
+	}
+	order := make([]entryKey, 0, len(cls.Entries))
+	counts := make(map[entryKey]int, len(cls.Entries))
 	for _, ent := range cls.Entries {
+		if ent.CacheCarKey == nil || *ent.CacheCarKey == "" {
+			continue
+		}
+		skin := ""
+		if ent.SkinKey != nil {
+			skin = *ent.SkinKey
+		}
 		count := 1
 		if ent.Count != nil && *ent.Count > 0 {
 			count = *ent.Count
 		}
+		k := entryKey{car: *ent.CacheCarKey, skin: skin}
+		if _, seen := counts[k]; !seen {
+			order = append(order, k)
+		}
+		counts[k] += count
+	}
+
+	for _, k := range order {
 		stmt, err = dba.db.Prepare("INSERT INTO user_class_entry (user_class_id, cache_car_key, skin_key, car_count) VALUES (?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-		_, err = stmt.Exec(cls.Id, ent.CacheCarKey, ent.SkinKey, count)
+		_, err = stmt.Exec(cls.Id, k.car, k.skin, counts[k])
 		defer stmt.Close()
 
 		if err != nil {

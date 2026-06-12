@@ -17,6 +17,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
+import Combobox from "@/components/ui/Combobox.vue";
 import Sheet from "@/components/ui/Sheet.vue";
 import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
@@ -509,9 +510,10 @@ onMounted(() =>
 
       <FormRow label="Car class">
         <div class="flex gap-1">
-          <Select
+          <Combobox
             v-model="editing.class_id"
             class="flex-1"
+            placeholder="Search car classes…"
             :options="classes.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))"
           />
           <Button variant="dark" size="sm" title="Create a new car class" @click="openInline('class')">
@@ -522,9 +524,10 @@ onMounted(() =>
       </FormRow>
       <FormRow label="Sessions">
         <div class="flex gap-1">
-          <Select
+          <Combobox
             v-model="editing.session_id"
             class="flex-1"
+            placeholder="Search session presets…"
             :options="sessions.map((s) => ({ value: s.id ?? 0, label: s.name ?? '' }))"
           />
           <Button variant="dark" size="sm" title="Create a new session preset" @click="openInline('session')">
@@ -535,9 +538,10 @@ onMounted(() =>
       </FormRow>
       <FormRow label="Time & weather">
         <div class="flex gap-1">
-          <Select
+          <Combobox
             v-model="editing.time_id"
             class="flex-1"
+            placeholder="Search time presets…"
             :options="times.map((t) => ({ value: t.id ?? 0, label: t.name ?? '' }))"
           />
           <Button variant="dark" size="sm" title="Create a new time & weather preset" @click="openInline('time')">
@@ -548,9 +552,10 @@ onMounted(() =>
       </FormRow>
       <FormRow label="Difficulty">
         <div class="flex gap-1">
-          <Select
+          <Combobox
             v-model="editing.difficulty_id"
             class="flex-1"
+            placeholder="Search difficulty presets…"
             :options="difficulties.map((d) => ({ value: d.id ?? 0, label: d.name ?? '' }))"
           />
           <Button variant="dark" size="sm" title="Create a new difficulty preset" @click="openInline('difficulty')">

@@ -312,10 +312,10 @@ These are high-value, lower-risk improvements.
       - [ ] required markers
       - [x] disable save until valid (event builder)
       - [x] inline errors for missing fields (event builder)
-- [ ] Searchable dropdowns.
-      - car select in class editor
-      - preset selects in event builder
-      - event/group selectors where lists can grow
+- [x] Searchable dropdowns. (`Combobox.vue`)
+      - [x] car select in class editor
+      - [x] preset selects in event builder
+      - [ ] event/group selectors in the Queue add panel
 
 ---
 

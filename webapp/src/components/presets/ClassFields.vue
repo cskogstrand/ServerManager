@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
+import Combobox from "@/components/ui/Combobox.vue";
 import Icon from "@/components/ui/Icon.vue";
 
 const form = defineModel<UserClass | null>({ required: true });
@@ -75,10 +76,11 @@ function totalSlots(): number {
 
         <div class="grid min-w-0 flex-1 gap-x-4 sm:grid-cols-[2fr_2fr_auto]">
           <FormRow label="Car">
-            <Select
+            <Combobox
               v-model="entry.cache_car_key"
+              placeholder="Search cars…"
               :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
-              @change="onCarChange(entry)"
+              @update:model-value="onCarChange(entry)"
             />
           </FormRow>
           <FormRow label="Skin">

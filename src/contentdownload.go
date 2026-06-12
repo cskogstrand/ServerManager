@@ -53,15 +53,23 @@ func trackDownloadURL(cfg UserConfig, key string) string {
 func streamContentZip(c *gin.Context, contentSub string, root string) {
 	base, err := Dba.basepath()
 	if err != nil {
+		log.Print("download: install path not configured: ", err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	srcDir := filepath.Join(base, "content", contentSub)
-	info, err := os.Stat(srcDir)
-	if err != nil || !info.IsDir() {
-		c.Status(http.StatusNotFound)
-		return
+	if info, err := os.Stat(srcDir); err != nil || !info.IsDir() {
+		// Mod folders sometimes drift in case from the cached key; on a
+		// case-sensitive filesystem the exact stat misses. Fall back to a
+		// case-insensitive scan of the parent before giving up.
+		if alt := findDirCaseInsensitive(filepath.Dir(srcDir), filepath.Base(srcDir)); alt != "" {
+			srcDir = alt
+		} else {
+			log.Printf("download 404: no content directory at %q (key %q)", srcDir, root)
+			c.Status(http.StatusNotFound)
+			return
+		}
 	}
 
 	c.Header("Content-Type", "application/zip")
@@ -100,6 +108,22 @@ func streamContentZip(c *gin.Context, contentSub string, root string) {
 	if err != nil {
 		log.Print("Error streaming content zip for ", root, ": ", err)
 	}
+}
+
+// findDirCaseInsensitive returns the absolute path of a subdirectory of parent
+// whose name matches `name` ignoring case, or "" if none. Handles mod folders
+// whose on-disk casing differs from the cached content key.
+func findDirCaseInsensitive(parent, name string) string {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.EqualFold(e.Name(), name) {
+			return filepath.Join(parent, e.Name())
+		}
+	}
+	return ""
 }
 
 // apiDownloadCar streams content/cars/<key> as a zip. Public (unauthenticated):

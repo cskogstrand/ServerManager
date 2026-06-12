@@ -167,6 +167,10 @@ func main() {
 	// Pre-cutover bookmarks
 	router.GET("/app/*path", routeLegacyApp)
 
+	// Public mod downloads — joining players are not authenticated.
+	router.GET("/dl/car/:key", apiDownloadCar)
+	router.GET("/dl/track/:key", apiDownloadTrack)
+
 	// Login is the only unauthenticated API endpoint
 	router.POST("/api/login", apiLogin)
 

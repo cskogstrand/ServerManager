@@ -32,6 +32,7 @@ type UserConfig struct {
 	WelcomeMessage     *string `form:"welcome_message" json:"welcome_message"`
 	AppendEventname    *int    `form:"append_eventname" json:"append_eventname"`
 	AppendModlinks     *int    `form:"append_modlinks" json:"append_modlinks"`
+	ModDownloadUrl     *string `form:"mod_download_url" json:"mod_download_url"`
 	AutoStartServer    *int    `form:"auto_start_server" json:"auto_start_server"`
 	InstallPath        *string `form:"install_path" json:"install_path"`
 	CspRequired        *int    `form:"csp_required" json:"csp_required"`

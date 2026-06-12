@@ -407,6 +407,13 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 	inst.Cr.renderIni(*serverEvent.UserEvent.Id, inst.Conf)
 	inst.Cr.writeIni(dir)
 
+	cfg, err := Dba.selectConfig()
+	if err != nil {
+		log.Print("Could not load config for mod links: ", err)
+	} else {
+		writeModLinks(dir, cfg, &inst.Cr)
+	}
+
 	tm := time.Now().Unix()
 	serverEvent.StartedAt = &tm
 	serverEvent.ServerCfg = &inst.Cr.serverCfgResult

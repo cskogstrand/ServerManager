@@ -81,6 +81,14 @@ async function save() {
         <Toggle v-model="appendEventname" label="Append event name" />
         <Toggle v-model="appendModlinks" label="Append mod links" />
       </div>
+      <FormRow
+        v-if="appendModlinks"
+        label="Mod download URL"
+        for-id="modurl"
+        hint="Public base URL players use to download mods (e.g. http://your-host:3030). Leave empty to use the detected public IP on port 3030. Set this when the web port is remapped behind Docker/NAT."
+      >
+        <Input id="modurl" v-model="form.mod_download_url" placeholder="http://your-host:3030" />
+      </FormRow>
     </Card>
 
     <Card title="Access">

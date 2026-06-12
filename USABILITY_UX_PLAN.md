@@ -8,7 +8,7 @@ Last updated: 2026-06-12
 |-------|-------|-------|
 | A — IA, labels, feedback | **done** | Event Groups relabel, Content→Admin, toasts, in-app confirm, empty/skeleton, event duplication, event-builder validation |
 | B — Server Setup | **page done** | `/setup` + `GET /api/server/readiness`; guided first-run wizard still open |
-| C — Event builder | open | inline preset creation, ini preview, group duplication/templates |
+| C — Event builder | **largely done** | inline preset creation + ini preview done; group duplication/templates open |
 | D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
 | E — Queue / race ops | partial | drag-drop reorder + race-control panel done; ETA/scheduling, grid editor, live timing open |
 | F — Admin / reliability | open | results/history, roles, backup, health, envelope cleanup |
@@ -200,21 +200,23 @@ setup concerns.
       - disable save until required fields are valid
       - show missing fields next to the relevant controls
       - warn when grid count exceeds pitboxes
-- [ ] Preview generated output before queueing:
-      - compact `server_cfg.ini` summary
-      - compact `entry_list.ini` summary
-      - pitbox/max-clients warnings
+- [x] Preview generated output before queueing:
+      - [x] compact `server_cfg.ini` summary
+      - [x] compact `entry_list.ini` summary
+      - [~] pitbox/max-clients warnings (MAX_CLIENTS shown in the preview;
+        nondeterminism note included; explicit warning banner still open)
 
 ### 4.3 Inline Preset Creation
 
-- [ ] From the event editor, support "Create new" for:
-      - car class
-      - session preset
-      - time/weather preset
-      - difficulty preset
-- [ ] Open nested sheets or focused sub-editors.
-- [ ] Return to the event editor with the new preset selected.
-- [ ] Reuse existing preset form bodies rather than duplicating logic.
+- [x] From the event editor, support "Create new" for:
+      - [x] car class
+      - [x] session preset
+      - [x] time/weather preset
+      - [x] difficulty preset
+- [x] Open nested sheets or focused sub-editors.
+- [x] Return to the event editor with the new preset selected.
+- [x] Reuse existing preset form bodies rather than duplicating logic
+      (extracted `*Fields.vue`, used by both the pages and the inline sheet).
 
 ### 4.4 Duplication and Templates
 
@@ -318,10 +320,10 @@ These are high-value, lower-risk improvements.
 
 ## 7. Structural Improvements from APP_GUIDE.md
 
-- [ ] Inline preset creation in the Builder.
-      - extract preset form bodies
-      - host them in nested sheets
-      - return with the new preset selected
+- [x] Inline preset creation in the Builder.
+      - [x] extract preset form bodies (`*Fields.vue`)
+      - [x] host them in nested sheets (`InlinePresetSheet.vue`)
+      - [x] return with the new preset selected
 - [~] Drag-and-drop queue reorder and class entry reorder.
       - [x] optimistic updates (queue)
       - [x] full-order API endpoint (`PUT /api/queue/order`)
@@ -429,13 +431,19 @@ lightweight stand-in for the guided wizard.
 
 ### Phase C - Event Builder Completion
 
-- [ ] Redesign Events page around Event Groups + Event cards.
-- [ ] Ensure event editor exposes all runnable fields.
-- [ ] Add inline validation.
-- [ ] Add inline preset creation.
-- [ ] Add event duplication/templates.
+- [x] Redesign Events page around Event Groups + Event cards.
+- [x] Ensure event editor exposes all runnable fields.
+- [x] Add inline validation.
+- [x] Add inline preset creation.
+- [~] Add event duplication/templates (single-event duplicate done; group
+      duplication + named templates still open).
 
 Why third: events become the central object users understand and run.
+
+**Phase C status: largely done.** Event-group/card layout, full-field editor
+with validation, inline preset creation (4 types via shared `*Fields.vue`),
+single-event duplicate, and rendered-config preview. Open: event-group
+duplication, save-as-template, "same event different track" helper.
 
 ### Phase D - Run Modes and Auto-Repeat
 

@@ -9,6 +9,8 @@ import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import type { DropDownList } from "@/types/generated";
 import PresetShell from "@/components/presets/PresetShell.vue";
+import InlinePresetSheet from "@/components/presets/InlinePresetSheet.vue";
+import type { PresetKind } from "@/lib/presetForms";
 import TrackPicker from "@/components/TrackPicker.vue";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -301,6 +303,58 @@ const confirmRepeat = () =>
     toast.success(`${inst?.name ?? "Instance"} will repeat ${repeatTarget.value.track_name}. Start it from the dashboard.`);
   });
 
+// --- Config preview (rendered server_cfg.ini / entry_list.ini) ---
+const previewOpen = ref(false);
+const previewCfg = ref("");
+const previewEntry = ref("");
+const previewBusy = ref(false);
+
+async function openPreview() {
+  const e = editing.value;
+  if (!e?.id) return;
+  previewOpen.value = true;
+  previewBusy.value = true;
+  previewCfg.value = "";
+  previewEntry.value = "";
+  try {
+    const inst = server.instanceList[0];
+    const q = `id=${e.id}${inst ? `&instance=${inst.id}` : ""}`;
+    const [cfg, entry] = await Promise.all([
+      fetch(`/api/server/server_cfg.ini?${q}`).then((r) => r.text()),
+      fetch(`/api/server/entry_list.ini?${q}`).then((r) => r.text()),
+    ]);
+    previewCfg.value = cfg;
+    previewEntry.value = entry;
+  } catch (e) {
+    toast.error(String(e));
+  } finally {
+    previewBusy.value = false;
+  }
+}
+
+// --- Inline preset creation from the builder ---
+const inlineOpen = ref(false);
+const inlineKind = ref<PresetKind>("class");
+
+function openInline(kind: PresetKind) {
+  inlineKind.value = kind;
+  inlineOpen.value = true;
+}
+
+const presetFieldByKind: Record<PresetKind, keyof EventRow> = {
+  class: "class_id",
+  session: "session_id",
+  time: "time_id",
+  difficulty: "difficulty_id",
+};
+
+async function onPresetCreated(id: number) {
+  await loadPresetLists();
+  if (editing.value) {
+    (editing.value[presetFieldByKind[inlineKind.value]] as number | null) = id;
+  }
+}
+
 onMounted(() =>
   guard(async () => {
     await Promise.all([loadCategories(), loadPresetLists(), server.load()]);
@@ -443,29 +497,57 @@ onMounted(() =>
         </button>
       </FormRow>
 
-      <FormRow label="Car class" hint="Create new ones under Car Classes">
-        <Select
-          v-model="editing.class_id"
-          :options="classes.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))"
-        />
+      <FormRow label="Car class">
+        <div class="flex gap-1">
+          <Select
+            v-model="editing.class_id"
+            class="flex-1"
+            :options="classes.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))"
+          />
+          <Button variant="dark" size="sm" title="Create a new car class" @click="openInline('class')">
+            <Icon name="plus" :size="14" />
+            New
+          </Button>
+        </div>
       </FormRow>
       <FormRow label="Sessions">
-        <Select
-          v-model="editing.session_id"
-          :options="sessions.map((s) => ({ value: s.id ?? 0, label: s.name ?? '' }))"
-        />
+        <div class="flex gap-1">
+          <Select
+            v-model="editing.session_id"
+            class="flex-1"
+            :options="sessions.map((s) => ({ value: s.id ?? 0, label: s.name ?? '' }))"
+          />
+          <Button variant="dark" size="sm" title="Create a new session preset" @click="openInline('session')">
+            <Icon name="plus" :size="14" />
+            New
+          </Button>
+        </div>
       </FormRow>
       <FormRow label="Time & weather">
-        <Select
-          v-model="editing.time_id"
-          :options="times.map((t) => ({ value: t.id ?? 0, label: t.name ?? '' }))"
-        />
+        <div class="flex gap-1">
+          <Select
+            v-model="editing.time_id"
+            class="flex-1"
+            :options="times.map((t) => ({ value: t.id ?? 0, label: t.name ?? '' }))"
+          />
+          <Button variant="dark" size="sm" title="Create a new time & weather preset" @click="openInline('time')">
+            <Icon name="plus" :size="14" />
+            New
+          </Button>
+        </div>
       </FormRow>
       <FormRow label="Difficulty">
-        <Select
-          v-model="editing.difficulty_id"
-          :options="difficulties.map((d) => ({ value: d.id ?? 0, label: d.name ?? '' }))"
-        />
+        <div class="flex gap-1">
+          <Select
+            v-model="editing.difficulty_id"
+            class="flex-1"
+            :options="difficulties.map((d) => ({ value: d.id ?? 0, label: d.name ?? '' }))"
+          />
+          <Button variant="dark" size="sm" title="Create a new difficulty preset" @click="openInline('difficulty')">
+            <Icon name="plus" :size="14" />
+            New
+          </Button>
+        </div>
       </FormRow>
 
       <div class="grid grid-cols-2 gap-x-4">
@@ -486,10 +568,28 @@ onMounted(() =>
 
     <template #footer>
       <span v-if="!canSave" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>
+      <Button v-if="editing?.id" variant="ghost" :disabled="busy" @click="openPreview">
+        <Icon name="content" :size="15" />
+        Preview
+      </Button>
       <Button variant="ghost" @click="builderOpen = false">Cancel</Button>
       <Button :disabled="busy || !canSave" @click="saveEvent">{{ editing?.id ? "Save event" : "Add event" }}</Button>
     </template>
   </Sheet>
+
+  <!-- Rendered config preview -->
+  <Modal :open="previewOpen" title="Rendered config" @close="previewOpen = false">
+    <p v-if="previewBusy" class="text-sm text-muted">Rendering…</p>
+    <template v-else>
+      <p class="mb-3 text-xs text-muted">
+        Preview only — entry order may differ at runtime when a random overflow strategy trims the grid.
+      </p>
+      <h3 class="mb-1 text-xs font-bold tracking-wide text-muted uppercase">server_cfg.ini</h3>
+      <pre class="mb-4 max-h-64 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre-wrap text-muted">{{ previewCfg }}</pre>
+      <h3 class="mb-1 text-xs font-bold tracking-wide text-muted uppercase">entry_list.ini</h3>
+      <pre class="max-h-64 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre-wrap text-muted">{{ previewEntry }}</pre>
+    </template>
+  </Modal>
 
   <TrackPicker
     :open="trackPickerOpen"
@@ -523,4 +623,12 @@ onMounted(() =>
       </Button>
     </template>
   </Modal>
+
+  <!-- Inline preset creation from the builder -->
+  <InlinePresetSheet
+    :open="inlineOpen"
+    :kind="inlineKind"
+    @close="inlineOpen = false"
+    @created="onPresetCreated"
+  />
 </template>

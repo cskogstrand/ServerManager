@@ -8,10 +8,17 @@ import { api, ApiError } from "@/lib/api";
 import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useContentStore } from "@/stores/content";
+import type { UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Input from "@/components/ui/Input.vue";
+import Select from "@/components/ui/Select.vue";
+import Combobox from "@/components/ui/Combobox.vue";
+import Toggle from "@/components/ui/Toggle.vue";
+import Sheet from "@/components/ui/Sheet.vue";
+import FormRow from "@/components/ui/FormRow.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 
@@ -24,8 +31,11 @@ interface CurrentEvent {
   difficulty: string;
   session: string;
   class: string;
+  class_id: number;
   time: string;
+  time_id: number;
   weather: string;
+  weather_key: string;
   started_at: number;
   finished: number;
 }
@@ -56,6 +66,7 @@ interface StatusPayload {
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const content = useContentStore();
 
 const details = ref<Record<number, StatusPayload>>({});
 const consoleOpen = ref<Record<number, boolean>>({});
@@ -214,6 +225,79 @@ async function restartSession(id: number) {
     confirmLabel: "Restart session",
   });
   if (ok) void raceAction(id, () => api.post(`/api/server/restart-session?instance=${id}`), "Restarting session.");
+}
+
+// --- Grid / weather editor for the running event ---
+const gridOpen = ref(false);
+const gridInstanceId = ref<number | null>(null);
+const gridEventId = ref<number | null>(null);
+const gridClassId = ref<number | null>(null);
+const gridForm = ref<UserClass | null>(null);
+const gridWeatherKey = ref("");
+const gridRestart = ref(false);
+const gridSaving = ref(false);
+
+async function openGrid(id: number) {
+  const d = details.value[id];
+  if (!d?.current_event?.id || !d.current_event.class_id) {
+    toast.error("No current event to edit.");
+    return;
+  }
+  gridInstanceId.value = id;
+  gridEventId.value = d.current_event.id;
+  gridClassId.value = d.current_event.class_id;
+  gridWeatherKey.value = d.current_event.weather_key ?? "";
+  gridRestart.value = false;
+  try {
+    void content.load();
+    const { data } = await api.get<{ data: UserClass }>(`/api/class/${d.current_event.class_id}`);
+    data.entries ??= [];
+    for (const e of data.entries) e.count ??= 1;
+    gridForm.value = data;
+    gridOpen.value = true;
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+function gridSkins(carKey: string | undefined) {
+  return content.carByKey(carKey)?.skins ?? [];
+}
+function addGridEntry() {
+  gridForm.value?.entries?.push({ cache_car_key: undefined, skin_key: "", count: 1 } as UserClassEntry);
+}
+function removeGridEntry(i: number) {
+  gridForm.value?.entries?.splice(i, 1);
+}
+function onGridCar(entry: UserClassEntry) {
+  entry.skin_key = gridSkins(entry.cache_car_key)[0]?.key ?? "";
+}
+
+async function saveGrid() {
+  if (gridInstanceId.value === null || gridEventId.value === null || !gridForm.value) return;
+  gridSaving.value = true;
+  try {
+    const entries = (gridForm.value.entries ?? [])
+      .filter((e) => e.cache_car_key)
+      .map((e) => ({ cache_car_key: e.cache_car_key, skin_key: e.skin_key ?? "", count: e.count ?? 1 }));
+    const res = await api.post<{ restarted: boolean; restart_required: boolean }>(
+      `/api/server/current-event?instance=${gridInstanceId.value}`,
+      {
+        event_id: gridEventId.value,
+        class_id: gridClassId.value,
+        weather_key: gridWeatherKey.value || undefined,
+        class_entries: entries,
+        restart_now: gridRestart.value,
+      },
+    );
+    toast.success(res.restarted ? "Applied and restarted." : "Saved — restart the event to apply on track.");
+    gridOpen.value = false;
+    await fetchDetail(gridInstanceId.value);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    gridSaving.value = false;
+  }
 }
 
 // Console auto-refresh while any panel is open
@@ -381,6 +465,10 @@ function consoleLines(detail?: StatusPayload): string {
                 {{ details[inst.id].current_event.weather }}
               </span>
             </div>
+            <Button variant="dark" size="sm" class="mt-3" @click="openGrid(inst.id)">
+              <Icon name="edit" :size="14" />
+              Edit grid & weather
+            </Button>
           </template>
           <p v-else class="text-sm text-dim">
             Nothing loaded — queue an event and start the server.
@@ -518,4 +606,55 @@ function consoleLines(detail?: StatusPayload): string {
       </div>
     </Card>
   </div>
+
+  <!-- Grid & weather editor for the running event -->
+  <Sheet :open="gridOpen" title="Edit grid & weather" @close="gridOpen = false">
+    <template v-if="gridForm">
+      <FormRow label="Weather" hint="Applies to the event's time/weather preset">
+        <Combobox
+          v-model="gridWeatherKey"
+          placeholder="Search weather…"
+          :options="content.weathers.map((w) => ({ value: w.key ?? '', label: w.name ?? w.key ?? '' }))"
+        />
+      </FormRow>
+
+      <h3 class="mt-4 mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Grid entries</h3>
+      <div
+        v-for="(entry, i) in gridForm.entries"
+        :key="i"
+        class="mb-2 flex flex-wrap items-end gap-2 rounded-md border border-line bg-surface-2/50 p-2"
+      >
+        <div class="min-w-0 flex-1">
+          <Combobox
+            v-model="entry.cache_car_key"
+            placeholder="Search cars…"
+            :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
+            @update:model-value="onGridCar(entry)"
+          />
+        </div>
+        <Select
+          v-model="entry.skin_key"
+          class="w-32"
+          :options="gridSkins(entry.cache_car_key).map((s) => ({ value: s.key, label: s.name || s.key }))"
+        />
+        <Input v-model="entry.count" type="number" :min="1" :max="64" class="w-16" />
+        <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeGridEntry(i)">
+          <Icon name="x" :size="14" />
+        </Button>
+      </div>
+      <Button variant="dark" size="sm" @click="addGridEntry">
+        <Icon name="plus" :size="14" />
+        Add car
+      </Button>
+
+      <div class="mt-4 border-t border-line pt-3">
+        <Toggle v-model="gridRestart" label="Restart the event now to apply on track" />
+      </div>
+    </template>
+
+    <template #footer>
+      <Button variant="ghost" @click="gridOpen = false">Cancel</Button>
+      <Button :disabled="gridSaving" @click="saveGrid">{{ gridSaving ? "Saving…" : "Save changes" }}</Button>
+    </template>
+  </Sheet>
 </template>

@@ -339,12 +339,12 @@ These are high-value, lower-risk improvements.
 - [ ] Queue ETA and scheduling.
       - estimate start time from session durations
       - allow server-side scheduled start
-- [ ] Grid editor on the dashboard.
-      - tweak running event
-      - swap weather
-      - adjust car list
-      - restart prompt
-      - count-aware so class counts do not collapse
+- [x] Grid editor on the dashboard.
+      - [x] tweak running event
+      - [x] swap weather
+      - [x] adjust car list
+      - [x] restart prompt
+      - [x] count-aware so class counts do not collapse
 - [ ] Results and history.
       - parse acServer result JSON
       - add `results` table
@@ -468,7 +468,7 @@ repeat panel (Queue), badge + stop-repeat (Dashboard), "Run repeatedly" picker
 
 - [x] Drag-and-drop reorder.
 - [ ] Queue ETA and scheduled starts.
-- [ ] Dashboard grid editor.
+- [x] Dashboard grid editor (weather swap + count-aware car list + restart).
 - [x] Race control panel (broadcast chat, next/restart session, admin command,
       kick — Dashboard).
 - [x] Live timing widget (driver roster + laps/last/best, live via SSE).

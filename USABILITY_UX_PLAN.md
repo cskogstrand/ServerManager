@@ -6,15 +6,25 @@ Last updated: 2026-06-12
 
 | Phase | State | Notes |
 |-------|-------|-------|
-| A — IA, labels, feedback | **done** | Event Groups relabel, Content→Admin, toasts, in-app confirm, empty/skeleton, event duplication, event-builder validation |
+| A — IA, labels, feedback | **done** | Event Groups relabel, Content→Admin, toasts, in-app confirm, empty/skeleton, event duplication, validation |
 | B — Server Setup | **page done** | `/setup` + `GET /api/server/readiness`; guided first-run wizard still open |
-| C — Event builder | **largely done** | inline preset creation + ini preview done; group duplication/templates open |
+| C — Event builder | **mostly done** | inline preset creation, ini preview, event + group duplication; named templates open |
 | D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
-| E — Queue / race ops | **mostly done** | reorder, race control (+kick), live timing/roster done; ETA/scheduling, grid editor, position/gaps open |
+| E — Queue / race ops | **mostly done** | reorder, race control (+kick), live timing/roster, grid editor, scheduled start; ETA + position/gaps open |
 | F — Admin / reliability | started | backup/restore done; results/history, roles, health, envelope cleanup open |
+| Quick wins (§6) | **done** | toasts, confirm, empty states, skeletons, searchable dropdowns, unsaved-changes guards, builder validation |
 
-Verified live against a migrated test DB (run-mode round-trip, queue 409
-guards, reorder, readiness, race-control guards). Commits are split per phase.
+Verified live against a migrated test DB (run-mode round-trip, queue 409 guards,
+reorder, readiness, race-control guards, group duplication, restore staging,
+scheduled start). Commits are split per phase/feature.
+
+### Remaining (recommend focused sessions)
+- **Multi-user roles** — auth model change + Users admin + route guards (large).
+- **Results / history** — parse acServer results JSON; needs sample output.
+- **Queue ETA per row**, **live position/gaps**, **named event templates**,
+  **first-run wizard** (Setup page is the stand-in), **dedicated health panel**
+  (Setup readiness covers most; disk space is platform-specific),
+  **legacy error-envelope convergence** (frontend already tolerates both).
 
 ---
 

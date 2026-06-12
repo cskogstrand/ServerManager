@@ -230,6 +230,17 @@ function kick(carId: number, name: string) {
 }
 
 // --- Map geometry ---
+// Cap the map at 80vh: width follows from the height cap so tall, narrow
+// circuits don't fill the whole page; wide ones still span the card.
+function mapCanvasStyle(meta: TrackMapMeta) {
+  const ratio = (meta.width || 16) / (meta.height || 9);
+  return {
+    aspectRatio: String(ratio),
+    width: `min(100%, calc(80vh * ${ratio}))`,
+    marginInline: "auto",
+  };
+}
+
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
   const scale = meta.scale_factor || 1;
   const x = ((pos.x + meta.x_offset) * scale) / meta.width;
@@ -409,7 +420,7 @@ onBeforeUnmount(() => {
           <div
             v-if="mapMeta && mapImageOk"
             class="map-canvas relative overflow-hidden rounded-md border border-line"
-            :style="{ aspectRatio: `${mapMeta.width || 16} / ${mapMeta.height || 9}` }"
+            :style="mapCanvasStyle(mapMeta)"
           >
             <img
               :src="trackUrl('map', activeTrack.key, activeTrack.config)"

@@ -494,6 +494,17 @@ function positionFor(inst: import("@/stores/server").InstanceState, carId: numbe
   return inst.positions.find((p) => p.car_id === carId);
 }
 
+// Compact map: cap at 280px tall, width follows the track's aspect ratio so
+// tall circuits don't dominate the card. The full-size map lives on /server/:id.
+function mapCanvasStyle(meta: TrackMapMeta) {
+  const ratio = (meta.width || 16) / (meta.height || 9);
+  return {
+    aspectRatio: String(ratio),
+    width: `min(100%, calc(280px * ${ratio}))`,
+    marginInline: "auto",
+  };
+}
+
 function mapPoint(pos: import("@/stores/server").CarPositionState, meta: TrackMapMeta) {
   const scale = meta.scale_factor || 1;
   const x = ((pos.x + meta.x_offset) * scale) / meta.width;
@@ -686,7 +697,7 @@ function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
         <div
           v-if="trackMapMeta[inst.id]"
           class="relative overflow-hidden rounded-md border border-line bg-bg"
-          :style="{ aspectRatio: `${trackMapMeta[inst.id]?.width ?? 16} / ${trackMapMeta[inst.id]?.height ?? 9}` }"
+          :style="mapCanvasStyle(trackMapMeta[inst.id]!)"
         >
           <img
             :src="mapImageUrl(details[inst.id])"
@@ -697,7 +708,7 @@ function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
             <button
               v-if="positionFor(inst, d.car_id)"
               type="button"
-              class="absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[10px] font-black text-bg shadow-[0_0_18px_rgba(91,141,239,0.65)] transition-transform hover:z-10 hover:scale-110"
+              class="absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[9px] font-black text-bg shadow-[0_0_14px_rgba(91,141,239,0.65)] transition-transform hover:z-10 hover:scale-110"
               :style="mapPoint(positionFor(inst, d.car_id)!, trackMapMeta[inst.id]!)"
               :title="`${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(inst, d.car_id))} km/h · gear ${positionFor(inst, d.car_id)?.gear ?? 0}`"
             >

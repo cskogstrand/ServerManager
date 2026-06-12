@@ -211,7 +211,9 @@ func writeContentManifest(dir string, carURLs map[string]string, trackURL string
 // no welcome message and no links there is nothing to show, so the (possibly
 // stale) file is removed instead.
 func writeWelcomeFile(dir string, cfg UserConfig, carOrder []string, carURLs map[string]string, trackKey string, trackURL string) {
-	path := filepath.Join(dir, "welcome.txt")
+	// server_cfg.ini sets WELCOME_MESSAGE=cfg/welcome.txt (a path, resolved
+	// against the working dir), so the file lives next to server_cfg.ini.
+	path := filepath.Join(dir, "cfg", "welcome.txt")
 
 	hasLinks := trackURL != "" || len(carOrder) > 0
 	welcome := ""

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS user_config (
   append_modlinks INTEGER,
   mod_download_url TEXT,
   server_engine TEXT DEFAULT 'kunos',
+  as_relax_checksums INTEGER DEFAULT 0,
   auto_start_server INTEGER DEFAULT 0,
 
   install_path TEXT,

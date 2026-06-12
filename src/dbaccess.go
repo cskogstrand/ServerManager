@@ -92,6 +92,9 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("user_config", "server_engine", "TEXT DEFAULT 'kunos'"); err != nil {
 		log.Fatal("Error applying database migration for user_config.server_engine: ", err)
 	}
+	if err := dba.ensureColumn("user_config", "as_relax_checksums", "INTEGER DEFAULT 0"); err != nil {
+		log.Fatal("Error applying database migration for user_config.as_relax_checksums: ", err)
+	}
 	if err := dba.ensureColumn("server_instance", "run_mode", "TEXT NOT NULL DEFAULT 'manual_queue'"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.run_mode: ", err)
 	}
@@ -377,14 +380,14 @@ func (dba Dbaccess) selectConfigFilled() (bool, error) {
 
 func (dba Dbaccess) selectConfig() (UserConfig, error) {
 	cfg := UserConfig{}
-	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, mod_download_url, server_engine, auto_start_server, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, cfg_filled, mod_filled, secret_key FROM user_config")
+	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, mod_download_url, server_engine, as_relax_checksums, auto_start_server, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, cfg_filled, mod_filled, secret_key FROM user_config")
 
 	err := row.Err()
 	if err != nil {
 		return cfg, err
 	}
 
-	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AutoStartServer, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
+	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
 	if err != nil {
 		return cfg, err
 	}
@@ -393,13 +396,13 @@ func (dba Dbaccess) selectConfig() (UserConfig, error) {
 }
 
 func (dba Dbaccess) updateConfig(cfg UserConfig) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, mod_download_url = ?, server_engine = ?, auto_start_server = ?, cfg_filled = 1")
+	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, mod_download_url = ?, server_engine = ?, as_relax_checksums = ?, auto_start_server = ?, cfg_filled = 1")
 
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 
-	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AutoStartServer)
+	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer)
 	defer stmt.Close()
 	if err != nil {
 		return -1, tracerr.Wrap(err)

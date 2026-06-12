@@ -63,6 +63,7 @@ const registerToLobby = intToggle("register_to_lobby");
 const lockedEntryList = intToggle("locked_entry_list");
 const appendEventname = intToggle("append_eventname");
 const appendModlinks = intToggle("append_modlinks");
+const relaxChecksums = intToggle("as_relax_checksums");
 const autoStart = intToggle("auto_start_server");
 
 onMounted(async () => {
@@ -170,6 +171,17 @@ async function save() {
           ]"
         />
       </FormRow>
+
+      <div v-if="serverEngine === 'assettoserver'" class="pt-1">
+        <Toggle
+          v-model="relaxChecksums"
+          label="Allow cars without data.acd checksum"
+        />
+        <p class="pt-1 text-xs text-muted">
+          Lets mod cars that ship an unpacked <code>data/</code> folder (no packed
+          <code>data.acd</code>) start. Disables that one anti-cheat — enable only on trusted/LAN servers.
+        </p>
+      </div>
 
       <div v-if="serverEngine === 'assettoserver' && engineStatus" class="space-y-2 pt-1">
         <p v-if="engineStatus.assettoserver_installed" class="text-sm text-ok">

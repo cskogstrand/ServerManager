@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -11,10 +12,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 )
+
+var missingChecksumsRe = regexp.MustCompile(`(?m)^(\s*MissingCarChecksums:\s*).*$`)
 
 // assettoServerMu serialises the one-time download/extract of the shared
 // install dir across concurrently-starting instances.
@@ -38,6 +42,37 @@ func assettoServerArchive() (url string, kind string) {
 		return base + "assetto-server-win-x64.zip", "zip"
 	}
 	return base + "assetto-server-linux-x64.tar.gz", "tar.gz"
+}
+
+// randPassword returns an n-char alphanumeric string from a crypto source.
+func randPassword(n int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		log.Print("Could not read random bytes for password: ", err)
+	}
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
+}
+
+// ensureAssettoServerAdminPassword guarantees a non-empty ADMIN_PASSWORD, which
+// AssettoServer requires (stock acServer tolerates an empty one). If unset, a
+// random password is generated and persisted so the operator can see/change it
+// in Settings → Access. Returns the (possibly updated) config.
+func ensureAssettoServerAdminPassword(cfg UserConfig) UserConfig {
+	if cfg.AdminPassword != nil && strings.TrimSpace(*cfg.AdminPassword) != "" {
+		return cfg
+	}
+	pw := randPassword(12)
+	cfg.AdminPassword = &pw
+	if _, err := Dba.updateConfig(cfg); err != nil {
+		log.Print("Could not persist generated admin password: ", err)
+	} else {
+		log.Print("AssettoServer requires an admin password; generated one (Settings → Access)")
+	}
+	return cfg
 }
 
 func assettoServerBinaryName() string {
@@ -300,6 +335,58 @@ func linkInto(src, dst string) error {
 		}
 	}
 	return os.Symlink(src, dst)
+}
+
+// ensureAssettoServerExtraCfg reconciles cfg/extra_cfg.yml so that
+// IgnoreConfigurationErrors.MissingCarChecksums matches the operator's choice.
+// Many community/drift mods ship an unpacked data/ folder instead of a packed
+// data.acd; without this AssettoServer refuses to start ("No data.acd found").
+// Relaxing it disables that one anti-cheat — intended for trusted/LAN servers.
+//
+// The existing file (AssettoServer writes a full default on first run) is
+// patched in place to preserve any other operator edits; only when absent is a
+// minimal override written, letting AssettoServer default everything else.
+func ensureAssettoServerExtraCfg(dir string, relax bool) {
+	path := filepath.Join(dir, "cfg", "extra_cfg.yml")
+	desired := "false"
+	if relax {
+		desired = "true"
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		minimal := "!extra_cfg.yml\nIgnoreConfigurationErrors:\n  MissingCarChecksums: " + desired + "\n"
+		if mkErr := os.MkdirAll(filepath.Dir(path), 0755); mkErr != nil {
+			log.Print("Could not create cfg dir for extra_cfg.yml: ", mkErr)
+			return
+		}
+		if wErr := os.WriteFile(path, []byte(minimal), 0644); wErr != nil {
+			log.Print("Could not write extra_cfg.yml: ", wErr)
+		}
+		return
+	}
+
+	content := string(data)
+	var updated string
+	switch {
+	case missingChecksumsRe.MatchString(content):
+		updated = missingChecksumsRe.ReplaceAllString(content, "${1}"+desired)
+	case strings.Contains(content, "IgnoreConfigurationErrors:"):
+		updated = strings.Replace(content, "IgnoreConfigurationErrors:",
+			"IgnoreConfigurationErrors:\n  MissingCarChecksums: "+desired, 1)
+	default:
+		if !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		updated = content + "IgnoreConfigurationErrors:\n  MissingCarChecksums: " + desired + "\n"
+	}
+
+	if updated == content {
+		return
+	}
+	if wErr := os.WriteFile(path, []byte(updated), 0644); wErr != nil {
+		log.Print("Could not update extra_cfg.yml: ", wErr)
+	}
 }
 
 // unlinkIfSymlink removes path only if it is a symlink, so the Kunos extraction

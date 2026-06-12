@@ -403,16 +403,25 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 	dir := inst.Dir()
 	contentDir := filepath.Join(dir, "content")
 
+	cfg, err := Dba.selectConfig()
+	if err != nil {
+		log.Print("Could not load config: ", err)
+		return false
+	}
+	engine := engineKunos
+	if cfg.ServerEngine != nil && *cfg.ServerEngine != "" {
+		engine = *cfg.ServerEngine
+	}
+	// Must happen before renderIni so the password lands in server_cfg.ini.
+	if engine == engineAssettoServer {
+		cfg = ensureAssettoServerAdminPassword(cfg)
+	}
+
 	inst.Cr.serverEvent = serverEvent
 	inst.Cr.renderIni(*serverEvent.UserEvent.Id, inst.Conf)
 	inst.Cr.writeIni(dir)
 
-	cfg, err := Dba.selectConfig()
-	if err != nil {
-		log.Print("Could not load config for mod links: ", err)
-	} else {
-		writeModLinks(dir, cfg, &inst.Cr)
-	}
+	writeModLinks(dir, cfg, &inst.Cr)
 
 	tm := time.Now().Unix()
 	serverEvent.StartedAt = &tm
@@ -423,7 +432,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 		log.Print("Could not update server event: ", err)
 	}
 
-	if cfg.ServerEngine != nil && *cfg.ServerEngine == engineAssettoServer {
+	if engine == engineAssettoServer {
 		if _, err := ensureAssettoServerInstalled(); err != nil {
 			log.Print("AssettoServer unavailable, cannot start: ", err)
 			return false
@@ -432,6 +441,8 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 			log.Print("Could not provision AssettoServer run dir: ", err)
 			return false
 		}
+		relax := cfg.AsRelaxChecksums != nil && *cfg.AsRelaxChecksums == 1
+		ensureAssettoServerExtraCfg(dir, relax)
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
 		return true

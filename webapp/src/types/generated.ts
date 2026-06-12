@@ -30,6 +30,7 @@ export interface UserConfig {
   append_modlinks?: number /* int */;
   mod_download_url?: string;
   server_engine?: string;
+  as_relax_checksums?: number /* int */;
   auto_start_server?: number /* int */;
   install_path?: string;
   csp_required?: number /* int */;

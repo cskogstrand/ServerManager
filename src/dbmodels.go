@@ -34,6 +34,7 @@ type UserConfig struct {
 	AppendModlinks     *int    `form:"append_modlinks" json:"append_modlinks"`
 	ModDownloadUrl     *string `form:"mod_download_url" json:"mod_download_url"`
 	ServerEngine       *string `form:"server_engine" json:"server_engine"`
+	AsRelaxChecksums   *int    `form:"as_relax_checksums" json:"as_relax_checksums"`
 	AutoStartServer    *int    `form:"auto_start_server" json:"auto_start_server"`
 	InstallPath        *string `form:"install_path" json:"install_path"`
 	CspRequired        *int    `form:"csp_required" json:"csp_required"`

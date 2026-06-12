@@ -340,6 +340,94 @@ func linkInto(src, dst string) error {
 	return os.Symlink(src, dst)
 }
 
+// trackParamsURL is the same source AssettoServer pulls its default track
+// params (lat/lon/timezone) from.
+const trackParamsURL = "https://raw.githubusercontent.com/ac-custom-shaders-patch/acc-extension-config/master/config/data_track_params.ini"
+
+// ensureAssettoServerTrackParams guarantees cfg/data_track_params.ini has an
+// entry for the event's track. AssettoServer's WeatherManager aborts startup if
+// the track is missing ("No track params found"), which is common for mod
+// tracks not in the official list. Stock tracks keep their real coordinates
+// (from the official file AssettoServer downloads, or that we fetch here);
+// only genuinely-missing tracks get a fallback entry, which the operator can
+// correct in the file afterwards.
+func ensureAssettoServerTrackParams(dir, trackKey, trackName string) {
+	if trackKey == "" {
+		return
+	}
+	path := filepath.Join(dir, "cfg", "data_track_params.ini")
+
+	existing, _ := os.ReadFile(path)
+	content := string(existing)
+	hadFile := len(existing) > 0
+
+	// Fresh run dir: mirror AssettoServer and pull the official list so stock
+	// tracks keep correct coordinates instead of our fallback.
+	if !hadFile {
+		if b := fetchTrackParams(); b != "" {
+			content = b
+		}
+	}
+
+	if iniHasSection(content, trackKey) {
+		if !hadFile && content != "" {
+			writeTrackParams(path, content)
+		}
+		return
+	}
+
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	name := trackName
+	if name == "" {
+		name = trackKey
+	}
+	content += fmt.Sprintf("\n[%s]\nNAME=%s\nLATITUDE=51.48\nLONGITUDE=0\nTIMEZONE=Europe/London\n", trackKey, name)
+	writeTrackParams(path, content)
+	log.Print("Added fallback track params for ", trackKey, " — edit cfg/data_track_params.ini for the real location/timezone")
+}
+
+func writeTrackParams(path, content string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Print("Could not create cfg dir for data_track_params.ini: ", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Print("Could not write data_track_params.ini: ", err)
+	}
+}
+
+func fetchTrackParams() string {
+	resp, err := http.Get(trackParamsURL)
+	if err != nil {
+		log.Print("Could not fetch track params list: ", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Print("Could not fetch track params list: ", resp.Status)
+		return ""
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// iniHasSection reports whether content contains a [section] header (matched
+// case-insensitively, like AssettoServer's track lookup).
+func iniHasSection(content, section string) bool {
+	target := "[" + strings.ToLower(section) + "]"
+	for _, line := range strings.Split(content, "\n") {
+		if strings.ToLower(strings.TrimSpace(line)) == target {
+			return true
+		}
+	}
+	return false
+}
+
 // ensureAssettoServerExtraCfg reconciles cfg/extra_cfg.yml so the relaxable
 // IgnoreConfigurationErrors keys match the operator's choice. Many
 // community/drift mods ship cars without a packed data.acd and tracks without

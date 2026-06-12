@@ -443,6 +443,14 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 		}
 		relax := cfg.AsRelaxChecksums != nil && *cfg.AsRelaxChecksums == 1
 		ensureAssettoServerExtraCfg(dir, relax)
+		trackKey, trackName := "", ""
+		if inst.Cr.track.Key != nil {
+			trackKey = *inst.Cr.track.Key
+		}
+		if inst.Cr.track.Name != nil {
+			trackName = *inst.Cr.track.Name
+		}
+		ensureAssettoServerTrackParams(dir, trackKey, trackName)
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
 		return true

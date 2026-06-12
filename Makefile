@@ -19,7 +19,10 @@ test: webapp
 
 build: webapp
 	mkdir -p bin/
-	cd src; CGO_ENABLED=1 go build -o ../bin/sm_linux -ldflags="-w -s -X 'main.Version=$(VERSION)'" .
+	# Static (musl) link + netgo so the binary runs on any base image, including
+	# the glibc runtime used to host AssettoServer. Built on Alpine where the
+	# static C libs are available.
+	cd src; CGO_ENABLED=1 go build -tags netgo -o ../bin/sm_linux -ldflags="-w -s -linkmode external -extldflags '-static' -X 'main.Version=$(VERSION)'" .
 
 buildwin: webapp
 	mkdir -p bin/

@@ -1,0 +1,19 @@
+# The AC install / content tree is mounted at runtime, never built in.
+assetocorsa/
+**/assettocorsa/
+
+# Build outputs + deps (regenerated inside the image by `make deps && make build`)
+bin/
+webapp/node_modules/
+webapp/dist/
+src/embed/webapp/dist/
+src/sm
+src/src
+
+# VCS + local cruft
+.git/
+.gitignore
+**/.DS_Store
+**/__pycache__/
+*.db
+*.log

@@ -164,6 +164,14 @@ const rename = () =>
     toast.success("Event group renamed.");
   });
 
+const duplicateGroup = (id: number) =>
+  guard(async () => {
+    const { id: newId } = await api.post<{ id: number }>(`/api/category/${id}/duplicate`);
+    await loadCategories();
+    await select(newId);
+    toast.success("Event group duplicated.");
+  });
+
 // --- Builder sheet ---
 const builderOpen = ref(false);
 const trackPickerOpen = ref(false);
@@ -371,9 +379,11 @@ onMounted(() =>
     :items="categories"
     :selected-id="selectedId"
     :busy="busy"
+    duplicatable
     @select="select"
     @create="create"
     @remove="remove"
+    @duplicate="duplicateGroup"
   >
     <div v-if="loading" class="grid gap-4 md:grid-cols-2">
       <Skeleton v-for="n in 4" :key="n" class="h-56" />

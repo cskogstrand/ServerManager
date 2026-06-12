@@ -221,10 +221,11 @@ setup concerns.
 ### 4.4 Duplication and Templates
 
 - [x] Duplicate event.
-- [ ] Duplicate event group.
+- [x] Duplicate event group.
 - [ ] Save event as template.
 - [ ] Create event from template.
-- [ ] Support "same event, different track" workflows for championship setup.
+- [~] Support "same event, different track" workflows (duplicate event/group,
+      then change the track — explicit templates still open).
 
 ---
 

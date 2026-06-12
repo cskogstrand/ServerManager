@@ -15,12 +15,14 @@ defineProps<{
   items: DropDownList[];
   selectedId: number | null;
   busy?: boolean;
+  duplicatable?: boolean;
 }>();
 
 const emit = defineEmits<{
   select: [id: number];
   create: [name: string];
   remove: [id: number];
+  duplicate: [id: number];
 }>();
 
 const newName = ref("");
@@ -62,6 +64,15 @@ function submitCreate() {
             @click="emit('select', item.id!)"
           >
             {{ item.name }}
+          </button>
+          <button
+            v-if="duplicatable"
+            type="button"
+            class="ml-1 hidden size-8 cursor-pointer place-items-center rounded-md text-dim transition-colors group-hover:grid hover:bg-surface-2 hover:text-text"
+            :aria-label="`Duplicate ${item.name}`"
+            @click="emit('duplicate', item.id!)"
+          >
+            <Icon name="copy" :size="14" />
           </button>
           <button
             type="button"

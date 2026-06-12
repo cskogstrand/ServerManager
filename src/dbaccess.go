@@ -906,6 +906,29 @@ func (dba Dbaccess) selectEventCategoryList(filled bool) ([]DropDownList, error)
 	return dba.selectDropDownList(filled, "user_event_category")
 }
 
+// duplicateEventCategory clones a category and all its events into a new
+// category. Presets are shared by reference (the events point at the same
+// preset ids), matching how "same series, tweaked" setups are built.
+func (dba Dbaccess) duplicateEventCategory(id int, newName string) (int64, error) {
+	src, err := dba.selectCategoryEvents(id)
+	if err != nil {
+		return 0, err
+	}
+	newId, err := dba.insertEventCategory(newName)
+	if err != nil {
+		return 0, err
+	}
+	nid := int(newId)
+	for _, e := range src.Events {
+		e.EventCategoryId = &nid
+		e.Id = nil
+		if _, err := dba.insertEvent(e); err != nil {
+			return 0, err
+		}
+	}
+	return newId, nil
+}
+
 func (dba Dbaccess) insertEventCategory(categoryname string) (int64, error) {
 	return dba.insertNameInto(categoryname, "user_event_category")
 }

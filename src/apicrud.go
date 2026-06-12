@@ -337,6 +337,28 @@ func apiCategoryCreate(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"id": id})
 }
 
+func apiCategoryDuplicate(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	src, err := Dba.selectEventCategory(id)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	name := "Copy"
+	if src.Name != nil {
+		name = *src.Name + " (copy)"
+	}
+	newId, err := Dba.duplicateEventCategory(id, name)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": newId})
+}
+
 func apiCategoryUpdate(c *gin.Context) {
 	id, ok := pathId(c)
 	if !ok {

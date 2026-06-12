@@ -201,6 +201,7 @@ func main() {
 		api.GET("/category/:id", apiCategoryGet)
 		api.PUT("/category/:id", apiCategoryUpdate)
 		api.PATCH("/category/:id", apiCategoryRename)
+		api.POST("/category/:id/duplicate", apiCategoryDuplicate)
 		api.DELETE("/category/:id", apiCategoryDelete)
 
 		api.GET("/events", apiEventList)

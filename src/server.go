@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -97,20 +98,24 @@ func (inst *Instance) serverChangeTrack() {
 		inst.Cr.serverEvent.Finished = &val
 		Dba.updateServerEvent(inst.Cr.serverEvent)
 	}
-	if inst.serverApplyTrack() {
+	if ok, err := inst.serverApplyTrack(); ok {
 		inst.start()
 	} else {
-		log.Print("End")
+		if err != nil {
+			log.Print("End: ", err)
+		} else {
+			log.Print("End")
+		}
 	}
 }
 
-func (inst *Instance) serverApplyTrack() bool {
+func (inst *Instance) serverApplyTrack() (bool, error) {
 	// Repeat mode: re-apply the pinned event regardless of the manual queue.
 	if eventId, repeat := inst.repeatEventId(); repeat {
 		se, err := Dba.selectServerEventForEvent(eventId)
 		if err != nil {
 			log.Print("Repeat event unavailable for instance ", inst.Name(), ": ", err)
-			return false
+			return false, err
 		}
 		return applyServerEvent(inst, se)
 	}
@@ -119,11 +124,13 @@ func (inst *Instance) serverApplyTrack() bool {
 
 	if err != nil {
 		log.Print("Database error: ", err)
+		return false, err
 	}
 
 	if len(nextevents) == 0 {
-		log.Print("No events in queue for instance ", inst.Name())
-		return false
+		err := errors.New("no events in queue for instance " + inst.Name())
+		log.Print(err)
+		return false, err
 	}
 	return applyServerEvent(inst, nextevents[0])
 }

@@ -64,6 +64,21 @@ interface StatusPayload {
   };
 }
 
+interface StreamHealth {
+  status: "not_configured" | "unknown" | "live" | "offline";
+  status_code?: number;
+  message?: string;
+}
+
+interface DriverStream {
+  id?: number;
+  driver_guid?: string;
+  display_name?: string;
+  enabled?: number;
+  stream_embed_url?: string;
+  stream_status_url?: string;
+}
+
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
@@ -73,6 +88,10 @@ const details = ref<Record<number, StatusPayload>>({});
 const consoleOpen = ref<Record<number, boolean>>({});
 const busy = ref<Record<number, boolean>>({});
 const loading = ref(true);
+const instanceStreamHealth = ref<Record<number, StreamHealth>>({});
+const driverStreamHealth = ref<Record<number, Record<string, StreamHealth>>>({});
+const driverStreams = ref<DriverStream[]>([]);
+const streamViewer = ref<{ title: string; url: string; health?: StreamHealth } | null>(null);
 
 async function fetchDetail(id: number) {
   try {
@@ -110,6 +129,81 @@ function kick(id: number, carId: number, name: string) {
 
 async function refreshAll() {
   await Promise.all(server.instanceList.map((i) => fetchDetail(i.id)));
+  await Promise.all(server.instanceList.map((i) => fetchStreamStatuses(i.id)));
+}
+
+async function loadDriverStreams() {
+  try {
+    const res = await api.get<{ streams: DriverStream[] }>("/api/driver-streams");
+    driverStreams.value = res.streams ?? [];
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+async function fetchStreamStatuses(id: number) {
+  const inst = server.instances[id];
+  if (!inst) return;
+  if (inst.stream_enabled === 1 && inst.stream_embed_url) {
+    try {
+      instanceStreamHealth.value[id] = await api.get<StreamHealth>(`/api/instances/${id}/stream/status`);
+    } catch {
+      instanceStreamHealth.value[id] = { status: "offline" };
+    }
+  } else {
+    instanceStreamHealth.value[id] = { status: "not_configured" };
+  }
+
+  if (inst.drivers.length) {
+    try {
+      const res = await api.get<{ statuses: Record<string, StreamHealth> }>(`/api/instances/${id}/driver-streams/status`);
+      driverStreamHealth.value[id] = res.statuses ?? {};
+    } catch {
+      driverStreamHealth.value[id] = {};
+    }
+  }
+}
+
+function streamStatusLabel(health?: StreamHealth, configured = true): string {
+  if (!configured) return "Not configured";
+  if (!health) return "Unknown";
+  switch (health?.status) {
+    case "live":
+      return "Live";
+    case "offline":
+      return "Offline";
+    case "unknown":
+      return "Unknown";
+    case "not_configured":
+    default:
+      return "Not configured";
+  }
+}
+
+function streamStatusClass(health?: StreamHealth, configured = true): string {
+  if (!configured || health?.status === "not_configured") return "border-line bg-surface-2 text-muted";
+  if (health?.status === "live") return "border-ok/45 bg-ok-glow text-ok";
+  if (health?.status === "offline") return "border-danger/45 bg-danger-glow text-danger";
+  return "border-line bg-surface-2 text-muted";
+}
+
+function driverStreamFor(guid: string): DriverStream | undefined {
+  return driverStreams.value.find((s) => s.enabled !== 0 && s.driver_guid === guid && !!s.stream_embed_url);
+}
+
+function openDriverStream(instanceId: number, driver: import("@/stores/server").DriverState) {
+  const stream = driverStreamFor(driver.guid);
+  if (!stream?.stream_embed_url) return;
+  streamViewer.value = {
+    title: stream.display_name || driver.name || `Car ${driver.car_id}`,
+    url: stream.stream_embed_url,
+    health: driverStreamHealth.value[instanceId]?.[driver.guid],
+  };
+}
+
+function openStream(title: string, url?: string | null, health?: StreamHealth) {
+  if (!url) return;
+  streamViewer.value = { title, url, health };
 }
 
 async function toggle(id: number, running: boolean) {
@@ -329,6 +423,7 @@ watch(
 
 onMounted(async () => {
   await server.load();
+  await loadDriverStreams();
   await refreshAll();
   loading.value = false;
 });
@@ -517,6 +612,32 @@ function consoleLines(detail?: StatusPayload): string {
         </div>
       </div>
 
+      <!-- Spectator stream -->
+      <div v-if="inst.stream_enabled === 1 && inst.stream_embed_url" class="mt-4 border-t border-line pt-3">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Spectator stream</h3>
+          <div class="flex items-center gap-2">
+            <span
+              class="inline-flex min-h-7 items-center rounded-md border px-2 text-xs font-semibold"
+              :class="streamStatusClass(instanceStreamHealth[inst.id], true)"
+            >
+              {{ streamStatusLabel(instanceStreamHealth[inst.id], true) }}
+            </span>
+            <Button variant="ghost" size="sm" @click="openStream(`${inst.name} spectator`, inst.stream_embed_url, instanceStreamHealth[inst.id])">
+              <Icon name="activity" :size="14" />
+              Watch
+            </Button>
+          </div>
+        </div>
+        <iframe
+          :src="inst.stream_embed_url"
+          :title="`${inst.name} spectator stream`"
+          class="aspect-video w-full rounded-md border border-line bg-bg"
+          allow="autoplay; fullscreen; picture-in-picture"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+        />
+      </div>
+
       <!-- Live timing -->
       <div v-if="inst.running && inst.drivers.length" class="mt-4 border-t border-line pt-3">
         <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
@@ -541,15 +662,26 @@ function consoleLines(detail?: StatusPayload): string {
               <td class="py-1.5 pr-2 text-right font-mono text-xs">{{ lapTime(d.last_lap_ms) }}</td>
               <td class="py-1.5 pr-2 text-right font-mono text-xs text-ok">{{ lapTime(d.best_lap_ms) }}</td>
               <td class="py-1.5 text-right">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :disabled="busy[inst.id]"
-                  aria-label="Kick driver"
-                  @click="kick(inst.id, d.car_id, d.name)"
-                >
-                  <Icon name="x" :size="14" />
-                </Button>
+                <div class="flex justify-end gap-1">
+                  <Button
+                    v-if="driverStreamFor(d.guid)"
+                    variant="dark"
+                    size="sm"
+                    aria-label="Watch driver stream"
+                    @click="openDriverStream(inst.id, d)"
+                  >
+                    <Icon name="activity" :size="14" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    :disabled="busy[inst.id]"
+                    aria-label="Kick driver"
+                    @click="kick(inst.id, d.car_id, d.name)"
+                  >
+                    <Icon name="x" :size="14" />
+                  </Button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -660,6 +792,33 @@ function consoleLines(detail?: StatusPayload): string {
     <template #footer>
       <Button variant="ghost" @click="gridOpen = false">Cancel</Button>
       <Button :disabled="gridSaving" @click="saveGrid">{{ gridSaving ? "Saving…" : "Save changes" }}</Button>
+    </template>
+  </Sheet>
+
+  <Sheet :open="!!streamViewer" :title="streamViewer?.title ?? 'Stream'" @close="streamViewer = null">
+    <template v-if="streamViewer">
+      <div class="mb-2 flex justify-end">
+        <span
+          class="inline-flex min-h-7 items-center rounded-md border px-2 text-xs font-semibold"
+          :class="streamStatusClass(streamViewer.health, true)"
+        >
+          {{ streamStatusLabel(streamViewer.health, true) }}
+        </span>
+      </div>
+      <iframe
+        :src="streamViewer.url"
+        :title="streamViewer.title"
+        class="aspect-video w-full rounded-md border border-line bg-bg"
+        allow="autoplay; fullscreen; picture-in-picture"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+      />
+    </template>
+
+    <template #footer>
+      <Button variant="ghost" @click="streamViewer = null">Close</Button>
+      <a v-if="streamViewer" :href="streamViewer.url" target="_blank" rel="noreferrer">
+        <Button variant="dark">Open stream</Button>
+      </a>
     </template>
   </Sheet>
 </template>

@@ -285,10 +285,16 @@ func main() {
 
 		api.GET("/instances", apiInstances)
 		api.POST("/instances", apiInstanceCreate)
+		api.GET("/instances/:id/stream/status", apiInstanceStreamStatus)
+		api.GET("/instances/:id/driver-streams/status", apiInstanceDriverStreamStatuses)
 		api.PUT("/instances/:id", apiInstanceUpdate)
 		api.PUT("/instances/:id/runmode", apiInstanceRunMode)
 		api.PUT("/instances/:id/schedule", apiInstanceSchedule)
 		api.DELETE("/instances/:id", apiInstanceDelete)
+		api.GET("/driver-streams", apiDriverStreamsList)
+		api.POST("/driver-streams", apiDriverStreamCreate)
+		api.PUT("/driver-streams/:id", apiDriverStreamUpdate)
+		api.DELETE("/driver-streams/:id", apiDriverStreamDelete)
 	}
 
 	// Everything that is not /api or /static is the SPA
@@ -307,9 +313,11 @@ func main() {
 			if inst == nil || inst.isRunning() {
 				return
 			}
-			if inst.serverApplyTrack() {
+			if ok, err := inst.serverApplyTrack(); ok {
 				log.Print("Auto-starting server from queue on launch")
 				inst.start()
+			} else if err != nil {
+				log.Print("Auto-start failed: ", err)
 			} else {
 				log.Print("Auto-start enabled but no unfinished queue event was available")
 			}

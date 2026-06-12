@@ -240,7 +240,24 @@ CREATE TABLE IF NOT EXISTS server_instance (
   http_port INTEGER NOT NULL,
   plugin_port INTEGER NOT NULL,
   plugin_listen_port INTEGER NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1
+  enabled INTEGER NOT NULL DEFAULT 1,
+  stream_enabled INTEGER NOT NULL DEFAULT 0,
+  stream_embed_url TEXT,
+  stream_status_url TEXT,
+  spectator_enabled INTEGER NOT NULL DEFAULT 0,
+  spectator_driver_name TEXT,
+  spectator_guid TEXT,
+  spectator_car_key TEXT,
+  spectator_skin_key TEXT
+);
+
+CREATE TABLE IF NOT EXISTS driver_stream (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_guid TEXT NOT NULL UNIQUE,
+  display_name TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  stream_embed_url TEXT NOT NULL,
+  stream_status_url TEXT
 );
 
 

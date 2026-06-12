@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"math"
@@ -27,6 +28,22 @@ type ConfigRenderer struct {
 	cspLetter       string
 	maxClients      int
 	serverEvent     ServerEvent
+	renderErr       error
+}
+
+type EntryListTemplateData struct {
+	Entries []EntryListEntry
+}
+
+type EntryListEntry struct {
+	CacheCarKey   string
+	SkinKey       string
+	SpectatorMode int
+	DriverName    string
+	Team          string
+	Guid          string
+	Ballast       int
+	Restrictor    int
 }
 
 // 8:00 AM = -80
@@ -67,7 +84,82 @@ func (cr *ConfigRenderer) writeIni(dir string) {
 	}
 }
 
+func reserveSpectatorSlots(entryCount int, capacity int, spectator bool) (normalSlots int, totalClients int, err error) {
+	if capacity < 0 {
+		capacity = 0
+	}
+	normalSlots = capacity
+	if spectator {
+		if capacity <= 1 {
+			return 0, 0, fmt.Errorf("spectator mode needs at least 2 available slots")
+		}
+		normalSlots = capacity - 1
+	}
+	if entryCount < normalSlots {
+		normalSlots = entryCount
+	}
+	if spectator && normalSlots <= 0 {
+		return 0, 0, fmt.Errorf("spectator mode needs at least 1 normal race slot")
+	}
+	totalClients = normalSlots
+	if spectator {
+		totalClients++
+	}
+	return normalSlots, totalClients, nil
+}
+
+func spectatorSlotConfigured(instance ServerInstance) bool {
+	return isEnabled(instance.SpectatorEnabled) &&
+		trimmedStringPtr(instance.SpectatorCarKey) != nil &&
+		trimmedStringPtr(instance.SpectatorSkinKey) != nil &&
+		trimmedStringPtr(instance.SpectatorName) != nil &&
+		trimmedStringPtr(instance.SpectatorGuid) != nil
+}
+
+func entryListData(class UserClass, instance ServerInstance) (EntryListTemplateData, UserClass) {
+	entries := make([]EntryListEntry, 0, len(class.Entries)+1)
+	for _, ent := range class.Entries {
+		car := derefOrEmpty(ent.CacheCarKey)
+		skin := derefOrEmpty(ent.SkinKey)
+		if car == "" {
+			continue
+		}
+		entries = append(entries, EntryListEntry{
+			CacheCarKey: car,
+			SkinKey:     skin,
+			Ballast:     0,
+			Restrictor:  0,
+		})
+	}
+
+	serverClass := class
+	serverClass.Entries = append([]UserClassEntry(nil), class.Entries...)
+	if spectatorSlotConfigured(instance) {
+		car := strings.TrimSpace(*instance.SpectatorCarKey)
+		skin := strings.TrimSpace(*instance.SpectatorSkinKey)
+		name := strings.TrimSpace(*instance.SpectatorName)
+		guid := strings.TrimSpace(*instance.SpectatorGuid)
+		entries = append(entries, EntryListEntry{
+			CacheCarKey:   car,
+			SkinKey:       skin,
+			SpectatorMode: 1,
+			DriverName:    name,
+			Guid:          guid,
+			Ballast:       0,
+			Restrictor:    0,
+		})
+		serverClass.Entries = append(serverClass.Entries, UserClassEntry{
+			CacheCarKey: &car,
+			SkinKey:     &skin,
+			Count:       intPtr(1),
+		})
+	}
+
+	return EntryListTemplateData{Entries: entries}, serverClass
+}
+
 func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
+	cr.renderErr = nil
 	r := regexp.MustCompile(`\d{1,3}`)
 
 	event, err := Dba.selectEvent(eventId)
@@ -201,19 +293,26 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 		}
 	}
 
-	// Maximum clients defined as the minimum between maxclients, pitboxes and vehicles in class
+	// Maximum clients defined as the minimum between maxclients, pitboxes and vehicles in class.
+	// Spectator mode consumes one slot, so the normal grid is reduced before
+	// appending the locked spectator entry.
 	stratneeded := false
-	maxclients := *cfg.MaxClients
+	slotCapacity := *cfg.MaxClients
 
-	if *track.Pitboxes < *cfg.MaxClients {
+	if *track.Pitboxes < slotCapacity {
 		stratneeded = true
-		maxclients = *track.Pitboxes
+		slotCapacity = *track.Pitboxes
 	}
-	if len(class.Entries) < maxclients {
+	normalSlots, maxclients, err := reserveSpectatorSlots(len(class.Entries), slotCapacity, spectatorSlotConfigured(instance))
+	if err != nil {
+		cr.renderErr = err
+		log.Print("Could not render server config: ", err)
+		return
+	}
+	if len(class.Entries) < normalSlots {
 		stratneeded = true
-		maxclients = len(class.Entries)
 	}
-	if len(class.Entries) > maxclients {
+	if len(class.Entries) > normalSlots {
 		stratneeded = true
 	}
 
@@ -224,8 +323,9 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 			rand.Shuffle(len(class.Entries), func(i, j int) { class.Entries[i], class.Entries[j] = class.Entries[j], class.Entries[i] })
 		}
 		// Cut the list by the max number of clients
-		class.Entries = class.Entries[:maxclients]
+		class.Entries = class.Entries[:normalSlots]
 	}
+	entryData, serverClass := entryListData(class, instance)
 
 	funcMap := ttemplate.FuncMap{
 		"derefInt": func(i *int) int {
@@ -272,7 +372,7 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 		"diff":        diff,
 		"session":     session,
 		"time":        tm,
-		"class":       class,
+		"class":       serverClass,
 		"track":       track,
 		"max_clients": maxclients,
 		"sunangle":    cr.timeToSunAngle(tm.Time),
@@ -304,14 +404,14 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 	}
 
 	var b2 bytes.Buffer
-	err = cr.entryListIni.Execute(&b2, class)
+	err = cr.entryListIni.Execute(&b2, entryData)
 	if err != nil {
 		log.Print("Error executing entry_list.ini template: ", err)
 	}
 
 	cr.serverCfgResult = b.String()
 	cr.entryListResult = b2.String()
-	cr.class = class
+	cr.class = serverClass
 	cr.track = track
 	cr.maxClients = maxclients
 }

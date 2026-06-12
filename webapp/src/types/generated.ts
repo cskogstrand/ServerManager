@@ -59,6 +59,14 @@ export interface ServerInstance {
   plugin_port?: number /* int */;
   plugin_listen_port?: number /* int */;
   enabled?: number /* int */;
+  stream_enabled?: number /* int */;
+  stream_embed_url?: string;
+  stream_status_url?: string;
+  spectator_enabled?: number /* int */;
+  spectator_driver_name?: string;
+  spectator_guid?: string;
+  spectator_car_key?: string;
+  spectator_skin_key?: string;
   /**
    * RunMode is "manual_queue" (default) or "repeat_event". In repeat mode the
    * instance re-applies RepeatEventId every time a session ends instead of
@@ -71,6 +79,14 @@ export interface ServerInstance {
    * or after this time, then clears it. nil/0 means no schedule.
    */
   scheduled_start?: number /* int64 */;
+}
+export interface DriverStream {
+  id?: number /* int */;
+  driver_guid?: string;
+  display_name?: string;
+  enabled?: number /* int */;
+  stream_embed_url?: string;
+  stream_status_url?: string;
 }
 export interface UserEvent {
   Id?: number /* int */;

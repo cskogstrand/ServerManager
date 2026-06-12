@@ -58,6 +58,14 @@ export interface InstanceState {
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
   scheduled_start: number | null;
+  stream_enabled: number | null;
+  stream_embed_url: string | null;
+  stream_status_url: string | null;
+  spectator_enabled: number | null;
+  spectator_driver_name: string | null;
+  spectator_guid: string | null;
+  spectator_car_key: string | null;
+  spectator_skin_key: string | null;
 }
 
 interface InstanceListItem {
@@ -74,6 +82,14 @@ interface InstanceListItem {
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
   scheduled_start: number | null;
+  stream_enabled: number | null;
+  stream_embed_url: string | null;
+  stream_status_url: string | null;
+  spectator_enabled: number | null;
+  spectator_driver_name: string | null;
+  spectator_guid: string | null;
+  spectator_car_key: string | null;
+  spectator_skin_key: string | null;
 }
 
 // One live store for everything the SSE stream feeds: per-instance status,
@@ -113,6 +129,14 @@ export const useServerStore = defineStore("server", {
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
           scheduled_start: item.scheduled_start ?? null,
+          stream_enabled: item.stream_enabled ?? 0,
+          stream_embed_url: item.stream_embed_url ?? null,
+          stream_status_url: item.stream_status_url ?? null,
+          spectator_enabled: item.spectator_enabled ?? 0,
+          spectator_driver_name: item.spectator_driver_name ?? null,
+          spectator_guid: item.spectator_guid ?? null,
+          spectator_car_key: item.spectator_car_key ?? null,
+          spectator_skin_key: item.spectator_skin_key ?? null,
         };
       }
       for (const id of Object.keys(this.instances).map(Number)) {

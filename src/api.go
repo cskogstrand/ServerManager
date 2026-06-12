@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,6 +35,139 @@ type DashboardClassEntryUpdate struct {
 	CacheCarKey string `json:"cache_car_key"`
 	SkinKey     string `json:"skin_key"`
 	Count       int    `json:"count"`
+}
+
+type StreamHealth struct {
+	Status     string `json:"status"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
+func trimmedStringPtr(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	s := strings.TrimSpace(*v)
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func isEnabled(v *int) bool {
+	return v != nil && *v != 0
+}
+
+func validateStreamURL(label string, raw *string, required bool) error {
+	raw = trimmedStringPtr(raw)
+	if raw == nil {
+		if required {
+			return fmt.Errorf("%s is required", label)
+		}
+		return nil
+	}
+	u, err := url.Parse(*raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%s must be a valid URL", label)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%s must use http or https", label)
+	}
+	if u.User != nil {
+		return fmt.Errorf("%s must not include credentials", label)
+	}
+	return nil
+}
+
+func normalizeServerInstanceStreams(si *ServerInstance) error {
+	if si.StreamEnabled == nil {
+		si.StreamEnabled = intPtr(0)
+	}
+	if si.SpectatorEnabled == nil {
+		si.SpectatorEnabled = intPtr(0)
+	}
+
+	si.StreamEmbedUrl = trimmedStringPtr(si.StreamEmbedUrl)
+	si.StreamStatusUrl = trimmedStringPtr(si.StreamStatusUrl)
+	si.SpectatorName = trimmedStringPtr(si.SpectatorName)
+	si.SpectatorGuid = trimmedStringPtr(si.SpectatorGuid)
+	si.SpectatorCarKey = trimmedStringPtr(si.SpectatorCarKey)
+	si.SpectatorSkinKey = trimmedStringPtr(si.SpectatorSkinKey)
+
+	if err := validateStreamURL("stream_embed_url", si.StreamEmbedUrl, isEnabled(si.StreamEnabled)); err != nil {
+		return err
+	}
+	if err := validateStreamURL("stream_status_url", si.StreamStatusUrl, false); err != nil {
+		return err
+	}
+	if isEnabled(si.SpectatorEnabled) {
+		if si.SpectatorName == nil {
+			return errors.New("spectator_driver_name is required when spectator mode is enabled")
+		}
+		if si.SpectatorGuid == nil {
+			return errors.New("spectator_guid is required when spectator mode is enabled")
+		}
+		if si.SpectatorCarKey == nil {
+			return errors.New("spectator_car_key is required when spectator mode is enabled")
+		}
+		if si.SpectatorSkinKey == nil {
+			return errors.New("spectator_skin_key is required when spectator mode is enabled")
+		}
+	}
+	return nil
+}
+
+func normalizeDriverStream(ds *DriverStream) error {
+	if ds.Enabled == nil {
+		ds.Enabled = intPtr(1)
+	}
+	ds.DriverGuid = trimmedStringPtr(ds.DriverGuid)
+	ds.DisplayName = trimmedStringPtr(ds.DisplayName)
+	ds.StreamEmbedUrl = trimmedStringPtr(ds.StreamEmbedUrl)
+	ds.StreamStatusUrl = trimmedStringPtr(ds.StreamStatusUrl)
+	if ds.DriverGuid == nil {
+		return errors.New("driver_guid is required")
+	}
+	if err := validateStreamURL("stream_embed_url", ds.StreamEmbedUrl, true); err != nil {
+		return err
+	}
+	if err := validateStreamURL("stream_status_url", ds.StreamStatusUrl, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+func streamHealth(enabled bool, embedURL *string, statusURL *string) StreamHealth {
+	if !enabled || trimmedStringPtr(embedURL) == nil {
+		return StreamHealth{Status: "not_configured"}
+	}
+	statusURL = trimmedStringPtr(statusURL)
+	if statusURL == nil {
+		return StreamHealth{Status: "unknown"}
+	}
+	if err := validateStreamURL("stream_status_url", statusURL, true); err != nil {
+		return StreamHealth{Status: "offline", Message: err.Error()}
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, *statusURL, nil)
+	if err != nil {
+		return StreamHealth{Status: "offline", Message: err.Error()}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return StreamHealth{Status: "offline", Message: err.Error()}
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 200 && res.StatusCode < 400 {
+		return StreamHealth{Status: "live", StatusCode: res.StatusCode}
+	}
+	return StreamHealth{Status: "offline", StatusCode: res.StatusCode}
 }
 
 // instanceFromRequest resolves the target instance from the :instance path
@@ -394,10 +528,11 @@ func serverStatusPayload(inst *Instance) gin.H {
 	}
 }
 
-func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
+func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 	if serverEvent.UserEvent.Id == nil {
-		log.Print("Cannot apply server event without event id")
-		return false
+		err := errors.New("cannot apply server event without event id")
+		log.Print(err)
+		return false, err
 	}
 
 	dir := inst.Dir()
@@ -406,7 +541,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 	cfg, err := Dba.selectConfig()
 	if err != nil {
 		log.Print("Could not load config: ", err)
-		return false
+		return false, err
 	}
 	engine := engineKunos
 	if cfg.ServerEngine != nil && *cfg.ServerEngine != "" {
@@ -419,6 +554,9 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 
 	inst.Cr.serverEvent = serverEvent
 	inst.Cr.renderIni(*serverEvent.UserEvent.Id, inst.Conf)
+	if inst.Cr.renderErr != nil {
+		return false, inst.Cr.renderErr
+	}
 	inst.Cr.writeIni(dir)
 
 	writeModLinks(dir, cfg, &inst.Cr)
@@ -435,11 +573,11 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 	if engine == engineAssettoServer {
 		if _, err := ensureAssettoServerInstalled(); err != nil {
 			log.Print("AssettoServer unavailable, cannot start: ", err)
-			return false
+			return false, err
 		}
 		if err := provisionAssettoServerRunDir(dir); err != nil {
 			log.Print("Could not provision AssettoServer run dir: ", err)
-			return false
+			return false, err
 		}
 		relax := cfg.AsRelaxChecksums != nil && *cfg.AsRelaxChecksums == 1
 		ensureAssettoServerExtraCfg(dir, relax)
@@ -453,7 +591,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 		ensureAssettoServerTrackParams(dir, trackKey, trackName)
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
-		return true
+		return true, nil
 	}
 
 	// Kunos acServer path. A prior AssettoServer run may have symlinked
@@ -507,7 +645,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) bool {
 	zf.ExtractFile(zf.FindZipFile("system/data/surfaces.ini"), dir)
 	zf.Close()
 
-	return true
+	return true, nil
 }
 
 func noRoute(c *gin.Context) {
@@ -996,7 +1134,12 @@ func apiServerStart(c *gin.Context) {
 	}
 
 	if !inst.isRunning() {
-		if inst.serverApplyTrack() {
+		ok, err := inst.serverApplyTrack()
+		if err != nil {
+			apiError(c, http.StatusConflict, "server_start_failed", err.Error())
+			return
+		}
+		if ok {
 			inst.start()
 			// Hang the request until the UDP Server becomes online
 			for start := time.Now(); time.Since(start) < time.Minute; {
@@ -1165,9 +1308,12 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 			}
 		}
 		inst.stop()
-		if applyServerEvent(inst, serverEvent) {
+		if ok, err := applyServerEvent(inst, serverEvent); err == nil && ok {
 			inst.start()
 			restarted = true
+		} else if err != nil {
+			apiError(c, http.StatusConflict, "server_restart_failed", err.Error())
+			return
 		}
 	}
 
@@ -1555,10 +1701,148 @@ func apiInstances(c *gin.Context) {
 			"repeat_event_id":    inst.Conf.RepeatEventId,
 			"repeat_event":       repeatEvent,
 			"scheduled_start":    inst.Conf.ScheduledStart,
+			"stream_enabled":     inst.Conf.StreamEnabled,
+			"stream_embed_url":   inst.Conf.StreamEmbedUrl,
+			"stream_status_url":  inst.Conf.StreamStatusUrl,
+			"spectator_enabled":  inst.Conf.SpectatorEnabled,
+			"spectator_driver_name": inst.Conf.SpectatorName,
+			"spectator_guid":        inst.Conf.SpectatorGuid,
+			"spectator_car_key":     inst.Conf.SpectatorCarKey,
+			"spectator_skin_key":    inst.Conf.SpectatorSkinKey,
 		})
 	}
 
 	c.PureJSON(http.StatusOK, gin.H{"instances": list})
+}
+
+func apiInstanceStreamStatus(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	inst := Instances.Get(id)
+	if inst == nil {
+		apiNotFound(c)
+		return
+	}
+	c.PureJSON(http.StatusOK, streamHealth(isEnabled(inst.Conf.StreamEnabled), inst.Conf.StreamEmbedUrl, inst.Conf.StreamStatusUrl))
+}
+
+func apiInstanceDriverStreamStatuses(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	inst := Instances.Get(id)
+	if inst == nil {
+		apiNotFound(c)
+		return
+	}
+
+	drivers := inst.driversSnapshot()
+	guids := make([]string, 0, len(drivers))
+	for _, d := range drivers {
+		if d.Guid != "" && d.Connected {
+			guids = append(guids, d.Guid)
+		}
+	}
+	streams, err := Dba.selectDriverStreamsByGuids(guids)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	statuses := make(map[string]StreamHealth, len(guids))
+	for _, guid := range guids {
+		ds, exists := streams[guid]
+		if !exists {
+			statuses[guid] = StreamHealth{Status: "not_configured"}
+			continue
+		}
+		statuses[guid] = streamHealth(isEnabled(ds.Enabled), ds.StreamEmbedUrl, ds.StreamStatusUrl)
+	}
+	c.PureJSON(http.StatusOK, gin.H{"statuses": statuses})
+}
+
+func apiDriverStreamsList(c *gin.Context) {
+	streams, err := Dba.selectDriverStreams()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"streams": streams})
+}
+
+func apiDriverStreamCreate(c *gin.Context) {
+	var ds DriverStream
+	if err := c.ShouldBindJSON(&ds); err != nil {
+		apiBadRequest(c, "Invalid request payload")
+		return
+	}
+	if err := normalizeDriverStream(&ds); err != nil {
+		apiBadRequest(c, err.Error())
+		return
+	}
+	id, err := Dba.insertDriverStream(ds)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	inserted, err := Dba.selectDriverStream(int(id))
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"stream": inserted})
+}
+
+func apiDriverStreamUpdate(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	var ds DriverStream
+	if err := c.ShouldBindJSON(&ds); err != nil {
+		apiBadRequest(c, "Invalid request payload")
+		return
+	}
+	ds.Id = &id
+	if err := normalizeDriverStream(&ds); err != nil {
+		apiBadRequest(c, err.Error())
+		return
+	}
+	rows, err := Dba.updateDriverStream(ds)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if rows == 0 {
+		apiNotFound(c)
+		return
+	}
+	updated, err := Dba.selectDriverStream(id)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"stream": updated})
+}
+
+func apiDriverStreamDelete(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	rows, err := Dba.deleteDriverStream(id)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if rows == 0 {
+		apiNotFound(c)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"success": true})
 }
 
 // instanceInRepeatMode reports whether the given queue mutation should be
@@ -1684,6 +1968,10 @@ func apiInstanceCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "All ports are required: udp_port, tcp_port, http_port, plugin_port, plugin_listen_port"})
 		return
 	}
+	if err := normalizeServerInstanceStreams(&si); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	if err := Instances.validatePorts(si); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
@@ -1728,6 +2016,10 @@ func apiInstanceUpdate(c *gin.Context) {
 		return
 	}
 	si.Id = &id
+	if err := normalizeServerInstanceStreams(&si); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	if err := Instances.validatePorts(si); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})

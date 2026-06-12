@@ -66,6 +66,14 @@ type ServerInstance struct {
 	PluginPort       *int    `json:"plugin_port" form:"plugin_port"`
 	PluginListenPort *int    `json:"plugin_listen_port" form:"plugin_listen_port"`
 	Enabled          *int    `json:"enabled" form:"enabled"`
+	StreamEnabled    *int    `json:"stream_enabled" form:"stream_enabled"`
+	StreamEmbedUrl   *string `json:"stream_embed_url" form:"stream_embed_url"`
+	StreamStatusUrl  *string `json:"stream_status_url" form:"stream_status_url"`
+	SpectatorEnabled  *int    `json:"spectator_enabled" form:"spectator_enabled"`
+	SpectatorName     *string `json:"spectator_driver_name" form:"spectator_driver_name"`
+	SpectatorGuid     *string `json:"spectator_guid" form:"spectator_guid"`
+	SpectatorCarKey   *string `json:"spectator_car_key" form:"spectator_car_key"`
+	SpectatorSkinKey  *string `json:"spectator_skin_key" form:"spectator_skin_key"`
 	// RunMode is "manual_queue" (default) or "repeat_event". In repeat mode the
 	// instance re-applies RepeatEventId every time a session ends instead of
 	// advancing the manual queue.
@@ -74,6 +82,15 @@ type ServerInstance struct {
 	// ScheduledStart is a unix timestamp; the scheduler starts the instance at
 	// or after this time, then clears it. nil/0 means no schedule.
 	ScheduledStart *int64 `json:"scheduled_start" form:"scheduled_start"`
+}
+
+type DriverStream struct {
+	Id              *int    `json:"id"`
+	DriverGuid      *string `json:"driver_guid" form:"driver_guid"`
+	DisplayName     *string `json:"display_name" form:"display_name"`
+	Enabled         *int    `json:"enabled" form:"enabled"`
+	StreamEmbedUrl  *string `json:"stream_embed_url" form:"stream_embed_url"`
+	StreamStatusUrl *string `json:"stream_status_url" form:"stream_status_url"`
 }
 
 const (

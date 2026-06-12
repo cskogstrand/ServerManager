@@ -30,8 +30,10 @@ func checkSchedules() {
 
 		if !inst.isRunning() {
 			log.Printf("Scheduled start firing for instance %s", inst.Name())
-			if inst.serverApplyTrack() {
+			if ok, err := inst.serverApplyTrack(); ok {
 				inst.start()
+			} else if err != nil {
+				log.Printf("Scheduled start failed for instance %s: %v", inst.Name(), err)
 			} else {
 				log.Printf("Scheduled start: nothing queued to run for instance %s", inst.Name())
 			}

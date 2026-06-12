@@ -104,6 +104,30 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_instance", "scheduled_start", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.scheduled_start: ", err)
 	}
+	if err := dba.ensureColumn("server_instance", "stream_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.stream_enabled: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "stream_embed_url", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.stream_embed_url: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "stream_status_url", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.stream_status_url: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "spectator_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.spectator_enabled: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "spectator_driver_name", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.spectator_driver_name: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "spectator_guid", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.spectator_guid: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "spectator_car_key", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.spectator_car_key: ", err)
+	}
+	if err := dba.ensureColumn("server_instance", "spectator_skin_key", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.spectator_skin_key: ", err)
+	}
 	// Existing single-user installs default to admin so nobody is locked out.
 	if err := dba.ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
 		log.Fatal("Error applying database migration for users.role: ", err)
@@ -1537,7 +1561,13 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 }
 
 func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
-	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled, run_mode, repeat_event_id, scheduled_start FROM server_instance ORDER BY id ASC")
+	rows, err := dba.db.Query(`
+SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled,
+       run_mode, repeat_event_id, scheduled_start,
+       stream_enabled, stream_embed_url, stream_status_url,
+       spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key
+FROM server_instance
+ORDER BY id ASC`)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -1546,7 +1576,12 @@ func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
 	list := make([]ServerInstance, 0)
 	for rows.Next() {
 		si := ServerInstance{}
-		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled, &si.RunMode, &si.RepeatEventId, &si.ScheduledStart)
+		err = rows.Scan(
+			&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled,
+			&si.RunMode, &si.RepeatEventId, &si.ScheduledStart,
+			&si.StreamEnabled, &si.StreamEmbedUrl, &si.StreamStatusUrl,
+			&si.SpectatorEnabled, &si.SpectatorName, &si.SpectatorGuid, &si.SpectatorCarKey, &si.SpectatorSkinKey,
+		)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -1560,13 +1595,22 @@ func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
 }
 
 func (dba Dbaccess) insertServerInstance(si ServerInstance) (int64, error) {
-	stmt, err := dba.db.Prepare("INSERT INTO server_instance (name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)")
+	stmt, err := dba.db.Prepare(`
+INSERT INTO server_instance (
+  name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled,
+  stream_enabled, stream_embed_url, stream_status_url,
+  spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort)
+	res, err := stmt.Exec(
+		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
+		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
+		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
+	)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -1575,13 +1619,23 @@ func (dba Dbaccess) insertServerInstance(si ServerInstance) (int64, error) {
 }
 
 func (dba Dbaccess) updateServerInstance(si ServerInstance) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE server_instance SET name = ?, udp_port = ?, tcp_port = ?, http_port = ?, plugin_port = ?, plugin_listen_port = ? WHERE id = ?")
+	stmt, err := dba.db.Prepare(`
+UPDATE server_instance
+SET name = ?, udp_port = ?, tcp_port = ?, http_port = ?, plugin_port = ?, plugin_listen_port = ?,
+    stream_enabled = ?, stream_embed_url = ?, stream_status_url = ?,
+    spectator_enabled = ?, spectator_driver_name = ?, spectator_guid = ?, spectator_car_key = ?, spectator_skin_key = ?
+WHERE id = ?`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort, si.Id)
+	res, err := stmt.Exec(
+		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
+		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
+		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
+		si.Id,
+	)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -1655,6 +1709,121 @@ func (dba Dbaccess) deleteServerInstance(id int) (int64, error) {
 	}
 
 	return dba.deleteFrom(id, "server_instance")
+}
+
+func (dba Dbaccess) selectDriverStreams() ([]DriverStream, error) {
+	rows, err := dba.db.Query(`
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+FROM driver_stream
+ORDER BY COALESCE(display_name, ''), driver_guid`)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	streams := make([]DriverStream, 0)
+	for rows.Next() {
+		ds := DriverStream{}
+		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		streams = append(streams, ds)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	return streams, nil
+}
+
+func (dba Dbaccess) selectDriverStream(id int) (DriverStream, error) {
+	row := dba.db.QueryRow(`
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+FROM driver_stream
+WHERE id = ?`, id)
+	ds := DriverStream{}
+	if err := row.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+		return DriverStream{}, tracerr.Wrap(err)
+	}
+	return ds, nil
+}
+
+func (dba Dbaccess) selectDriverStreamsByGuids(guids []string) (map[string]DriverStream, error) {
+	out := make(map[string]DriverStream)
+	if len(guids) == 0 {
+		return out, nil
+	}
+
+	placeholders := make([]string, 0, len(guids))
+	args := make([]any, 0, len(guids))
+	for _, guid := range guids {
+		guid = strings.TrimSpace(guid)
+		if guid == "" {
+			continue
+		}
+		placeholders = append(placeholders, "?")
+		args = append(args, guid)
+	}
+	if len(args) == 0 {
+		return out, nil
+	}
+
+	rows, err := dba.db.Query(`
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+FROM driver_stream
+WHERE enabled = 1 AND driver_guid IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ds := DriverStream{}
+		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		if ds.DriverGuid != nil {
+			out[*ds.DriverGuid] = ds
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	return out, nil
+}
+
+func (dba Dbaccess) insertDriverStream(ds DriverStream) (int64, error) {
+	stmt, err := dba.db.Prepare(`
+INSERT INTO driver_stream (driver_guid, display_name, enabled, stream_embed_url, stream_status_url)
+VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.LastInsertId()
+}
+
+func (dba Dbaccess) updateDriverStream(ds DriverStream) (int64, error) {
+	stmt, err := dba.db.Prepare(`
+UPDATE driver_stream
+SET driver_guid = ?, display_name = ?, enabled = ?, stream_embed_url = ?, stream_status_url = ?
+WHERE id = ?`)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl, ds.Id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
+func (dba Dbaccess) deleteDriverStream(id int) (int64, error) {
+	return dba.deleteFrom(id, "driver_stream")
 }
 
 func (dba Dbaccess) updateCacheCars(cars []CacheCar) (int64, error) {

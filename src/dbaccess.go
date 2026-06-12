@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"sort"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -521,6 +522,44 @@ func (dba Dbaccess) updateServerEvent(se ServerEvent) (int64, error) {
 	}
 
 	return affected, nil
+}
+
+// updateServerEventOrder reorders queue rows to match the given id sequence.
+// It redistributes the rows' own existing orderby values in the new order, so
+// the relative order within the instance changes without introducing new
+// cross-instance orderby collisions.
+func (dba Dbaccess) updateServerEventOrder(ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	slots := make([]int, 0, len(ids))
+	for _, id := range ids {
+		var ob int
+		if err := dba.db.QueryRow("SELECT orderby FROM server_event WHERE id = ?", id).Scan(&ob); err != nil {
+			return tracerr.Wrap(err)
+		}
+		slots = append(slots, ob)
+	}
+	sort.Ints(slots)
+
+	tx, err := dba.db.Begin()
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	stmt, err := tx.Prepare("UPDATE server_event SET orderby = ? WHERE id = ?")
+	if err != nil {
+		tx.Rollback()
+		return tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	for i, id := range ids {
+		if _, err := stmt.Exec(slots[i], id); err != nil {
+			tx.Rollback()
+			return tracerr.Wrap(err)
+		}
+	}
+	return tx.Commit()
 }
 
 func (dba Dbaccess) updateServerEventMoveUp(id int) error {

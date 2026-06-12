@@ -76,6 +76,28 @@ const act = (fn: () => Promise<unknown>) =>
 
 const moveUp = (id: number) => act(() => api.post(`/api/queue/moveup/${id}`));
 const moveDown = (id: number) => act(() => api.post(`/api/queue/movedown/${id}`));
+
+// --- Drag-and-drop reorder (keyboard up/down remain as fallback) ---
+const dragId = ref<number | null>(null);
+const dragOverId = ref<number | null>(null);
+
+function onDrop(targetId: number) {
+  const from = dragId.value;
+  dragId.value = null;
+  dragOverId.value = null;
+  if (from === null || from === targetId) return;
+  const ids = pendingRows.value.map((r) => r.id);
+  const fi = ids.indexOf(from);
+  const ti = ids.indexOf(targetId);
+  if (fi < 0 || ti < 0) return;
+  ids.splice(ti, 0, ids.splice(fi, 1)[0]);
+  // Optimistic: reflect the new order locally, then persist + reload.
+  const byId = new Map(rows.value.map((r) => [r.id, r]));
+  const reordered = ids.map((id) => byId.get(id)!).filter(Boolean);
+  const finished = rows.value.filter((r) => r.finished);
+  rows.value = [...finished, ...reordered];
+  act(() => api.put("/api/queue/order", { instance: instanceId.value, ids }));
+}
 const removeRow = (id: number) => act(() => api.delete(`/api/queue/${id}`));
 const clearCompleted = () => act(() => api.post("/api/queue/clearcompleted"));
 
@@ -270,16 +292,27 @@ watch(
           <tr
             v-for="(r, i) in rows"
             :key="r.id"
+            :draggable="rowState(r) === 'pending'"
             class="border-b border-line/60"
             :class="{
               'opacity-45': rowState(r) === 'done',
               'bg-accent-dim/40': rowState(r) === 'active',
+              'cursor-grab': rowState(r) === 'pending',
+              'border-t-2 border-t-accent': dragOverId === r.id && dragId !== r.id,
+              'opacity-60': dragId === r.id,
             }"
+            @dragstart="dragId = r.id"
+            @dragover.prevent="dragOverId = r.id"
+            @drop.prevent="onDrop(r.id)"
+            @dragend="dragId = null; dragOverId = null"
           >
             <td class="py-2 pr-2">
-              <Icon v-if="rowState(r) === 'active'" name="activity" :size="15" class="text-ok" />
-              <Icon v-else-if="rowState(r) === 'done'" name="check" :size="15" class="text-dim" />
-              <span v-else class="text-muted">{{ pendingRows.indexOf(r) + 1 }}</span>
+              <span v-if="rowState(r) === 'pending'" class="inline-flex items-center gap-1.5 text-muted">
+                <Icon name="menu" :size="14" class="text-dim" />
+                {{ pendingRows.indexOf(r) + 1 }}
+              </span>
+              <Icon v-else-if="rowState(r) === 'active'" name="activity" :size="15" class="text-ok" />
+              <Icon v-else name="check" :size="15" class="text-dim" />
             </td>
             <td class="py-2 pr-2">
               <div class="font-medium">{{ r.track }}</div>

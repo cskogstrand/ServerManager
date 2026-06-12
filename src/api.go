@@ -1274,6 +1274,27 @@ func apiQueueSkipEvent(c *gin.Context) {
 	c.String(http.StatusOK, "ok")
 }
 
+// apiQueueReorder applies a full ordered id list for one instance's queue.
+func apiQueueReorder(c *gin.Context) {
+	var body struct {
+		Instance int   `json:"instance"`
+		Ids      []int `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		apiBadRequest(c, "Invalid request payload")
+		return
+	}
+	if instanceInRepeatMode(body.Instance) {
+		apiError(c, http.StatusConflict, "repeat_locked", "This instance is in repeat mode. Switch it back to manual queue first.")
+		return
+	}
+	if err := Dba.updateServerEventOrder(body.Ids); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"ids": body.Ids})
+}
+
 func apiQueueClearCompleted(c *gin.Context) {
 	Dba.deleteServerEventsCompleted()
 	c.String(http.StatusOK, "ok")

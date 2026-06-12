@@ -214,9 +214,9 @@ setup concerns.
 
 ### 5.1 Manual Queue Improvements
 
-- [ ] Add drag-and-drop queue reorder with optimistic updates.
-- [ ] Add `PUT /api/queue/order` accepting the full ordered id list.
-- [ ] Keep keyboard-accessible up/down controls as fallback.
+- [x] Add drag-and-drop queue reorder with optimistic updates.
+- [x] Add `PUT /api/queue/order` accepting the full ordered id list.
+- [x] Keep keyboard-accessible up/down controls as fallback.
 - [ ] Add queue ETA per row.
 - [ ] Add "start queue at time" scheduling.
 
@@ -306,10 +306,11 @@ These are high-value, lower-risk improvements.
       - extract preset form bodies
       - host them in nested sheets
       - return with the new preset selected
-- [ ] Drag-and-drop queue reorder and class entry reorder.
-      - optimistic updates
-      - full-order API endpoint
-      - keyboard fallback remains
+- [~] Drag-and-drop queue reorder and class entry reorder.
+      - [x] optimistic updates (queue)
+      - [x] full-order API endpoint (`PUT /api/queue/order`)
+      - [x] keyboard fallback remains (queue up/down)
+      - [ ] class entry reorder
 - [ ] Event duplication and templates.
       - duplicate event
       - duplicate group

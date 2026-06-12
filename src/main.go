@@ -237,6 +237,7 @@ func main() {
 
 		api.POST("/queue/moveup/:id", apiQueueMoveUp)
 		api.POST("/queue/movedown/:id", apiQueueMoveDown)
+		api.PUT("/queue/order", apiQueueReorder)
 		api.POST("/queue/skipevent", apiQueueSkipEvent)
 		api.POST("/queue/clearcompleted", apiQueueClearCompleted)
 		api.POST("/queue/event/:id", apiQueueAddEvent)

@@ -472,9 +472,15 @@ func noRoute(c *gin.Context) {
 }
 
 // safeSegment guards against path traversal in user-supplied content keys
-// (car/skin/track/config/weather), which are single path segments.
+// (car/skin/track/config/weather), which are single path segments. AC mod
+// folders often start with ".." to sort to the top, so only a literal "."/".."
+// or an embedded path separator is rejected — a separator-free name cannot
+// escape the content directory.
 func safeSegment(s string) bool {
-	return s != "" && !strings.Contains(s, "..") && !strings.ContainsAny(s, `/\`)
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, `/\`)
 }
 
 // serveContentDiskFile serves the first existing file from the live install

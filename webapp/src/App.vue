@@ -62,6 +62,7 @@ const navSections = [
   {
     label: "Admin",
     items: [
+      { to: "/setup", label: "Server Setup", icon: "settings" },
       { to: "/settings", label: "Configuration", icon: "settings" },
       { to: "/settings/instances", label: "Instances", icon: "instances" },
       { to: "/content", label: "Content", icon: "content" },
@@ -71,13 +72,13 @@ const navSections = [
   },
 ];
 
-// Bottom-tab nav (mobile): the daily operations + content for setup.
+// Bottom-tab nav (mobile): the daily operations + setup/content shortcuts.
 const mobileNav = [
-  navSections[0].items[0],
-  navSections[0].items[1],
-  navSections[0].items[2],
-  navSections[2].items[0],
-  navSections[2].items[2],
+  navSections[0].items[0], // Dashboard
+  navSections[0].items[1], // Events
+  navSections[0].items[2], // Queue
+  navSections[2].items[0], // Server Setup
+  navSections[2].items[3], // Content
 ];
 </script>
 
@@ -174,10 +175,9 @@ const mobileNav = [
         >
           <Icon name="info" :size="17" class="mt-0.5 shrink-0 text-accent" />
           <span>
-            Finish the first-run setup:
-            <RouterLink to="/settings" class="font-semibold text-accent hover:underline">save the server configuration</RouterLink>
-            and
-            <RouterLink to="/content" class="font-semibold text-accent hover:underline">set the Assetto Corsa install path</RouterLink>.
+            First-run setup isn't finished yet.
+            <RouterLink to="/setup" class="font-semibold text-accent hover:underline">Open Server Setup</RouterLink>
+            to see what's left and fix each step.
           </span>
         </p>
         <RouterView />

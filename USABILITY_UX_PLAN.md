@@ -139,18 +139,18 @@ Acceptance criteria:
 Create a single **Server Setup** admin page that unifies the current scattered
 setup concerns.
 
-- [ ] Show setup health at the top:
-      - install path valid/invalid
-      - content cache status
-      - instance port status
-      - default run mode
-      - queue status
-- [ ] Link each failed check to the exact editor section.
-- [ ] Provide "Test server readiness" action:
-      - can render config
-      - can render entry list
-      - acServer binary exists
-      - ports are not duplicated across instances
+- [x] Show setup health at the top:
+      - [x] install path valid/invalid
+      - [x] content cache status
+      - [x] instance port status
+      - [x] default run mode (per-instance run mode surfaced)
+      - [x] queue status
+- [x] Link each failed check to the exact editor section.
+- [x] Provide "Test server readiness" action (`GET /api/server/readiness`):
+      - [~] can render config (approximated: presets filled + content present)
+      - [~] can render entry list (approximated: class/cars present)
+      - [x] acServer binary exists
+      - [x] ports are not duplicated across instances
 
 ---
 
@@ -399,10 +399,16 @@ dialog, empty/skeleton components, and single-event duplication.
 ### Phase B - Server Setup Wizard
 
 - [ ] Build the first-run wizard.
-- [ ] Add Server Setup admin page with setup health checks.
-- [ ] Reuse existing config/content/instance/event editor pieces.
+- [x] Add Server Setup admin page with setup health checks.
+- [x] Reuse existing config/content/instance/event editor pieces (links out to
+      each editor from failed checks).
 
 Why second: this creates the friendly setup flow and reduces support friction.
+
+**Phase B status: Server Setup page done** (`/setup`, `GET
+/api/server/readiness`); first-run wizard still open. The first-run banner now
+points to Server Setup, which lists every step and links to its editor — a
+lightweight stand-in for the guided wizard.
 
 ### Phase C - Event Builder Completion
 

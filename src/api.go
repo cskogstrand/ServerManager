@@ -1093,6 +1093,90 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 	c.PureJSON(http.StatusOK, response)
 }
 
+// apiServerReadiness aggregates the setup health the Server Setup page needs:
+// install path, content cache, presets, events and per-instance port/queue
+// state. The frontend turns these facts into pass/fail checks with links.
+func apiServerReadiness(c *gin.Context) {
+	cfg, err := Dba.selectConfig()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	installPath := ""
+	if cfg.InstallPath != nil {
+		installPath = *cfg.InstallPath
+	}
+	binary := "acServer"
+	if runtime.GOOS == "windows" {
+		binary = "acServer.exe"
+	}
+	acserverFound := false
+	if strings.TrimSpace(installPath) != "" {
+		if _, statErr := os.Stat(filepath.Join(installPath, "server", binary)); statErr == nil {
+			acserverFound = true
+		}
+	}
+
+	count := func(fn func() (int, error)) int {
+		n, _ := fn()
+		return n
+	}
+	tracks := count(func() (int, error) { l, e := Dba.selectCacheTracks(); return len(l), e })
+	cars := count(func() (int, error) { l, e := Dba.selectCacheCars(); return len(l), e })
+	weathers := count(func() (int, error) { l, e := Dba.selectCacheWeathers(); return len(l), e })
+
+	filled := func(table string) int {
+		l, _ := Dba.selectDropDownList(true, table)
+		return len(l)
+	}
+	events, _ := Dba.selectEventList()
+
+	// Detect a port reused across instances.
+	portConflict := ""
+	seen := map[int]string{}
+	instances := make([]gin.H, 0)
+	for _, inst := range Instances.All() {
+		for _, p := range []*int{inst.Conf.UdpPort, inst.Conf.TcpPort, inst.Conf.HttpPort, inst.Conf.PluginPort, inst.Conf.PluginListenPort} {
+			if p == nil {
+				continue
+			}
+			// TCP and UDP game ports legitimately share a value within one instance.
+			if owner, ok := seen[*p]; ok && owner != inst.Name() {
+				portConflict = fmt.Sprintf("Port %d is used by both %q and %q", *p, owner, inst.Name())
+			}
+			seen[*p] = inst.Name()
+		}
+		pending, _ := Dba.selectServerEvents(true, inst.Id())
+		runMode := runModeManualQueue
+		if inst.Conf.RunMode != nil && *inst.Conf.RunMode != "" {
+			runMode = *inst.Conf.RunMode
+		}
+		instances = append(instances, gin.H{
+			"id":            inst.Id(),
+			"name":          inst.Name(),
+			"run_mode":      runMode,
+			"queue_pending": len(pending),
+			"is_running":    inst.isRunning(),
+		})
+	}
+
+	cfgFilled := cfg.CfgFilled != nil && *cfg.CfgFilled == 1
+	modFilled := cfg.ModFilled != nil && *cfg.ModFilled == 1
+
+	c.PureJSON(http.StatusOK, gin.H{
+		"install_path":    installPath,
+		"acserver_found":  acserverFound,
+		"cfg_filled":      cfgFilled,
+		"mod_filled":      modFilled,
+		"content":         gin.H{"tracks": tracks, "cars": cars, "weathers": weathers},
+		"presets":         gin.H{"difficulties": filled("user_difficulty"), "sessions": filled("user_session"), "classes": filled("user_class"), "times": filled("user_time")},
+		"events":          len(events),
+		"instances":       instances,
+		"port_conflict":   portConflict,
+	})
+}
+
 func apiServerLogfile(c *gin.Context) {
 	logpath := filepath.Join(ConfigFolder, "logfile.log")
 	c.FileAttachment(logpath, "logfile.log")

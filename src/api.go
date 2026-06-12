@@ -1470,6 +1470,7 @@ func apiInstances(c *gin.Context) {
 			"run_mode":           runMode,
 			"repeat_event_id":    inst.Conf.RepeatEventId,
 			"repeat_event":       repeatEvent,
+			"scheduled_start":    inst.Conf.ScheduledStart,
 		})
 	}
 
@@ -1488,6 +1489,39 @@ func instanceInRepeatMode(instanceId int) bool {
 	}
 	_, repeat := inst.repeatEventId()
 	return repeat
+}
+
+// apiInstanceSchedule sets or clears a one-shot scheduled start time.
+func apiInstanceSchedule(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apiBadRequest(c, "Invalid instance id")
+		return
+	}
+	if Instances.Get(id) == nil {
+		apiNotFound(c)
+		return
+	}
+	var body struct {
+		ScheduledStart *int64 `json:"scheduled_start"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		apiBadRequest(c, "Invalid request payload")
+		return
+	}
+	var ts *int64
+	if body.ScheduledStart != nil && *body.ScheduledStart > 0 {
+		ts = body.ScheduledStart
+	}
+	if _, err := Dba.updateServerInstanceSchedule(id, ts); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if err := Instances.LoadFromDb(); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"scheduled_start": ts})
 }
 
 // apiInstanceRunMode switches an instance between manual_queue and

@@ -57,6 +57,7 @@ export interface InstanceState {
   run_mode: RunMode;
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
+  scheduled_start: number | null;
 }
 
 interface InstanceListItem {
@@ -72,6 +73,7 @@ interface InstanceListItem {
   run_mode: RunMode;
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
+  scheduled_start: number | null;
 }
 
 // One live store for everything the SSE stream feeds: per-instance status,
@@ -110,6 +112,7 @@ export const useServerStore = defineStore("server", {
           run_mode: item.run_mode ?? "manual_queue",
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
+          scheduled_start: item.scheduled_start ?? null,
         };
       }
       for (const id of Object.keys(this.instances).map(Number)) {
@@ -189,6 +192,11 @@ export const useServerStore = defineStore("server", {
         run_mode: mode,
         repeat_event_id: mode === "repeat_event" ? (eventId ?? null) : null,
       });
+      await this.load();
+    },
+
+    async setSchedule(id: number, scheduledStart: number | null) {
+      await api.put(`/api/instances/${id}/schedule`, { scheduled_start: scheduledStart });
       await this.load();
     },
   },

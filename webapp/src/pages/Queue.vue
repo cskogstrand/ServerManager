@@ -12,6 +12,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Select from "@/components/ui/Select.vue";
 import Icon from "@/components/ui/Icon.vue";
+import Modal from "@/components/ui/Modal.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 
@@ -115,6 +116,42 @@ const skip = () =>
     toast.success("Skipping to next event.");
   });
 
+// --- Scheduled start ---
+const scheduleOpen = ref(false);
+const scheduleValue = ref("");
+
+function toLocalInput(unix: number): string {
+  const d = new Date(unix * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const scheduledLabel = computed(() =>
+  instance.value?.scheduled_start ? new Date(instance.value.scheduled_start * 1000).toLocaleString() : "",
+);
+
+function openSchedule() {
+  const existing = instance.value?.scheduled_start;
+  scheduleValue.value = existing ? toLocalInput(existing) : toLocalInput(Math.floor(Date.now() / 1000) + 3600);
+  scheduleOpen.value = true;
+}
+
+const confirmSchedule = () =>
+  act(async () => {
+    if (instanceId.value === null || !scheduleValue.value) return;
+    const ts = Math.floor(new Date(scheduleValue.value).getTime() / 1000);
+    await server.setSchedule(instanceId.value, ts);
+    scheduleOpen.value = false;
+    toast.success(`Start scheduled for ${new Date(ts * 1000).toLocaleString()}.`);
+  });
+
+const clearSchedule = () =>
+  act(async () => {
+    if (instanceId.value === null) return;
+    await server.setSchedule(instanceId.value, null);
+    toast.success("Scheduled start cleared.");
+  });
+
 const start = () => act(() => server.start(instanceId.value!));
 const stop = () =>
   act(async () => {
@@ -199,6 +236,15 @@ watch(
       </Button>
       <Button
         v-if="instance && !instance.running && (pendingRows.length || repeatMode)"
+        variant="dark"
+        :disabled="busy"
+        @click="openSchedule"
+      >
+        <Icon name="calendar" :size="15" />
+        {{ instance?.scheduled_start ? "Reschedule" : "Schedule" }}
+      </Button>
+      <Button
+        v-if="instance && !instance.running && (pendingRows.length || repeatMode)"
         variant="success"
         :disabled="busy"
         @click="start"
@@ -230,6 +276,17 @@ watch(
       {{ inst.name }}
     </button>
   </div>
+
+  <p
+    v-if="scheduledLabel && !instance?.running"
+    class="mb-4 flex items-center gap-2 rounded-md border border-accent/40 bg-accent-dim px-3 py-2 text-sm text-text"
+  >
+    <Icon name="calendar" :size="16" class="shrink-0 text-accent" />
+    <span>Scheduled to start {{ scheduledLabel }}.</span>
+    <button type="button" class="ml-auto cursor-pointer text-xs font-semibold text-accent hover:underline" @click="clearSchedule">
+      Cancel
+    </button>
+  </p>
 
   <!-- Repeat mode: the manual queue is frozen while one event auto-repeats -->
   <Card v-if="repeatMode">
@@ -380,4 +437,26 @@ watch(
       </Button>
     </Card>
   </div>
+
+  <!-- Schedule start -->
+  <Modal :open="scheduleOpen" title="Schedule start" @close="scheduleOpen = false">
+    <p class="mb-3 text-sm text-muted">
+      The server starts automatically at this time (within ~20s), running the queued event or the repeat event.
+    </p>
+    <FormRow label="Start at" for-id="sched">
+      <input
+        id="sched"
+        v-model="scheduleValue"
+        type="datetime-local"
+        class="min-h-9 w-full rounded-md border border-line bg-surface-2 px-3 text-sm text-text outline-none focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+      />
+    </FormRow>
+    <template #footer>
+      <Button variant="ghost" @click="scheduleOpen = false">Cancel</Button>
+      <Button :disabled="busy || !scheduleValue" @click="confirmSchedule">
+        <Icon name="calendar" :size="15" />
+        Schedule
+      </Button>
+    </template>
+  </Modal>
 </template>

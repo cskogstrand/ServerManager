@@ -237,7 +237,8 @@ setup concerns.
 - [x] Add `PUT /api/queue/order` accepting the full ordered id list.
 - [x] Keep keyboard-accessible up/down controls as fallback.
 - [ ] Add queue ETA per row.
-- [ ] Add "start queue at time" scheduling.
+- [x] Add "start queue at time" scheduling (per-instance scheduled start +
+      background scheduler).
 
 ### 5.2 Server Auto-Repeat Mode
 
@@ -337,9 +338,9 @@ These are high-value, lower-risk improvements.
       - save event as template
 - [ ] Onboarding wizard.
       - install path -> import/cache content -> create first event -> run mode
-- [ ] Queue ETA and scheduling.
-      - estimate start time from session durations
-      - allow server-side scheduled start
+- [~] Queue ETA and scheduling.
+      - [ ] estimate start time from session durations
+      - [x] allow server-side scheduled start
 - [x] Grid editor on the dashboard.
       - [x] tweak running event
       - [x] swap weather

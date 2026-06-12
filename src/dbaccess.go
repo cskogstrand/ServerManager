@@ -92,6 +92,9 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_instance", "repeat_event_id", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.repeat_event_id: ", err)
 	}
+	if err := dba.ensureColumn("server_instance", "scheduled_start", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.scheduled_start: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -1420,7 +1423,7 @@ func (dba Dbaccess) updateClass(cls UserClass) (int64, error) {
 }
 
 func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
-	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled, run_mode, repeat_event_id FROM server_instance ORDER BY id ASC")
+	rows, err := dba.db.Query("SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled, run_mode, repeat_event_id, scheduled_start FROM server_instance ORDER BY id ASC")
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -1429,7 +1432,7 @@ func (dba Dbaccess) selectServerInstances() ([]ServerInstance, error) {
 	list := make([]ServerInstance, 0)
 	for rows.Next() {
 		si := ServerInstance{}
-		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled, &si.RunMode, &si.RepeatEventId)
+		err = rows.Scan(&si.Id, &si.Name, &si.UdpPort, &si.TcpPort, &si.HttpPort, &si.PluginPort, &si.PluginListenPort, &si.Enabled, &si.RunMode, &si.RepeatEventId, &si.ScheduledStart)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -1487,6 +1490,20 @@ func (dba Dbaccess) updateServerInstanceRunMode(id int, runMode string, repeatEv
 		return -1, tracerr.Wrap(err)
 	}
 
+	return res.RowsAffected()
+}
+
+// updateServerInstanceSchedule sets or clears the scheduled start time.
+func (dba Dbaccess) updateServerInstanceSchedule(id int, ts *int64) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE server_instance SET scheduled_start = ? WHERE id = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(ts, id)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
 	return res.RowsAffected()
 }
 

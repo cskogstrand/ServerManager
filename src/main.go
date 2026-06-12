@@ -259,6 +259,7 @@ func main() {
 		api.POST("/instances", apiInstanceCreate)
 		api.PUT("/instances/:id", apiInstanceUpdate)
 		api.PUT("/instances/:id/runmode", apiInstanceRunMode)
+		api.PUT("/instances/:id/schedule", apiInstanceSchedule)
 		api.DELETE("/instances/:id", apiInstanceDelete)
 	}
 
@@ -270,6 +271,7 @@ func main() {
 	}
 
 	updatePublicIp()
+	startScheduler()
 
 	if cfg.AutoStartServer != nil && *cfg.AutoStartServer > 0 {
 		go func() {

@@ -59,6 +59,9 @@ type ServerInstance struct {
 	// advancing the manual queue.
 	RunMode       *string `json:"run_mode" form:"run_mode"`
 	RepeatEventId *int    `json:"repeat_event_id" form:"repeat_event_id"`
+	// ScheduledStart is a unix timestamp; the scheduler starts the instance at
+	// or after this time, then clears it. nil/0 means no schedule.
+	ScheduledStart *int64 `json:"scheduled_start" form:"scheduled_start"`
 }
 
 const (

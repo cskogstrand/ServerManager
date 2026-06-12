@@ -32,6 +32,9 @@ func (zf *ZipFile) Open() {
 }
 
 func (zf *ZipFile) Close() {
+	if zf.zipFile == nil {
+		return
+	}
 	err := zf.zipFile.Close()
 	if err != nil {
 		log.Print("Could not close smcontent.zip", err)
@@ -41,6 +44,9 @@ func (zf *ZipFile) Close() {
 // Find a file in smcontent.zip
 func (zf *ZipFile) FindZipFile(filePath string) *zip.File {
 	zf.Open()
+	if zf.zipFile == nil {
+		return nil
+	}
 
 	for _, z := range zf.zipFile.File {
 		if z.Name == filePath {
@@ -54,6 +60,9 @@ func (zf *ZipFile) FindZipFile(filePath string) *zip.File {
 func (zf *ZipFile) FindZipFiles(filePath string) []*zip.File {
 	var zi []*zip.File
 	zf.Open()
+	if zf.zipFile == nil {
+		return zi
+	}
 
 	for _, z := range zf.zipFile.File {
 		if strings.HasPrefix(z.Name, filePath) && !strings.HasSuffix(z.Name, ".jpg") && !strings.HasSuffix(z.Name, ".jpeg") && !strings.HasSuffix(z.Name, ".png") {

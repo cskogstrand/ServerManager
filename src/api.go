@@ -471,6 +471,48 @@ func noRoute(c *gin.Context) {
 	})
 }
 
+// safeSegment guards against path traversal in user-supplied content keys
+// (car/skin/track/config/weather), which are single path segments.
+func safeSegment(s string) bool {
+	return s != "" && !strings.Contains(s, "..") && !strings.ContainsAny(s, `/\`)
+}
+
+// serveContentDiskFile serves the first existing file from the live install
+// directory; returns true if it handled the response. Lets previews work
+// straight from the AC content tree without rebuilding smcontent.zip.
+func serveContentDiskFile(c *gin.Context, relCandidates [][]string) bool {
+	base, err := Dba.basepath()
+	if err != nil {
+		return false
+	}
+	for _, parts := range relCandidates {
+		p := filepath.Join(append([]string{base, "content"}, parts...)...)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			c.File(p)
+			return true
+		}
+	}
+	return false
+}
+
+func serveZipImage(c *gin.Context, zipPath string, contentType string) {
+	var zf ZipFile
+	defer zf.Close()
+	zi := zf.FindZipFile(zipPath)
+	if zi == nil {
+		noRoute(c)
+		return
+	}
+	r, err := zi.Open()
+	if err != nil {
+		log.Print("Cannot open preview file in zipfile: ", err)
+		noRoute(c)
+		return
+	}
+	defer r.Close()
+	c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), contentType, r, nil)
+}
+
 func apiCarImage(c *gin.Context) {
 	car := c.Param("car")
 	skin := c.Param("skin")
@@ -479,20 +521,21 @@ func apiCarImage(c *gin.Context) {
 		serveDemoSvg(c, car, skin)
 		return
 	}
-
-	var zf ZipFile
-	zi := zf.FindZipFile("cars/" + car + "/skins/" + skin + "/preview.jpg")
-	if zi != nil {
-		r, err := zi.Open()
-		if err != nil {
-			log.Print("Cannot open car preview skin file in zipfile: ", err)
-		}
-		defer r.Close()
-		c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), "image/jpg", r, nil)
-	} else {
+	if !safeSegment(car) || !safeSegment(skin) {
 		noRoute(c)
+		return
 	}
-	zf.Close()
+
+	// Disk first: not every skin ships preview.jpg — fall back to png/livery.
+	if serveContentDiskFile(c, [][]string{
+		{"cars", car, "skins", skin, "preview.jpg"},
+		{"cars", car, "skins", skin, "preview.png"},
+		{"cars", car, "skins", skin, "livery.png"},
+	}) {
+		return
+	}
+
+	serveZipImage(c, "cars/"+car+"/skins/"+skin+"/preview.jpg", "image/jpeg")
 }
 
 func apiCar(c *gin.Context) {
@@ -543,25 +586,22 @@ func apiTrackPreviewImage(c *gin.Context) {
 		serveDemoSvg(c, track, subtitle)
 		return
 	}
-
-	filePath := "tracks/" + track + "/preview.png"
-	if config != "" {
-		filePath = "tracks/" + track + "/" + config + "/preview.png"
-	}
-
-	var zf ZipFile
-	zi := zf.FindZipFile(filePath)
-	if zi != nil {
-		r, err := zi.Open()
-		if err != nil {
-			log.Print("Could not open track preview from zipfile", err)
-		}
-		defer r.Close()
-		c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), "image/png", r, nil)
-	} else {
+	if !safeSegment(track) || (config != "" && !safeSegment(config)) {
 		noRoute(c)
+		return
 	}
-	zf.Close()
+
+	if config != "" {
+		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "preview.png"}}) {
+			return
+		}
+		serveZipImage(c, "tracks/"+track+"/"+config+"/preview.png", "image/png")
+		return
+	}
+	if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", "preview.png"}}) {
+		return
+	}
+	serveZipImage(c, "tracks/"+track+"/ui/preview.png", "image/png")
 }
 
 func apiTrackOutlineImage(c *gin.Context) {
@@ -572,25 +612,22 @@ func apiTrackOutlineImage(c *gin.Context) {
 		serveDemoSvg(c, track, "Outline")
 		return
 	}
-
-	filePath := "tracks/" + track + "/outline.png"
-	if config != "" {
-		filePath = "tracks/" + track + "/" + config + "/outline.png"
-	}
-
-	var zf ZipFile
-	zi := zf.FindZipFile(filePath)
-	if zi != nil {
-		r, err := zi.Open()
-		if err != nil {
-			log.Print("Could not open track outline from zipfile", err)
-		}
-		defer r.Close()
-		c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), "image/png", r, nil)
-	} else {
+	if !safeSegment(track) || (config != "" && !safeSegment(config)) {
 		noRoute(c)
+		return
 	}
-	zf.Close()
+
+	if config != "" {
+		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "outline.png"}}) {
+			return
+		}
+		serveZipImage(c, "tracks/"+track+"/"+config+"/outline.png", "image/png")
+		return
+	}
+	if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", "outline.png"}}) {
+		return
+	}
+	serveZipImage(c, "tracks/"+track+"/ui/outline.png", "image/png")
 }
 
 func apiWeatherPreviewImage(c *gin.Context) {
@@ -600,20 +637,15 @@ func apiWeatherPreviewImage(c *gin.Context) {
 		serveDemoSvg(c, weather, "Weather preview")
 		return
 	}
-
-	var zf ZipFile
-	zi := zf.FindZipFile("weather/" + weather + "/preview.jpg")
-	if zi != nil {
-		r, err := zi.Open()
-		if err != nil {
-			log.Print("Could not open weather preview from zipfile", err)
-		}
-		defer r.Close()
-		c.DataFromReader(http.StatusOK, int64(zi.UncompressedSize64), "image/jpg", r, nil)
-	} else {
+	if !safeSegment(weather) {
 		noRoute(c)
+		return
 	}
-	zf.Close()
+
+	if serveContentDiskFile(c, [][]string{{"weather", weather, "preview.jpg"}}) {
+		return
+	}
+	serveZipImage(c, "weather/"+weather+"/preview.jpg", "image/jpeg")
 }
 
 func apiDifficulty(c *gin.Context) {

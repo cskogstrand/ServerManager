@@ -21,6 +21,18 @@ export interface SessionState {
   elapsed_ms: number;
 }
 
+export interface DriverState {
+  car_id: number;
+  name: string;
+  car: string;
+  skin: string;
+  guid: string;
+  laps: number;
+  last_lap_ms: number;
+  best_lap_ms: number;
+  connected: boolean;
+}
+
 export type RunMode = "manual_queue" | "repeat_event";
 
 export interface RepeatEventInfo {
@@ -41,6 +53,7 @@ export interface InstanceState {
   running: boolean;
   players: number;
   session: SessionState | null;
+  drivers: DriverState[];
   run_mode: RunMode;
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
@@ -93,6 +106,7 @@ export const useServerStore = defineStore("server", {
           running: item.is_running,
           players: item.players,
           session: this.instances[item.id]?.session ?? null,
+          drivers: this.instances[item.id]?.drivers ?? [],
           run_mode: item.run_mode ?? "manual_queue",
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
@@ -139,11 +153,16 @@ export const useServerStore = defineStore("server", {
           if (!event.data.running) {
             inst.players = 0;
             inst.session = null;
+            inst.drivers = [];
           }
           break;
         case "players":
           if (!inst) return;
           inst.players = event.data.players;
+          break;
+        case "drivers":
+          if (!inst) return;
+          inst.drivers = event.data.drivers ?? [];
           break;
         case "session":
           if (!inst) return;

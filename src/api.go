@@ -383,6 +383,7 @@ func serverStatusPayload(inst *Instance) gin.H {
 			"elapsed_ms":           st.Session.elapsedMs,
 		},
 		"current_event": currentEvent,
+		"drivers":       inst.driversSnapshot(),
 		"current_cars": func() []DashboardClassEntryUpdate {
 			entries, err := parseEntryListFile(filepath.Join(dir, "cfg", "entry_list.ini"))
 			if err != nil {
@@ -1225,6 +1226,22 @@ func apiRaceRestartSession(c *gin.Context) {
 		return
 	}
 	inst.Udp.WriteRestartSession()
+	c.PureJSON(http.StatusOK, gin.H{"sent": true})
+}
+
+func apiRaceKick(c *gin.Context) {
+	inst, ok := raceControlInstance(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		CarId int `json:"car_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		apiBadRequest(c, "A car_id is required")
+		return
+	}
+	inst.Udp.WriteKickUser(body.CarId)
 	c.PureJSON(http.StatusOK, gin.H{"sent": true})
 }
 

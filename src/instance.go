@@ -16,10 +16,11 @@ import (
 type Instance struct {
 	Conf ServerInstance
 
-	// mu guards cmd, lines and Status
-	mu    sync.Mutex
-	cmd   *exec.Cmd
-	lines string
+	// mu guards cmd, lines, Status and drivers
+	mu      sync.Mutex
+	cmd     *exec.Cmd
+	lines   string
+	drivers map[int]*DriverState
 
 	Udp    *UdpPlugin
 	Status ServerStatus

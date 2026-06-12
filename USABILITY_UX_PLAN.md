@@ -10,7 +10,7 @@ Last updated: 2026-06-12
 | B — Server Setup | **page done** | `/setup` + `GET /api/server/readiness`; guided first-run wizard still open |
 | C — Event builder | **largely done** | inline preset creation + ini preview done; group duplication/templates open |
 | D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
-| E — Queue / race ops | partial | drag-drop reorder + race-control panel done; ETA/scheduling, grid editor, live timing open |
+| E — Queue / race ops | **mostly done** | reorder, race control (+kick), live timing/roster done; ETA/scheduling, grid editor, position/gaps open |
 | F — Admin / reliability | open | results/history, roles, backup, health, envelope cleanup |
 
 Verified live against a migrated test DB (run-mode round-trip, queue 409
@@ -354,15 +354,15 @@ These are high-value, lower-risk improvements.
 
 ## 8. Bigger Bets from APP_GUIDE.md
 
-- [~] Live race control.
-      - [ ] driver list (needs a live UDP roster — follow-up)
-      - [~] ping/kick (via admin command field; dedicated kick needs the roster)
+- [x] Live race control.
+      - [x] driver list (live UDP roster from connection events)
+      - [x] ping/kick (dedicated kick-by-car-id + admin command field)
       - [x] broadcast chat
       - [x] next/restart session
       - [x] admin commands
-- [ ] Real-time lap/position widget.
-      - use ACSP lap completed and car updates
-      - show position, last lap, and gaps
+- [~] Real-time lap/position widget.
+      - [x] use ACSP lap completed (laps, last lap, best lap, live via SSE)
+      - [ ] live position/gaps (needs car-update polling — follow-up)
 - [ ] Mobile-first pass.
       - improve bottom-tab navigation under 640 px
       - larger touch targets
@@ -467,17 +467,19 @@ repeat panel (Queue), badge + stop-repeat (Dashboard), "Run repeatedly" picker
 - [x] Drag-and-drop reorder.
 - [ ] Queue ETA and scheduled starts.
 - [ ] Dashboard grid editor.
-- [~] Race control panel. (Broadcast chat, next/restart session, admin command
-      live on the Dashboard; driver list + dedicated kick are the follow-up.)
-- [ ] Live timing widget.
+- [x] Race control panel (broadcast chat, next/restart session, admin command,
+      kick — Dashboard).
+- [x] Live timing widget (driver roster + laps/last/best, live via SSE).
 
 Why fifth: improves live operations after the setup and event model are stable.
 
-**Phase E status: partial.** Done: drag-and-drop reorder (`PUT
-/api/queue/order`) and a race-control panel over the existing ACSP UDP writers
+**Phase E status: mostly done.** Done: drag-and-drop reorder (`PUT
+/api/queue/order`), race-control panel over the ACSP UDP writers
 (`/api/server/broadcast`, `/next-session`, `/restart-session`,
-`/admin-command`, all guarded to running instances). Open: queue ETA/scheduled
-starts, dashboard grid editor, live timing, driver roster + kick UI.
+`/admin-command`, `/kick`, all guarded to running instances), and a live
+driver roster / timing table fed by connection + lap-completed UDP events over
+a new `drivers` SSE channel. Open: queue ETA/scheduled starts, dashboard grid
+editor, live position/gaps.
 
 ### Phase F - Administration and Reliability
 

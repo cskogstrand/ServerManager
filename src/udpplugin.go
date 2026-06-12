@@ -359,6 +359,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.mu.Unlock()
 		if changed {
 			Events.Publish("session", inst.Id(), sessionEventPayload(sess))
+			inst.resetDriverLaps()
 		}
 
 	case acspSessionInfo:
@@ -433,6 +434,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.Status.Players = inst.Status.Players + 1
 		inst.mu.Unlock()
 		inst.publishPlayers()
+		inst.driverJoin(nc)
 		log.Print("ACSP_NEW_CONNECTION: ")
 		PrintInterface(nc)
 
@@ -447,6 +449,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.Status.Players = inst.Status.Players - 1
 		inst.mu.Unlock()
 		inst.publishPlayers()
+		inst.driverLeave(cc.carId)
 		log.Print("ACSP_CONNECTION_CLOSED: ")
 		PrintInterface(cc)
 
@@ -455,6 +458,7 @@ func (inst *Instance) udpReceive() bool {
 		lc.carId = r.ReadUint8()
 		lc.laptime = r.ReadUint32()
 		lc.cuts = r.ReadUint8()
+		inst.driverLap(lc)
 		log.Print("ACSP_LAP_COMPLETED: ")
 		PrintInterface(lc)
 

@@ -232,6 +232,7 @@ func main() {
 		api.POST("/server/next-session", apiRaceNextSession)
 		api.POST("/server/restart-session", apiRaceRestartSession)
 		api.POST("/server/admin-command", apiRaceAdminCommand)
+		api.POST("/server/kick", apiRaceKick)
 		api.GET("/server/logfile", apiServerLogfile)
 		api.GET("/server/smdata", apiServerSmdata)
 		api.GET("/server/smcontent", apiServerSmcontent)

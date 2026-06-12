@@ -38,6 +38,7 @@ interface StatusPayload {
   public_ip: string;
   cfg_path: string;
   current_event: CurrentEvent;
+  drivers: import("@/stores/server").DriverState[];
   current_cars: { cache_car_key: string; skin_key: string }[];
   session: {
     type: string;
@@ -63,10 +64,36 @@ const loading = ref(true);
 
 async function fetchDetail(id: number) {
   try {
-    details.value[id] = await api.get<StatusPayload>(`/api/server/status?instance=${id}`);
+    const payload = await api.get<StatusPayload>(`/api/server/status?instance=${id}`);
+    details.value[id] = payload;
+    // Seed the live roster; SSE "drivers" events keep it fresh after this.
+    const inst = server.instances[id];
+    if (inst) inst.drivers = payload.drivers ?? [];
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
+}
+
+function lapTime(ms: number): string {
+  if (!ms) return "—";
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const t = ms % 1000;
+  return `${m}:${String(s).padStart(2, "0")}.${String(t).padStart(3, "0")}`;
+}
+
+function kick(id: number, carId: number, name: string) {
+  void confirm
+    .ask({
+      title: "Kick driver",
+      message: `Kick ${name || "car " + carId} from the server?`,
+      confirmLabel: "Kick",
+      tone: "danger",
+    })
+    .then((ok) => {
+      if (!ok) return;
+      void raceAction(id, () => api.post(`/api/server/kick?instance=${id}`, { car_id: carId }), "Driver kicked.");
+    });
 }
 
 async function refreshAll() {
@@ -395,6 +422,45 @@ function consoleLines(detail?: StatusPayload): string {
           </ul>
           <p v-else class="text-sm text-dim">No entry list rendered yet.</p>
         </div>
+      </div>
+
+      <!-- Live timing -->
+      <div v-if="inst.running && inst.drivers.length" class="mt-4 border-t border-line pt-3">
+        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
+          Live timing — {{ inst.drivers.length }} connected
+        </h3>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">
+              <th class="py-1.5 pr-2 font-semibold">Driver</th>
+              <th class="py-1.5 pr-2 font-semibold max-sm:hidden">Car</th>
+              <th class="py-1.5 pr-2 text-right font-semibold">Laps</th>
+              <th class="py-1.5 pr-2 text-right font-semibold">Last</th>
+              <th class="py-1.5 pr-2 text-right font-semibold">Best</th>
+              <th class="py-1.5 font-semibold"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in inst.drivers" :key="d.car_id" class="border-b border-line/60">
+              <td class="py-1.5 pr-2 font-medium">{{ d.name || "car " + d.car_id }}</td>
+              <td class="py-1.5 pr-2 font-mono text-xs text-muted max-sm:hidden">{{ d.car }}</td>
+              <td class="py-1.5 pr-2 text-right">{{ d.laps }}</td>
+              <td class="py-1.5 pr-2 text-right font-mono text-xs">{{ lapTime(d.last_lap_ms) }}</td>
+              <td class="py-1.5 pr-2 text-right font-mono text-xs text-ok">{{ lapTime(d.best_lap_ms) }}</td>
+              <td class="py-1.5 text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="busy[inst.id]"
+                  aria-label="Kick driver"
+                  @click="kick(inst.id, d.car_id, d.name)"
+                >
+                  <Icon name="x" :size="14" />
+                </Button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- Race control -->

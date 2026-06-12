@@ -116,6 +116,7 @@ func (inst *Instance) stop() {
 	inst.mu.Unlock()
 
 	if stopped {
+		inst.clearDrivers()
 		inst.publishRunning(false)
 	}
 }

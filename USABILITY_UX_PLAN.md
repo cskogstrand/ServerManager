@@ -304,10 +304,10 @@ These are high-value, lower-risk improvements.
       - [x] no presets -> create preset (event builder warns + links to Build)
       - [x] idle dashboard -> create/queue/run event
       - [x] empty content -> set install path or import content
-- [ ] Loading skeletons.
-      - [ ] dashboard cards
+- [x] Loading skeletons.
+      - [x] dashboard cards
       - [x] event card grid
-      - [ ] content library grids
+      - [x] content library grids
       - [ ] preset editor shell
 - [ ] Form validation before submit.
       - [ ] required markers

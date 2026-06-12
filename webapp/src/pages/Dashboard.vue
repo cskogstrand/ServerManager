@@ -21,6 +21,7 @@ import Sheet from "@/components/ui/Sheet.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
 
 interface CurrentEvent {
   id: number;
@@ -374,6 +375,10 @@ function consoleLines(detail?: StatusPayload): string {
       </span>
     </template>
   </PageHeader>
+
+  <div v-if="loading" class="space-y-4">
+    <Skeleton v-for="n in 2" :key="n" class="h-60" />
+  </div>
 
   <EmptyState
     v-if="!loading && !server.instanceList.length"

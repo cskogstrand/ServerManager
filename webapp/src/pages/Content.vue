@@ -14,9 +14,11 @@ import Toggle from "@/components/ui/Toggle.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
 
 const content = useContentStore();
 const toast = useToastStore();
+const libraryLoading = ref(true);
 
 // --- Installation & CSP (the content half of user_config) ---
 const config = ref<UserConfig | null>(null);
@@ -27,7 +29,7 @@ const cspHidepit = intToggle(config, "csp_hidepit");
 const pathValid = ref<boolean | null>(null);
 
 onMounted(async () => {
-  void content.load();
+  content.load().finally(() => (libraryLoading.value = false));
   config.value = await api.get<UserConfig>("/api/config");
 });
 
@@ -171,6 +173,11 @@ function jobTone(status: string) {
         <Input v-model="search" placeholder="Search…" class="!w-44" />
       </template>
 
+      <div v-if="libraryLoading" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Skeleton v-for="n in 6" :key="n" class="aspect-video" />
+      </div>
+
+      <template v-else>
       <div v-if="tab === 'tracks'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="overflow-hidden rounded-md border border-line">
           <img
@@ -216,6 +223,7 @@ function jobTone(status: string) {
       >
         <Button variant="dark" @click="recache">Rebuild cache</Button>
       </EmptyState>
+      </template>
     </Card>
 
     <!-- Upload & jobs -->

@@ -494,13 +494,13 @@ function positionFor(inst: import("@/stores/server").InstanceState, carId: numbe
   return inst.positions.find((p) => p.car_id === carId);
 }
 
-// Compact map: cap at 280px tall, width follows the track's aspect ratio so
+// Compact map: cap at 160px tall, width follows the track's aspect ratio so
 // tall circuits don't dominate the card. The full-size map lives on /server/:id.
 function mapCanvasStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
   return {
     aspectRatio: String(ratio),
-    width: `min(100%, calc(280px * ${ratio}))`,
+    width: `min(100%, calc(160px * ${ratio}))`,
     marginInline: "auto",
   };
 }
@@ -671,6 +671,34 @@ function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
             <dd class="min-w-0 truncate font-mono text-xs">{{ inst.session.weather_graphics || "—" }}</dd>
           </dl>
           <p v-else class="text-sm text-dim">Server stopped.</p>
+
+          <!-- Compact track map -->
+          <div v-if="details[inst.id]?.current_event?.track_key && trackMapMeta[inst.id]" class="mt-3">
+            <div
+              class="relative overflow-hidden rounded-md border border-line bg-bg"
+              :style="mapCanvasStyle(trackMapMeta[inst.id]!)"
+            >
+              <img
+                :src="mapImageUrl(details[inst.id])"
+                alt=""
+                class="absolute inset-0 size-full object-fill opacity-80"
+              />
+              <template v-for="d in inst.drivers" :key="d.car_id">
+                <button
+                  v-if="positionFor(inst, d.car_id)"
+                  type="button"
+                  class="absolute grid size-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[8px] font-black text-bg shadow-[0_0_10px_rgba(91,141,239,0.65)] transition-transform hover:z-10 hover:scale-125"
+                  :style="mapPoint(positionFor(inst, d.car_id)!, trackMapMeta[inst.id]!)"
+                  :title="`${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(inst, d.car_id))} km/h · gear ${positionFor(inst, d.car_id)?.gear ?? 0}`"
+                >
+                  {{ (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
+                </button>
+              </template>
+            </div>
+            <p class="mt-1 text-center font-mono text-xs text-dim">
+              {{ inst.positions.length }} live position{{ inst.positions.length === 1 ? "" : "s" }}
+            </p>
+          </div>
         </div>
 
         <!-- Grid -->
@@ -684,41 +712,6 @@ function speedKmh(pos?: import("@/stores/server").CarPositionState): number {
           </ul>
           <p v-else class="text-sm text-dim">No entry list rendered yet.</p>
         </div>
-      </div>
-
-      <!-- Track map -->
-      <div v-if="details[inst.id]?.current_event?.track_key" class="mt-4 border-t border-line pt-3">
-        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Track map</h3>
-          <span class="font-mono text-xs text-dim">
-            {{ inst.positions.length }} live position{{ inst.positions.length === 1 ? "" : "s" }}
-          </span>
-        </div>
-        <div
-          v-if="trackMapMeta[inst.id]"
-          class="relative overflow-hidden rounded-md border border-line bg-bg"
-          :style="mapCanvasStyle(trackMapMeta[inst.id]!)"
-        >
-          <img
-            :src="mapImageUrl(details[inst.id])"
-            alt=""
-            class="absolute inset-0 size-full object-fill opacity-80"
-          />
-          <template v-for="d in inst.drivers" :key="d.car_id">
-            <button
-              v-if="positionFor(inst, d.car_id)"
-              type="button"
-              class="absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[9px] font-black text-bg shadow-[0_0_14px_rgba(91,141,239,0.65)] transition-transform hover:z-10 hover:scale-110"
-              :style="mapPoint(positionFor(inst, d.car_id)!, trackMapMeta[inst.id]!)"
-              :title="`${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(inst, d.car_id))} km/h · gear ${positionFor(inst, d.car_id)?.gear ?? 0}`"
-            >
-              {{ (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
-            </button>
-          </template>
-        </div>
-        <p v-else class="rounded-md border border-line bg-surface px-3 py-3 text-sm text-dim">
-          Track map metadata is not available for this layout.
-        </p>
       </div>
 
       <!-- Spectator stream -->

@@ -175,15 +175,37 @@ func writeModLinks(dir string, cfg UserConfig, cr *ConfigRenderer) {
 		return
 	}
 
+	// Only advertise content that actually exists on disk, so Content Manager
+	// never gets a 404 download URL (one missing car can abort the whole
+	// "install missing content" flow). A car/track in the cache but absent from
+	// the live content tree is skipped and logged.
+	base, _ := Dba.basepath()
+	have := func(sub string) bool {
+		if base == "" {
+			return true // can't verify — don't drop links
+		}
+		p := filepath.Join(base, "content", sub)
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return true
+		}
+		return findDirCaseInsensitive(filepath.Dir(p), filepath.Base(p)) != ""
+	}
+
 	// Collect unique car keys from the rendered entry list.
 	carURLs := map[string]string{}
 	carOrder := make([]string, 0)
+	seen := map[string]bool{}
 	for _, e := range cr.class.Entries {
 		if e.CacheCarKey == nil || *e.CacheCarKey == "" {
 			continue
 		}
 		k := *e.CacheCarKey
-		if _, seen := carURLs[k]; seen {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if !have(filepath.Join("cars", k)) {
+			log.Printf("mod links: skipping car %q — not found under %s/content/cars", k, base)
 			continue
 		}
 		carURLs[k] = carDownloadURL(cfg, k)
@@ -192,7 +214,7 @@ func writeModLinks(dir string, cfg UserConfig, cr *ConfigRenderer) {
 
 	trackKey := ""
 	trackURL := ""
-	if cr.track.Key != nil && *cr.track.Key != "" {
+	if cr.track.Key != nil && *cr.track.Key != "" && have(filepath.Join("tracks", *cr.track.Key)) {
 		trackKey = *cr.track.Key
 		trackURL = trackDownloadURL(cfg, trackKey)
 	}

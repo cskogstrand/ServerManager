@@ -418,7 +418,7 @@ onMounted(() =>
         <Card v-for="e in events" :key="e.id ?? 0">
           <template #header>
             <Icon name="events" :size="16" class="text-accent" />
-            <h2 class="truncate text-sm font-bold">{{ e.track_name }}</h2>
+            <h2 class="min-w-0 truncate text-sm font-bold">{{ e.track_name }}</h2>
             <span v-if="e.track_config" class="text-xs text-dim">{{ e.track_config }}</span>
           </template>
           <template #actions>
@@ -565,7 +565,7 @@ onMounted(() =>
         </div>
       </FormRow>
 
-      <div class="grid grid-cols-2 gap-x-4">
+      <div class="grid gap-x-4 sm:grid-cols-2">
         <FormRow label="Race laps" hint="0 = time-based race">
           <Input v-model="editing.race_laps" type="number" :min="0" />
         </FormRow>

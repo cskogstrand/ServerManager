@@ -100,7 +100,7 @@ function totalSlots(): number {
           </FormRow>
         </div>
 
-        <div class="flex flex-col gap-1">
+        <div class="flex gap-1 sm:flex-col">
           <Button variant="dark" size="sm" :disabled="i === 0" aria-label="Move up" @click="move(i, -1)">
             <Icon name="arrowUp" :size="14" />
           </Button>

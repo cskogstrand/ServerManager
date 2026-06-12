@@ -303,8 +303,8 @@ const removeDriverStream = (stream: DriverStream) =>
   </div>
 
   <div class="mt-6">
-    <div class="mb-3 flex items-center justify-between gap-3">
-      <div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
         <h2 class="text-sm font-bold">Driver Streams</h2>
         <p class="text-xs text-dim">Map driver GUIDs to external WebRTC player URLs for dashboard watch actions.</p>
       </div>
@@ -318,7 +318,7 @@ const removeDriverStream = (stream: DriverStream) =>
       <Card v-for="stream in driverStreams" :key="stream.id">
         <template #header>
           <span class="size-2 rounded-full" :class="stream.enabled !== 0 ? 'bg-ok' : 'bg-dim'" />
-          <h3 class="truncate text-sm font-bold">{{ stream.display_name || stream.driver_guid }}</h3>
+          <h3 class="min-w-0 truncate text-sm font-bold">{{ stream.display_name || stream.driver_guid }}</h3>
         </template>
         <template #actions>
           <Button variant="dark" size="sm" @click="openDriverEdit(stream)">Edit</Button>
@@ -326,11 +326,11 @@ const removeDriverStream = (stream: DriverStream) =>
         </template>
         <dl class="grid gap-y-1.5 text-xs">
           <dt class="text-muted">GUID</dt>
-          <dd class="truncate font-mono">{{ stream.driver_guid }}</dd>
+          <dd class="min-w-0 truncate font-mono">{{ stream.driver_guid }}</dd>
           <dt class="text-muted">Player URL</dt>
-          <dd class="truncate font-mono">{{ stream.stream_embed_url }}</dd>
+          <dd class="min-w-0 truncate font-mono">{{ stream.stream_embed_url }}</dd>
           <dt class="text-muted">Health URL</dt>
-          <dd class="truncate font-mono">{{ stream.stream_status_url || "—" }}</dd>
+          <dd class="min-w-0 truncate font-mono">{{ stream.stream_status_url || "—" }}</dd>
         </dl>
       </Card>
     </div>
@@ -344,7 +344,7 @@ const removeDriverStream = (stream: DriverStream) =>
       <FormRow label="Name" for-id="iname" hint="Shown in the Assetto Corsa lobby">
         <Input id="iname" v-model="form.name" />
       </FormRow>
-      <div class="grid grid-cols-2 gap-x-4">
+      <div class="grid gap-x-4 sm:grid-cols-2">
         <FormRow label="UDP port" for-id="iudp">
           <Input id="iudp" v-model="form.udp_port" type="number" :min="1024" :max="65535" />
         </FormRow>
@@ -355,7 +355,7 @@ const removeDriverStream = (stream: DriverStream) =>
           <Input id="ihttp" v-model="form.http_port" type="number" :min="1024" :max="65535" />
         </FormRow>
       </div>
-      <div class="grid grid-cols-2 gap-x-4">
+      <div class="grid gap-x-4 sm:grid-cols-2">
         <FormRow label="Plugin port (acServer)" for-id="iplugin">
           <Input id="iplugin" v-model="form.plugin_port" type="number" :min="1024" :max="65535" />
         </FormRow>
@@ -378,7 +378,7 @@ const removeDriverStream = (stream: DriverStream) =>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.spectator_enabled" label="Reserve a locked spectator slot for the stream client" />
         <div v-if="form.spectator_enabled" class="mt-3">
-          <div class="grid grid-cols-2 gap-x-4">
+          <div class="grid gap-x-4 sm:grid-cols-2">
             <FormRow label="Driver name" for-id="ispec-name">
               <Input id="ispec-name" v-model="form.spectator_driver_name" />
             </FormRow>
@@ -386,7 +386,7 @@ const removeDriverStream = (stream: DriverStream) =>
               <Input id="ispec-guid" v-model="form.spectator_guid" class="font-mono" />
             </FormRow>
           </div>
-          <div class="grid grid-cols-2 gap-x-4">
+          <div class="grid gap-x-4 sm:grid-cols-2">
             <FormRow label="Car" hint="The full AC client on the stream PC must have this car installed.">
               <Combobox
                 v-model="form.spectator_car_key"
@@ -418,7 +418,7 @@ const removeDriverStream = (stream: DriverStream) =>
   <Modal :open="driverEditorOpen" :title="driverForm?.id ? 'Edit driver stream' : 'New driver stream'" @close="driverEditorOpen = false">
     <template v-if="driverForm">
       <Toggle v-model="driverForm.enabled" label="Show this stream when the driver is connected" />
-      <div class="mt-3 grid grid-cols-2 gap-x-4">
+      <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
         <FormRow label="Driver GUID" for-id="dsguid">
           <Input id="dsguid" v-model="driverForm.driver_guid" class="font-mono" />
         </FormRow>

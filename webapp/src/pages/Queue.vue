@@ -335,7 +335,8 @@ watch(
         </Button>
       </template>
 
-      <table v-if="rows.length" class="w-full text-sm">
+      <div v-if="rows.length" class="overflow-x-auto">
+      <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">
             <th class="py-2 pr-2 font-semibold">#</th>
@@ -402,6 +403,7 @@ watch(
           </tr>
         </tbody>
       </table>
+      </div>
 
       <EmptyState
         v-else

@@ -103,6 +103,7 @@ onMounted(() => guard(load));
 
   <div class="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
     <Card title="Users">
+      <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">
@@ -142,6 +143,7 @@ onMounted(() => guard(load));
           </tr>
         </tbody>
       </table>
+      </div>
     </Card>
 
     <Card title="Add user">

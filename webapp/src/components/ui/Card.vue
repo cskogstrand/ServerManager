@@ -13,12 +13,12 @@ defineProps<{
   >
     <header
       v-if="title || $slots.header || $slots.actions"
-      class="flex min-h-12 items-center gap-2.5 border-b border-line bg-surface-2/35 px-4 py-3"
+      class="flex min-h-12 flex-wrap items-center gap-2.5 border-b border-line bg-surface-2/35 px-4 py-3"
     >
       <slot name="header">
         <h2 class="text-sm font-bold tracking-tight">{{ title }}</h2>
       </slot>
-      <div v-if="$slots.actions" class="ml-auto flex items-center gap-2">
+      <div v-if="$slots.actions" class="ml-auto flex flex-wrap items-center gap-2">
         <slot name="actions" />
       </div>
     </header>

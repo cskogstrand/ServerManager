@@ -300,7 +300,7 @@ function jobTone(status: string) {
       <Card v-if="content.jobList.length" title="Import jobs">
         <div v-for="job in content.jobList" :key="job.id" class="mb-3 last:mb-0">
           <div class="flex items-baseline justify-between gap-2 text-sm">
-            <span class="truncate">{{ job.source_name || job.kind }}</span>
+            <span class="min-w-0 truncate">{{ job.source_name || job.kind }}</span>
             <span class="shrink-0 text-xs" :class="jobTone(job.status)">{{ job.status }}</span>
           </div>
           <div class="mt-1 h-1 overflow-hidden rounded-full bg-surface-3">

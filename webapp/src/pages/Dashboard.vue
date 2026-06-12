@@ -594,7 +594,7 @@ function consoleLines(detail?: StatusPayload): string {
             <dt class="text-muted">Air / Road</dt>
             <dd>{{ inst.session.ambient_temp }}° / {{ inst.session.road_temp }}°</dd>
             <dt class="text-muted">Weather</dt>
-            <dd class="truncate font-mono text-xs">{{ inst.session.weather_graphics || "—" }}</dd>
+            <dd class="min-w-0 truncate font-mono text-xs">{{ inst.session.weather_graphics || "—" }}</dd>
           </dl>
           <p v-else class="text-sm text-dim">Server stopped.</p>
         </div>
@@ -604,7 +604,7 @@ function consoleLines(detail?: StatusPayload): string {
           <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Grid</h3>
           <ul v-if="details[inst.id] && carSummary(details[inst.id]).length" class="space-y-1 text-sm">
             <li v-for="c in carSummary(details[inst.id])" :key="c.model" class="flex justify-between gap-2">
-              <span class="truncate font-mono text-xs">{{ c.model }}</span>
+              <span class="min-w-0 truncate font-mono text-xs">{{ c.model }}</span>
               <span class="text-muted">×{{ c.count }}</span>
             </li>
           </ul>
@@ -643,6 +643,7 @@ function consoleLines(detail?: StatusPayload): string {
         <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
           Live timing — {{ inst.drivers.length }} connected
         </h3>
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">
@@ -686,6 +687,7 @@ function consoleLines(detail?: StatusPayload): string {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       <!-- Race control -->
@@ -761,7 +763,7 @@ function consoleLines(detail?: StatusPayload): string {
         :key="i"
         class="mb-2 flex flex-wrap items-end gap-2 rounded-md border border-line bg-surface-2/50 p-2"
       >
-        <div class="min-w-0 flex-1">
+        <div class="min-w-40 flex-1">
           <Combobox
             v-model="entry.cache_car_key"
             placeholder="Search cars…"

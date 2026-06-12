@@ -4,6 +4,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useServerStore } from "@/stores/server";
+import { useToastStore } from "@/stores/toast";
+import { useConfirmStore } from "@/stores/confirm";
 import type { DropDownList, UserEventList } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -11,6 +13,7 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Select from "@/components/ui/Select.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import EmptyState from "@/components/ui/EmptyState.vue";
 
 interface QueueRow {
   id: number;
@@ -27,12 +30,12 @@ interface QueueRow {
 }
 
 const server = useServerStore();
+const toast = useToastStore();
+const confirm = useConfirmStore();
 
 const instanceId = ref<number | null>(null);
 const rows = ref<QueueRow[]>([]);
 const busy = ref(false);
-const notice = ref("");
-const error = ref("");
 
 const categories = ref<DropDownList[]>([]);
 const allEvents = ref<UserEventList[]>([]);
@@ -50,11 +53,10 @@ const activeRow = computed(
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
-  error.value = "";
   try {
     await fn();
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     busy.value = false;
   }
@@ -67,7 +69,6 @@ async function reload() {
 
 const act = (fn: () => Promise<unknown>) =>
   guard(async () => {
-    notice.value = "";
     await fn();
     await reload();
   });
@@ -79,25 +80,44 @@ const clearCompleted = () => act(() => api.post("/api/queue/clearcompleted"));
 
 const skip = () =>
   act(async () => {
-    if (!window.confirm("Skip the current event and advance the queue? Players get kicked.")) return;
+    const ok = await confirm.ask({
+      title: "Skip current event",
+      message: "Skip the current event and advance the queue?",
+      detail: "Everyone on the server is kicked when the event rotates.",
+      confirmLabel: "Skip event",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.post(`/api/queue/skipevent?instance=${instanceId.value}`);
+    toast.success("Skipping to next event.");
   });
 
 const start = () => act(() => server.start(instanceId.value!));
-const stop = () => act(() => server.stop(instanceId.value!));
+const stop = () =>
+  act(async () => {
+    const ok = await confirm.ask({
+      title: "Stop server",
+      message: `Stop ${instance.value?.name ?? "this instance"}?`,
+      detail: "Connected players are disconnected.",
+      confirmLabel: "Stop server",
+      tone: "danger",
+    });
+    if (!ok) return;
+    await server.stop(instanceId.value!);
+  });
 
 const addEventToQueue = () =>
   act(async () => {
     if (!addEvent.value) return;
     await api.post(`/api/queue/event/${addEvent.value}?instance=${instanceId.value}`);
-    notice.value = "Event queued.";
+    toast.success("Event queued.");
   });
 
 const addCategoryToQueue = () =>
   act(async () => {
     if (!addCategory.value) return;
     await api.post(`/api/queue/category/${addCategory.value}?instance=${instanceId.value}`);
-    notice.value = "All events from the category queued.";
+    toast.success("All events from the group queued.");
   });
 
 function rowState(r: QueueRow): "done" | "active" | "pending" {
@@ -132,7 +152,7 @@ watch(
 <template>
   <PageHeader
     title="Queue"
-    subtitle="Manage the per-instance run order, start servers, and queue individual events or full categories."
+    subtitle="Manage the per-instance run order, start servers, and queue individual events or whole event groups."
     icon="queue"
   >
     <template #actions>
@@ -173,11 +193,6 @@ watch(
       {{ inst.name }}
     </button>
   </div>
-
-  <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
-  <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
-    {{ error }}
-  </p>
 
   <div class="grid items-start gap-5 xl:grid-cols-[1fr_340px]">
     <Card>
@@ -250,11 +265,16 @@ watch(
         </tbody>
       </table>
 
-      <p v-else class="py-6 text-center text-sm text-muted">Queue is empty — add events on the right.</p>
+      <EmptyState
+        v-else
+        icon="queue"
+        title="Queue is empty"
+        message="Add a single event or a whole event group on the right, then start the server."
+      />
     </Card>
 
     <Card title="Add to queue">
-      <FormRow label="Category" for-id="qcat">
+      <FormRow label="Event group" for-id="qcat">
         <Select
           id="qcat"
           v-model="addCategory"
@@ -263,7 +283,7 @@ watch(
       </FormRow>
       <Button variant="dark" class="mb-4 w-full" :disabled="!addCategory || busy" @click="addCategoryToQueue">
         <Icon name="plus" :size="15" />
-        Add all from category
+        Add all from group
       </Button>
 
       <FormRow label="Single event" for-id="qevent">

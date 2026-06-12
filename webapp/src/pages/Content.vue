@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useContentStore } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { intToggle } from "@/lib/forms";
+import { useToastStore } from "@/stores/toast";
 import type { UserConfig } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -12,8 +13,10 @@ import Select from "@/components/ui/Select.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import EmptyState from "@/components/ui/EmptyState.vue";
 
 const content = useContentStore();
+const toast = useToastStore();
 
 // --- Installation & CSP (the content half of user_config) ---
 const config = ref<UserConfig | null>(null);
@@ -43,25 +46,21 @@ async function validatePath() {
 }
 
 async function saveInstall() {
-  error.value = "";
-  notice.value = "";
   if (!config.value) return;
   if (!(await validatePath())) {
-    error.value = "No acServer binary found under that path — expected <path>/server/acServer.";
+    toast.error("No acServer binary found under that path — expected <path>/server/acServer.");
     return;
   }
   try {
     await api.put("/api/config/content", config.value);
-    notice.value = "Installation settings saved. Rebuild the cache to import content.";
+    toast.success("Installation settings saved. Rebuild the cache to import content.");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 
 const tab = ref<"tracks" | "cars" | "weathers">("tracks");
 const search = ref("");
-const error = ref("");
-const notice = ref("");
 
 const filteredTracks = computed(() =>
   content.tracks.filter((t) => (t.name ?? t.key ?? "").toLowerCase().includes(search.value.toLowerCase())),
@@ -89,11 +88,9 @@ function onFileChange(e: Event) {
 // upload itself arrives over SSE (content store).
 function upload() {
   if (!file.value && !archiveUrl.value.trim()) {
-    error.value = "Choose an archive file or paste a download URL.";
+    toast.error("Choose an archive file or paste a download URL.");
     return;
   }
-  error.value = "";
-  notice.value = "";
   uploading.value = true;
   uploadProgress.value = 0;
 
@@ -116,25 +113,23 @@ function upload() {
   xhr.addEventListener("loadend", () => {
     uploading.value = false;
     if (xhr.status >= 200 && xhr.status < 300) {
-      notice.value = "Upload accepted — import progress shows below.";
+      toast.success("Upload accepted — import progress shows below.");
       file.value = null;
       archiveUrl.value = "";
     } else {
-      error.value = xhr.response?.message ?? xhr.response?.error?.message ?? "Upload failed.";
+      toast.error(xhr.response?.message ?? xhr.response?.error?.message ?? "Upload failed.");
     }
   });
   xhr.send(data);
 }
 
 async function recache() {
-  error.value = "";
-  notice.value = "";
   try {
     await api.post("/api/content/recache");
     await content.load(true);
-    notice.value = "Content cache rebuilt.";
+    toast.success("Content cache rebuilt.");
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 
@@ -151,11 +146,6 @@ function jobTone(status: string) {
     subtitle="Browse installed tracks, cars, and weather; validate the AC path; upload or rebuild content cache."
     icon="content"
   />
-
-  <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
-  <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
-    {{ error }}
-  </p>
 
   <div class="grid items-start gap-5 xl:grid-cols-[1fr_360px]">
     <!-- Library -->
@@ -217,6 +207,15 @@ function jobTone(status: string) {
           {{ w.name }}
         </div>
       </div>
+
+      <EmptyState
+        v-if="!content.tracks.length && !content.cars.length && !content.weathers.length"
+        icon="content"
+        title="No content cached yet"
+        message="Set the Assetto Corsa install path, then rebuild the cache to import tracks, cars and weather. You can also upload an archive."
+      >
+        <Button variant="dark" @click="recache">Rebuild cache</Button>
+      </EmptyState>
     </Card>
 
     <!-- Upload & jobs -->

@@ -6,10 +6,13 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useServerStore } from "@/stores/server";
+import { useToastStore } from "@/stores/toast";
+import { useConfirmStore } from "@/stores/confirm";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import EmptyState from "@/components/ui/EmptyState.vue";
 
 interface CurrentEvent {
   id: number;
@@ -49,17 +52,19 @@ interface StatusPayload {
 }
 
 const server = useServerStore();
+const toast = useToastStore();
+const confirm = useConfirmStore();
 
 const details = ref<Record<number, StatusPayload>>({});
 const consoleOpen = ref<Record<number, boolean>>({});
 const busy = ref<Record<number, boolean>>({});
-const error = ref("");
+const loading = ref(true);
 
 async function fetchDetail(id: number) {
   try {
     details.value[id] = await api.get<StatusPayload>(`/api/server/status?instance=${id}`);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 
@@ -68,26 +73,43 @@ async function refreshAll() {
 }
 
 async function toggle(id: number, running: boolean) {
+  if (running) {
+    const inst = server.instanceList.find((i) => i.id === id);
+    const ok = await confirm.ask({
+      title: "Stop server",
+      message: `Stop ${inst?.name ?? "this instance"}?`,
+      detail: "Connected players are disconnected.",
+      confirmLabel: "Stop server",
+      tone: "danger",
+    });
+    if (!ok) return;
+  }
   busy.value[id] = true;
-  error.value = "";
   try {
     await (running ? server.stop(id) : server.start(id));
     await fetchDetail(id);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     busy.value[id] = false;
   }
 }
 
 async function skip(id: number) {
-  if (!window.confirm("Skip the current event and advance the queue? Players get kicked.")) return;
+  const ok = await confirm.ask({
+    title: "Skip current event",
+    message: "Skip the current event and advance the queue?",
+    detail: "Everyone on the server is kicked when the event rotates.",
+    confirmLabel: "Skip event",
+    tone: "danger",
+  });
+  if (!ok) return;
   busy.value[id] = true;
   try {
     await api.post(`/api/queue/skipevent?instance=${id}`);
     await fetchDetail(id);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     busy.value[id] = false;
   }
@@ -122,6 +144,7 @@ watch(
 onMounted(async () => {
   await server.load();
   await refreshAll();
+  loading.value = false;
 });
 
 onBeforeUnmount(() => {
@@ -167,9 +190,19 @@ function consoleLines(detail?: StatusPayload): string {
     </template>
   </PageHeader>
 
-  <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">
-    {{ error }}
-  </p>
+  <EmptyState
+    v-if="!loading && !server.instanceList.length"
+    icon="instances"
+    title="No server instances yet"
+    message="Create a server instance to assign ports and run events on it."
+  >
+    <RouterLink to="/settings/instances">
+      <Button>
+        <Icon name="plus" :size="15" />
+        Add an instance
+      </Button>
+    </RouterLink>
+  </EmptyState>
 
   <div class="space-y-4">
     <Card v-for="inst in server.instanceList" :key="inst.id">

@@ -2,12 +2,13 @@
 // Event Builder: categories on the left, events as cards, builder in a side
 // sheet. Presets are picked from dropdowns (filled ones only); each select
 // links to its editor for creating new presets.
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useServerStore } from "@/stores/server";
+import { useToastStore } from "@/stores/toast";
+import { useConfirmStore } from "@/stores/confirm";
 import type { DropDownList } from "@/types/generated";
 import PresetShell from "@/components/presets/PresetShell.vue";
-import PresetNotices from "@/components/presets/PresetNotices.vue";
 import TrackPicker from "@/components/TrackPicker.vue";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -16,6 +17,8 @@ import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Sheet from "@/components/ui/Sheet.vue";
 import Icon from "@/components/ui/Icon.vue";
+import EmptyState from "@/components/ui/EmptyState.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
 
 interface EventRow {
   id: number | null;
@@ -37,20 +40,35 @@ interface EventRow {
 }
 
 const server = useServerStore();
+const toast = useToastStore();
+const confirm = useConfirmStore();
 
 const categories = ref<DropDownList[]>([]);
 const selectedId = ref<number | null>(null);
 const categoryName = ref("");
 const events = ref<EventRow[]>([]);
 const busy = ref(false);
-const notice = ref("");
-const error = ref("");
+const loading = ref(true);
 
 // Preset dropdown options (only "filled" presets render valid configs)
 const difficulties = ref<DropDownList[]>([]);
 const sessions = ref<DropDownList[]>([]);
 const classes = ref<DropDownList[]>([]);
 const times = ref<DropDownList[]>([]);
+
+// Inline validation: every runnable event needs all four presets + a track.
+const missingPresets = computed(() => {
+  const m: string[] = [];
+  if (!classes.value.length) m.push("car class");
+  if (!sessions.value.length) m.push("session");
+  if (!times.value.length) m.push("time & weather");
+  if (!difficulties.value.length) m.push("difficulty");
+  return m;
+});
+const canSave = computed(() => {
+  const e = editing.value;
+  return !!(e && e.track_key && e.class_id && e.session_id && e.time_id && e.difficulty_id);
+});
 
 // The category GET serializes events with legacy mixed-case keys and
 // stringified ids — normalize once here.
@@ -78,12 +96,10 @@ function normalizeEvent(raw: any): EventRow {
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
-  notice.value = "";
-  error.value = "";
   try {
     await fn();
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
+    toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     busy.value = false;
   }
@@ -119,13 +135,22 @@ const create = (name: string) =>
 
 const remove = (id: number) =>
   guard(async () => {
-    if (!window.confirm("Delete this category and all its events? Queue entries are removed too.")) return;
+    const grp = categories.value.find((c) => c.id === id);
+    const ok = await confirm.ask({
+      title: "Delete event group",
+      message: `Delete "${grp?.name ?? "this group"}" and all its events?`,
+      detail: "Any queue entries for those events are removed too. This cannot be undone.",
+      confirmLabel: "Delete group",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.delete(`/api/category/${id}`);
     if (selectedId.value === id) {
       selectedId.value = null;
       events.value = [];
     }
     await loadCategories();
+    toast.success("Event group deleted.");
   });
 
 const rename = () =>
@@ -133,7 +158,7 @@ const rename = () =>
     if (!selectedId.value) return;
     await api.patch(`/api/category/${selectedId.value}`, { name: categoryName.value });
     await loadCategories();
-    notice.value = "Category renamed.";
+    toast.success("Event group renamed.");
   });
 
 // --- Builder sheet ---
@@ -181,11 +206,11 @@ const saveEvent = () =>
     const e = editing.value;
     if (!e || !selectedId.value) return;
     if (!e.track_key) {
-      error.value = "Pick a track first.";
+      toast.error("Pick a track first.");
       return;
     }
     if (!e.difficulty_id || !e.session_id || !e.class_id || !e.time_id) {
-      error.value = "Difficulty, sessions, class and time are all required.";
+      toast.error("Difficulty, sessions, class and time are all required.");
       return;
     }
 
@@ -208,14 +233,43 @@ const saveEvent = () =>
     }
     builderOpen.value = false;
     await select(selectedId.value);
+    toast.success(e.id ? "Event saved." : "Event added.");
   });
 
 const deleteEvent = (e: EventRow) =>
   guard(async () => {
     if (!e.id || !selectedId.value) return;
-    if (!window.confirm("Delete this event? Its queue entries are removed too.")) return;
+    const ok = await confirm.ask({
+      title: "Delete event",
+      message: `Delete the ${e.track_name} event?`,
+      detail: "Its queue entries are removed too. This cannot be undone.",
+      confirmLabel: "Delete event",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.delete(`/api/event/${e.id}`);
     await select(selectedId.value);
+    toast.success("Event deleted.");
+  });
+
+// Duplicate event: clone the row into the same group, then re-select so the
+// new card appears. Saves rebuilding near-identical events by hand.
+const duplicateEvent = (e: EventRow) =>
+  guard(async () => {
+    if (!e.id || !selectedId.value) return;
+    await api.post("/api/events", {
+      event_category_id: selectedId.value,
+      track_key: e.track_key,
+      track_config: e.track_config,
+      difficulty_id: e.difficulty_id,
+      session_id: e.session_id,
+      class_id: e.class_id,
+      time_id: e.time_id,
+      race_laps: e.race_laps ?? 0,
+      strategy: e.strategy ?? 1,
+    });
+    await select(selectedId.value);
+    toast.success("Event duplicated.");
   });
 
 const queueEvent = (e: EventRow) =>
@@ -223,20 +277,21 @@ const queueEvent = (e: EventRow) =>
     if (!e.id) return;
     const inst = server.instanceList[0];
     await api.post(`/api/queue/event/${e.id}${inst ? `?instance=${inst.id}` : ""}`);
-    notice.value = `Queued ${e.track_name} on ${inst?.name ?? "the default instance"}.`;
+    toast.success(`Queued ${e.track_name} on ${inst?.name ?? "the default instance"}.`);
   });
 
 onMounted(() =>
   guard(async () => {
     await Promise.all([loadCategories(), loadPresetLists(), server.load()]);
+    loading.value = false;
   }),
 );
 </script>
 
 <template>
   <PresetShell
-    title="Events"
-    subtitle="Build race events from track, class, session, time/weather, and difficulty presets."
+    title="Event Groups"
+    subtitle="Group your runnable race events. An event sets track, cars, sessions, time/weather and difficulty — everything needed to run."
     icon="events"
     :items="categories"
     :selected-id="selectedId"
@@ -245,10 +300,12 @@ onMounted(() =>
     @create="create"
     @remove="remove"
   >
-    <PresetNotices :notice="notice" :error="error" />
+    <div v-if="loading" class="grid gap-4 md:grid-cols-2">
+      <Skeleton v-for="n in 4" :key="n" class="h-56" />
+    </div>
 
-    <template v-if="selectedId">
-      <Card title="Category" class="mb-4">
+    <template v-else-if="selectedId">
+      <Card title="Event group" class="mb-4">
         <form class="flex max-w-md items-end gap-2" @submit.prevent="rename">
           <div class="flex-1">
             <FormRow label="Name" for-id="catname" class="!mb-0">
@@ -259,7 +316,19 @@ onMounted(() =>
         </form>
       </Card>
 
-      <div class="mb-4 grid gap-4 md:grid-cols-2">
+      <p
+        v-if="missingPresets.length"
+        class="mb-4 flex items-start gap-2 rounded-md border border-accent/40 bg-accent-dim px-3 py-2 text-sm text-text"
+      >
+        <Icon name="info" :size="16" class="mt-0.5 shrink-0 text-accent" />
+        <span>
+          Create at least one {{ missingPresets.join(", ") }} preset under
+          <RouterLink to="/presets/classes" class="font-semibold text-accent hover:underline">Build</RouterLink>
+          before an event can run.
+        </span>
+      </p>
+
+      <div v-if="events.length" class="mb-4 grid gap-4 md:grid-cols-2">
         <Card v-for="e in events" :key="e.id ?? 0">
           <template #header>
             <Icon name="events" :size="16" class="text-accent" />
@@ -272,6 +341,9 @@ onMounted(() =>
               Queue
             </Button>
             <Button variant="dark" size="sm" @click="openBuilder(e)">Edit</Button>
+            <Button variant="ghost" size="sm" aria-label="Duplicate event" @click="duplicateEvent(e)">
+              <Icon name="copy" :size="14" />
+            </Button>
             <Button variant="ghost" size="sm" aria-label="Delete event" @click="deleteEvent(e)">
               <Icon name="trash" :size="14" />
             </Button>
@@ -295,15 +367,29 @@ onMounted(() =>
         </Card>
       </div>
 
-      <Button @click="openBuilder()">
+      <EmptyState
+        v-if="!events.length"
+        icon="events"
+        title="No events in this group yet"
+        message="An event picks a track and the presets to run it. Add your first one."
+      >
+        <Button @click="openBuilder()">
+          <Icon name="plus" :size="15" />
+          New event
+        </Button>
+      </EmptyState>
+      <Button v-else @click="openBuilder()">
         <Icon name="plus" :size="15" />
-        Add event
+        New event
       </Button>
     </template>
 
-    <p v-else class="text-muted">
-      Select an event category or create one — a category groups the events you can queue.
-    </p>
+    <EmptyState
+      v-else
+      icon="folder"
+      title="Pick an event group"
+      message="Event groups organise the events you can queue — like a championship or a casual rotation. Select one on the left, or create a new group."
+    />
   </PresetShell>
 
   <!-- Builder -->
@@ -375,8 +461,9 @@ onMounted(() =>
     </template>
 
     <template #footer>
+      <span v-if="!canSave" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>
       <Button variant="ghost" @click="builderOpen = false">Cancel</Button>
-      <Button :disabled="busy" @click="saveEvent">{{ editing?.id ? "Save event" : "Add event" }}</Button>
+      <Button :disabled="busy || !canSave" @click="saveEvent">{{ editing?.id ? "Save event" : "Add event" }}</Button>
     </template>
   </Sheet>
 

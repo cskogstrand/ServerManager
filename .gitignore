@@ -12,3 +12,8 @@ src/embed/webapp/dist
 /assetocorsa
 webapp/node_modules
 webapp/dist
+
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.pyc

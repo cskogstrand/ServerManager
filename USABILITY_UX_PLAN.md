@@ -37,10 +37,10 @@ selection/creation, so it can look like an "Event" is only a name. A runnable
 event actually needs track, cars/classes, sessions, difficulty, time/weather,
 race laps, and overflow strategy.
 
-- [ ] Rename the current event category concept in the UI to **Event Group**,
+- [x] Rename the current event category concept in the UI to **Event Group**,
       **Series**, or **Collection**. Recommended: **Event Groups** because it
-      is explicit and neutral.
-- [ ] Make **Event** mean only one runnable race definition:
+      is explicit and neutral. (Chose **Event Groups**.)
+- [x] Make **Event** mean only one runnable race definition:
       - track and layout/config
       - car class / grid entries
       - session preset
@@ -49,12 +49,12 @@ race laps, and overflow strategy.
       - race laps / timed race settings
       - overflow strategy when cars exceed pitboxes
       - optional event name/description
-- [ ] Update page copy and button labels:
+- [x] Update page copy and button labels:
       - "Create event group" for grouping.
       - "Create event" for runnable race setup.
       - "Queue event" for manual queueing.
-      - "Repeat event" for auto-repeat mode.
-- [ ] Keep existing API/table names initially if that reduces risk, but add
+      - "Repeat event" for auto-repeat mode. (Added in Phase D.)
+- [x] Keep existing API/table names initially if that reduces risk, but add
       clean frontend names and DTOs so the user model is correct.
 - [ ] Later, consider backend/API rename aliases:
       - `/api/event-groups` as a friendly alias over categories.
@@ -65,10 +65,11 @@ race laps, and overflow strategy.
 Current problem: Content is an operational prerequisite, but not part of daily
 race operation once setup is done.
 
-- [ ] Move the **Content** navigation item from Operate to Admin.
-- [ ] Keep `/content` as the route for backwards compatibility.
-- [ ] In mobile nav, replace Content with a more frequent operation item if
-      needed, such as Instances or Settings.
+- [x] Move the **Content** navigation item from Operate to Admin.
+- [x] Keep `/content` as the route for backwards compatibility.
+- [x] In mobile nav, replace Content with a more frequent operation item if
+      needed, such as Instances or Settings. (Mobile tabs: Dashboard, Events,
+      Queue, Configuration, Content.)
 - [ ] Treat content import/cache as an admin/setup workflow and also expose it
       inside the first-run/onboarding wizard.
 
@@ -201,7 +202,7 @@ setup concerns.
 
 ### 4.4 Duplication and Templates
 
-- [ ] Duplicate event.
+- [x] Duplicate event.
 - [ ] Duplicate event group.
 - [ ] Save event as template.
 - [ ] Create event from template.
@@ -267,31 +268,31 @@ Acceptance criteria:
 
 These are high-value, lower-risk improvements.
 
-- [ ] Toasts instead of inline notice rows.
-      - global toast stack
-      - success/error handling through a shared store
-      - SSE-driven toasts for import finished and event rotated
+- [x] Toasts instead of inline notice rows.
+      - [x] global toast stack (`stores/toast.ts` + `Toaster.vue`)
+      - [x] success/error handling through a shared store
+      - [ ] SSE-driven toasts for import finished and event rotated
 - [ ] Unsaved-changes guards.
       - dirty flag per form
       - route-leave confirmation
       - shared helper for form snapshot comparison
-- [ ] Confirm dialogs in-app.
-      - replace `window.confirm`
-      - reuse `Modal`
-      - spell out consequences, e.g. "removes 3 queue entries"
-- [ ] Empty states with calls to action.
-      - no presets -> create preset
-      - idle dashboard -> create/queue/run event
-      - empty content -> set install path or import content
+- [x] Confirm dialogs in-app.
+      - [x] replace `window.confirm` (Events/Queue/Dashboard)
+      - [x] reuse `Modal` (`ConfirmDialog.vue` + `stores/confirm.ts`)
+      - [x] spell out consequences, e.g. "removes 3 queue entries"
+- [x] Empty states with calls to action.
+      - [x] no presets -> create preset (event builder warns + links to Build)
+      - [x] idle dashboard -> create/queue/run event
+      - [x] empty content -> set install path or import content
 - [ ] Loading skeletons.
-      - dashboard cards
-      - event card grid
-      - content library grids
-      - preset editor shell
+      - [ ] dashboard cards
+      - [x] event card grid
+      - [ ] content library grids
+      - [ ] preset editor shell
 - [ ] Form validation before submit.
-      - required markers
-      - disable save until valid
-      - inline errors for missing fields
+      - [ ] required markers
+      - [x] disable save until valid (event builder)
+      - [x] inline errors for missing fields (event builder)
 - [ ] Searchable dropdowns.
       - car select in class editor
       - preset selects in event builder
@@ -384,13 +385,16 @@ These are high-value, lower-risk improvements.
 
 ### Phase A - Information Architecture and Labels
 
-- [ ] Move Content under Admin in navigation.
-- [ ] Rename category UI to Event Groups.
-- [ ] Update Events page copy so "event" clearly means runnable race setup.
-- [ ] Add page-level empty states and calls to action.
+- [x] Move Content under Admin in navigation.
+- [x] Rename category UI to Event Groups.
+- [x] Update Events page copy so "event" clearly means runnable race setup.
+- [x] Add page-level empty states and calls to action.
 
 Why first: low risk, resolves immediate confusion, and improves every later
 feature discussion.
+
+**Phase A status: done.** Also landed early: toast stack, in-app confirm
+dialog, empty/skeleton components, and single-event duplication.
 
 ### Phase B - Server Setup Wizard
 

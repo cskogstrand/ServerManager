@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import Icon from "@/components/ui/Icon.vue";
+import Toaster from "@/components/ui/Toaster.vue";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.vue";
 import type { UserConfig } from "@/types/generated";
 
 const route = useRoute();
@@ -46,11 +48,10 @@ const navSections = [
       { to: "/", label: "Dashboard", icon: "dashboard" },
       { to: "/events", label: "Events", icon: "events" },
       { to: "/queue", label: "Queue", icon: "queue" },
-      { to: "/content", label: "Content", icon: "content" },
     ],
   },
   {
-    label: "Presets",
+    label: "Build",
     items: [
       { to: "/presets/classes", label: "Car Classes", icon: "car" },
       { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty" },
@@ -63,22 +64,27 @@ const navSections = [
     items: [
       { to: "/settings", label: "Configuration", icon: "settings" },
       { to: "/settings/instances", label: "Instances", icon: "instances" },
+      { to: "/content", label: "Content", icon: "content" },
       { to: "/preferences", label: "Preferences", icon: "user" },
       { to: "/about", label: "About", icon: "info" },
     ],
   },
 ];
 
+// Bottom-tab nav (mobile): the daily operations + content for setup.
 const mobileNav = [
   navSections[0].items[0],
   navSections[0].items[1],
   navSections[0].items[2],
-  navSections[0].items[3],
   navSections[2].items[0],
+  navSections[2].items[2],
 ];
 </script>
 
 <template>
+  <Toaster />
+  <ConfirmDialog />
+
   <RouterView v-if="route.meta.public" />
 
   <div v-else class="min-h-screen overflow-x-hidden bg-bg text-text">

@@ -1,0 +1,65 @@
+package main
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
+
+// RoleMiddleware enforces capabilities centrally, by HTTP method and path,
+// after authentication. admin = everything; steward = operate running servers
+// and queues; viewer = read-only. Backend is the source of truth — the SPA
+// only hides controls.
+func RoleMiddleware(c *gin.Context) {
+	method := c.Request.Method
+	path := c.Request.URL.Path
+	roleVal, _ := c.Get("role")
+	role, _ := roleVal.(string)
+
+	// The Users admin area is admin-only, reads included.
+	if strings.HasPrefix(path, "/api/users") && role != roleAdmin {
+		forbidden(c)
+		return
+	}
+
+	// Safe methods, logout, and editing your own account are open to any role.
+	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions ||
+		path == "/api/logout" || path == "/api/user" {
+		c.Next()
+		return
+	}
+
+	switch role {
+	case roleAdmin:
+		c.Next()
+	case roleSteward:
+		if stewardCanMutate(path) {
+			c.Next()
+			return
+		}
+		forbidden(c)
+	default:
+		forbidden(c)
+	}
+}
+
+// stewardCanMutate whitelists the operate-time mutations a steward may perform:
+// running-server commands, the queue, and per-instance run mode / schedule.
+func stewardCanMutate(path string) bool {
+	p := strings.TrimPrefix(path, "/api")
+	switch {
+	case strings.HasPrefix(p, "/server/"):
+		return true
+	case strings.HasPrefix(p, "/queue"):
+		return true
+	case strings.HasPrefix(p, "/instances/") && (strings.HasSuffix(p, "/runmode") || strings.HasSuffix(p, "/schedule")):
+		return true
+	}
+	return false
+}
+
+func forbidden(c *gin.Context) {
+	apiError(c, http.StatusForbidden, "forbidden", "Your role does not allow this action.")
+	c.Abort()
+}

@@ -62,7 +62,22 @@ func AuthenticateMiddleware(c *gin.Context) {
 		return
 	}
 
+	// Resolve the role fresh each request so a role change takes effect without
+	// re-login; a missing user row means the account was deleted.
+	usr, err := Dba.selectUser(user)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "Session no longer valid"},
+		})
+		return
+	}
+	role := roleAdmin
+	if usr.Role != nil && *usr.Role != "" {
+		role = *usr.Role
+	}
+
 	c.Set("user", user)
+	c.Set("role", role)
 	c.Next()
 }
 
@@ -158,6 +173,7 @@ func main() {
 	api := router.Group("/api")
 	api.Use(AuthenticateMiddleware)
 	api.Use(CsrfMiddleware)
+	api.Use(RoleMiddleware)
 	{
 		api.GET("/cars", apiCarsList)
 		api.GET("/tracks", apiTracksList)
@@ -218,6 +234,12 @@ func main() {
 		api.PUT("/user", apiUserUpdate)
 		api.POST("/logout", apiLogout)
 		api.GET("/about", apiAbout)
+
+		api.GET("/users", apiUsersList)
+		api.POST("/users", apiUserCreate)
+		api.PUT("/users/:name/role", apiUserSetRole)
+		api.PUT("/users/:name/password", apiUserResetPassword)
+		api.DELETE("/users/:name", apiUserDelete)
 
 		api.POST("/content/recache", apiRecacheContent)
 		api.GET("/content/jobs/active", apiContentJobsActive)

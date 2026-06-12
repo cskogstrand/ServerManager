@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
@@ -41,7 +41,9 @@ async function logout() {
   await router.push({ name: "login" });
 }
 
-const navSections = [
+// Build is preset/setup work (admin only); most of Admin is admin only.
+// Operate is open to every role (viewers see, stewards operate).
+const allSections = [
   {
     label: "Operate",
     items: [
@@ -52,6 +54,7 @@ const navSections = [
   },
   {
     label: "Build",
+    admin: true,
     items: [
       { to: "/presets/classes", label: "Car Classes", icon: "car" },
       { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty" },
@@ -62,25 +65,35 @@ const navSections = [
   {
     label: "Admin",
     items: [
-      { to: "/setup", label: "Server Setup", icon: "settings" },
-      { to: "/settings", label: "Configuration", icon: "settings" },
-      { to: "/settings/instances", label: "Instances", icon: "instances" },
-      { to: "/content", label: "Content", icon: "content" },
-      { to: "/maintenance", label: "Backup & Restore", icon: "content" },
+      { to: "/setup", label: "Server Setup", icon: "settings", admin: true },
+      { to: "/settings", label: "Configuration", icon: "settings", admin: true },
+      { to: "/settings/instances", label: "Instances", icon: "instances", admin: true },
+      { to: "/content", label: "Content", icon: "content", admin: true },
+      { to: "/maintenance", label: "Backup & Restore", icon: "content", admin: true },
+      { to: "/settings/users", label: "Users & Roles", icon: "users", admin: true },
       { to: "/preferences", label: "Preferences", icon: "user" },
       { to: "/about", label: "About", icon: "info" },
     ],
   },
-];
+] as const;
 
-// Bottom-tab nav (mobile): the daily operations + setup/content shortcuts.
-const mobileNav = [
-  navSections[0].items[0], // Dashboard
-  navSections[0].items[1], // Events
-  navSections[0].items[2], // Queue
-  navSections[2].items[0], // Server Setup
-  navSections[2].items[3], // Content
-];
+type NavItem = { to: string; label: string; icon: string; admin?: boolean };
+
+const navSections = computed(() =>
+  allSections
+    .filter((s) => !("admin" in s && s.admin) || auth.isAdmin)
+    .map((s) => ({ label: s.label, items: (s.items as readonly NavItem[]).filter((it) => !it.admin || auth.isAdmin) }))
+    .filter((s) => s.items.length > 0),
+);
+
+// Bottom-tab nav (mobile): daily operations + role-appropriate shortcuts.
+const operate = allSections[0].items as readonly NavItem[];
+const admin = allSections[2].items as readonly NavItem[];
+const mobileNav = computed<NavItem[]>(() =>
+  auth.isAdmin
+    ? [operate[0], operate[1], operate[2], admin[0], admin[3]] // Dashboard, Events, Queue, Setup, Content
+    : [operate[0], operate[1], operate[2], admin[6], admin[7]], // Dashboard, Events, Queue, Preferences, About
+);
 </script>
 
 <template>
@@ -171,7 +184,7 @@ const mobileNav = [
         </div>
 
         <p
-          v-if="setupNeeded"
+          v-if="setupNeeded && auth.isAdmin"
           class="mb-4 flex gap-2 rounded-md border border-accent/40 bg-accent-dim px-3 py-2 text-sm text-text"
         >
           <Icon name="info" :size="17" class="mt-0.5 shrink-0 text-accent" />

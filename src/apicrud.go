@@ -665,7 +665,11 @@ func apiLogin(c *gin.Context) {
 		return
 	}
 
-	c.PureJSON(http.StatusOK, gin.H{"success": true, "name": *user.Name})
+	role := roleAdmin
+	if user.Role != nil && *user.Role != "" {
+		role = *user.Role
+	}
+	c.PureJSON(http.StatusOK, gin.H{"success": true, "name": *user.Name, "role": role})
 }
 
 func apiLogout(c *gin.Context) {
@@ -738,4 +742,133 @@ func apiUserUpdate(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
+}
+
+// --- User management (admin only; enforced by RoleMiddleware) ---
+
+func validRole(role string) bool {
+	return role == roleAdmin || role == roleSteward || role == roleViewer
+}
+
+func apiUsersList(c *gin.Context) {
+	users, err := Dba.selectUsers()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": users})
+}
+
+func apiUserCreate(c *gin.Context) {
+	var req struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid user payload")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || req.Password == "" {
+		apiBadRequest(c, "Name and password are required.")
+		return
+	}
+	if !validRole(req.Role) {
+		apiBadRequest(c, "Role must be admin, steward or viewer.")
+		return
+	}
+	if existing, err := Dba.selectUser(req.Name); err == nil && existing.Name != nil {
+		apiError(c, http.StatusConflict, "exists", "A user with that name already exists.")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		apiError(c, http.StatusInternalServerError, "hash_error", err.Error())
+		return
+	}
+	if _, err := Dba.insertUser(req.Name, string(hash), req.Role); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"name": req.Name})
+}
+
+func apiUserSetRole(c *gin.Context) {
+	name := c.Param("name")
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !validRole(req.Role) {
+		apiBadRequest(c, "Role must be admin, steward or viewer.")
+		return
+	}
+	target, err := Dba.selectUser(name)
+	if err != nil || target.Name == nil {
+		apiNotFound(c)
+		return
+	}
+	// Don't demote the last admin.
+	if target.Role != nil && *target.Role == roleAdmin && req.Role != roleAdmin {
+		admins, _ := Dba.countAdmins()
+		if admins <= 1 {
+			apiError(c, http.StatusConflict, "last_admin", "Cannot demote the last admin.")
+			return
+		}
+	}
+	if _, err := Dba.updateUserRole(name, req.Role); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"name": name, "role": req.Role})
+}
+
+func apiUserResetPassword(c *gin.Context) {
+	name := c.Param("name")
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
+		apiBadRequest(c, "A new password is required.")
+		return
+	}
+	if target, err := Dba.selectUser(name); err != nil || target.Name == nil {
+		apiNotFound(c)
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		apiError(c, http.StatusInternalServerError, "hash_error", err.Error())
+		return
+	}
+	if _, err := Dba.updateUserPassword(name, string(hash)); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"name": name})
+}
+
+func apiUserDelete(c *gin.Context) {
+	name := c.Param("name")
+	if self, ok := c.Get("user"); ok && self.(string) == name {
+		apiError(c, http.StatusConflict, "self", "You cannot delete your own account.")
+		return
+	}
+	target, err := Dba.selectUser(name)
+	if err != nil || target.Name == nil {
+		apiNotFound(c)
+		return
+	}
+	if target.Role != nil && *target.Role == roleAdmin {
+		admins, _ := Dba.countAdmins()
+		if admins <= 1 {
+			apiError(c, http.StatusConflict, "last_admin", "Cannot delete the last admin.")
+			return
+		}
+	}
+	if _, err := Dba.deleteUser(name); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"name": name})
 }

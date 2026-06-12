@@ -5,7 +5,16 @@ type Users struct {
 	Password        *string `form:"password" json:"password,omitempty"`
 	MeasurementUnit *int    `form:"measurement_unit" json:"measurement_unit"`
 	TempUnit        *int    `form:"temp_unit" json:"temp_unit"`
+	Role            *string `form:"role" json:"role"`
 }
+
+// Role capabilities: admin = everything; steward = operate running servers and
+// queues; viewer = read-only.
+const (
+	roleAdmin   = "admin"
+	roleSteward = "steward"
+	roleViewer  = "viewer"
+)
 
 type UserConfig struct {
 	Name               *string `form:"name" json:"name"`

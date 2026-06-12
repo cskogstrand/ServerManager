@@ -11,7 +11,7 @@ Last updated: 2026-06-12
 | C — Event builder | **mostly done** | inline preset creation, ini preview, event + group duplication; named templates open |
 | D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
 | E — Queue / race ops | **mostly done** | reorder, race control (+kick), live timing/roster, grid editor, scheduled start; ETA + position/gaps open |
-| F — Admin / reliability | started | backup/restore done; results/history, roles, health, envelope cleanup open |
+| F — Admin / reliability | in progress | backup/restore + multi-user roles done; results/history, health, envelope cleanup open |
 | Quick wins (§6) | **done** | toasts, confirm, empty states, skeletons, searchable dropdowns, unsaved-changes guards, builder validation |
 
 Verified live against a migrated test DB (run-mode round-trip, queue 409 guards,
@@ -19,7 +19,6 @@ reorder, readiness, race-control guards, group duplication, restore staging,
 scheduled start). Commits are split per phase/feature.
 
 ### Remaining (recommend focused sessions)
-- **Multi-user roles** — auth model change + Users admin + route guards (large).
 - **Results / history** — parse acServer results JSON; needs sample output.
 - **Queue ETA per row**, **live position/gaps**, **named event templates**,
   **first-run wizard** (Setup page is the stand-in), **dedicated health panel**
@@ -381,11 +380,12 @@ These are high-value, lower-risk improvements.
       - larger touch targets
       - sheets as default picker pattern
       - verify no horizontal scroll
-- [ ] Multi-user and roles.
-      - admin
-      - race steward
-      - read-only
-      - protect admin-only routes/actions
+- [x] Multi-user and roles.
+      - [x] admin
+      - [x] race steward (operate servers + queues)
+      - [x] read-only (viewer)
+      - [x] protect admin-only routes/actions (central RoleMiddleware by
+        method+path; SPA nav/route gating; last-admin + self-delete guards)
 - [x] Backup/restore in-app.
       - [x] download backup (database, content archive, log)
       - [x] restore upload flow (staged + swapped in at next boot, validated as
@@ -498,17 +498,18 @@ editor, live position/gaps.
 ### Phase F - Administration and Reliability
 
 - [ ] Results/history.
-- [ ] Multi-user roles.
+- [x] Multi-user roles.
 - [x] Backup/restore.
 - [ ] Health panel. (Partly covered by Server Setup readiness.)
 - [ ] API consistency cleanup.
 
 Why last: these are high-value but depend on stable core workflows.
 
-**Phase F status: started.** Backup & Restore done (`/maintenance`, staged
-restore via `applyStagedRestore` on boot + `POST /api/maintenance/restore`).
-Open: results/history, multi-user roles, dedicated health panel, error-envelope
-convergence.
+**Phase F status: in progress.** Backup & Restore + multi-user roles done.
+Roles: admin / steward / viewer enforced centrally by RoleMiddleware
+(method+path) and resolved per-request; admin-only Users page (`/settings/users`)
+with create / role / password-reset / delete, last-admin + self-delete guards.
+Open: results/history, dedicated health panel, error-envelope convergence.
 
 ---
 

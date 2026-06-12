@@ -95,6 +95,10 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_instance", "scheduled_start", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.scheduled_start: ", err)
 	}
+	// Existing single-user installs default to admin so nobody is locked out.
+	if err := dba.ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
+		log.Fatal("Error applying database migration for users.role: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -236,17 +240,94 @@ func (dba Dbaccess) insertNameInto(name string, tableName string) (int64, error)
 
 func (dba Dbaccess) selectUser(username string) (Users, error) {
 	user := Users{}
-	stmt, err := dba.db.Prepare("SELECT name, password, measurement_unit, temp_unit FROM users WHERE name = ? LIMIT 1")
+	stmt, err := dba.db.Prepare("SELECT name, password, measurement_unit, temp_unit, role FROM users WHERE name = ? LIMIT 1")
 	if err != nil {
 		return user, err
 	}
 	defer stmt.Close()
-	err = stmt.QueryRow(username).Scan(&user.Name, &user.Password, &user.MeasurementUnit, &user.TempUnit)
+	err = stmt.QueryRow(username).Scan(&user.Name, &user.Password, &user.MeasurementUnit, &user.TempUnit, &user.Role)
 	if err != nil {
 		return user, err
 	}
 
 	return user, nil
+}
+
+// selectUsers lists all users (no password) for the admin Users page.
+func (dba Dbaccess) selectUsers() ([]Users, error) {
+	rows, err := dba.db.Query("SELECT name, measurement_unit, temp_unit, role FROM users ORDER BY name ASC")
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	list := make([]Users, 0)
+	for rows.Next() {
+		u := Users{}
+		if err := rows.Scan(&u.Name, &u.MeasurementUnit, &u.TempUnit, &u.Role); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		list = append(list, u)
+	}
+	return list, rows.Err()
+}
+
+func (dba Dbaccess) insertUser(name string, hashedPassword string, role string) (int64, error) {
+	stmt, err := dba.db.Prepare("INSERT INTO users (name, password, role) VALUES (?, ?, ?)")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(name, hashedPassword, role)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.LastInsertId()
+}
+
+func (dba Dbaccess) updateUserRole(name string, role string) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE users SET role = ? WHERE name = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(role, name)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
+func (dba Dbaccess) updateUserPassword(name string, hashedPassword string) (int64, error) {
+	stmt, err := dba.db.Prepare("UPDATE users SET password = ? WHERE name = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(hashedPassword, name)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
+func (dba Dbaccess) deleteUser(name string) (int64, error) {
+	stmt, err := dba.db.Prepare("DELETE FROM users WHERE name = ?")
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(name)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
+// countAdmins is used to refuse removing or demoting the last admin.
+func (dba Dbaccess) countAdmins() (int, error) {
+	var n int
+	err := dba.db.QueryRow("SELECT COUNT(*) FROM users WHERE role = ?", roleAdmin).Scan(&n)
+	return n, err
 }
 
 func (dba Dbaccess) updateUser(usr Users) (int64, error) {

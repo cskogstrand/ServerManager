@@ -10,6 +10,10 @@ export const useAuthStore = defineStore("auth", {
 
   getters: {
     loggedIn: (state) => state.user !== null,
+    role: (state) => state.user?.role ?? "viewer",
+    isAdmin: (state) => state.user?.role === "admin",
+    // steward or admin may operate running servers and queues
+    canOperate: (state) => state.user?.role === "admin" || state.user?.role === "steward",
   },
 
   actions: {

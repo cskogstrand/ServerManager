@@ -10,6 +10,7 @@ export interface Users {
   password?: string;
   measurement_unit?: number /* int */;
   temp_unit?: number /* int */;
+  role?: string;
 }
 export interface UserConfig {
   name?: string;
@@ -62,6 +63,11 @@ export interface ServerInstance {
    */
   run_mode?: string;
   repeat_event_id?: number /* int */;
+  /**
+   * ScheduledStart is a unix timestamp; the scheduler starts the instance at
+   * or after this time, then clears it. nil/0 means no schedule.
+   */
+  scheduled_start?: number /* int64 */;
 }
 export interface UserEvent {
   Id?: number /* int */;

@@ -1,6 +1,22 @@
 # Server Manager - Usability and UX Refactor Plan
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
+
+## Execution status
+
+| Phase | State | Notes |
+|-------|-------|-------|
+| A — IA, labels, feedback | **done** | Event Groups relabel, Content→Admin, toasts, in-app confirm, empty/skeleton, event duplication, event-builder validation |
+| B — Server Setup | **page done** | `/setup` + `GET /api/server/readiness`; guided first-run wizard still open |
+| C — Event builder | open | inline preset creation, ini preview, group duplication/templates |
+| D — Run modes / auto-repeat | **done** | per-instance repeat mode, lifecycle re-apply, 409 guards, full UI |
+| E — Queue / race ops | partial | drag-drop reorder + race-control panel done; ETA/scheduling, grid editor, live timing open |
+| F — Admin / reliability | open | results/history, roles, backup, health, envelope cleanup |
+
+Verified live against a migrated test DB (run-mode round-trip, queue 409
+guards, reorder, readiness, race-control guards). Commits are split per phase.
+
+---
 
 Scope: turn the current SPA into a clearer server-setup and race-operations
 workflow. This plan includes the prioritized usability improvements from

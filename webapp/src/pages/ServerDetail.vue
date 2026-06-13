@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "@/lib/api";
-import { useServerStore, type CarPositionState, type DriverState, type InstanceState } from "@/stores/server";
+import { useServerStore, type CarPositionState, type DriverState, type InstanceState, type TelemetryHealth } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
@@ -64,6 +64,7 @@ interface StatusPayload {
     elapsed_ms: number;
   };
   positions: CarPositionState[];
+  telemetry: TelemetryHealth | null;
 }
 
 interface TrackMapMeta {
@@ -142,6 +143,27 @@ const positions = computed(() => inst.value?.positions ?? []);
 const drivers = computed(() => inst.value?.drivers ?? []);
 const connected = computed(() => drivers.value.filter((d) => d.connected));
 
+// Telemetry health: the server can be "running" yet send nothing over the AC
+// UDP plugin (misconfigured AssettoServer, crashed process, wrong ports). Flag
+// that explicitly so an empty map/timing reads as a fault, not "no cars yet".
+const telemetry = computed(() => inst.value?.telemetry ?? null);
+const telemetryWarning = computed(() => {
+  if (!inst.value?.running) return null;
+  const t = telemetry.value;
+  if (!t || !t.udp_online) {
+    const port = t?.plugin_listen_port ?? null;
+    return {
+      title: "Live telemetry offline",
+      detail:
+        `Server Manager has not received any data from the AC UDP plugin` +
+        (port ? ` on port ${port}` : "") +
+        `. Players, live timing and the moving map stay empty until it connects. ` +
+        `For AssettoServer, make sure EnableLegacyPluginInterface is enabled in cfg/extra_cfg.yml.`,
+    };
+  }
+  return null;
+});
+
 async function fetchDetail() {
   try {
     const payload = await api.get<StatusPayload>(`/api/server/status?instance=${instanceId.value}`);
@@ -150,6 +172,7 @@ async function fetchDetail() {
     if (live) {
       live.drivers = payload.drivers ?? [];
       live.positions = payload.positions ?? [];
+      live.telemetry = payload.telemetry ?? live.telemetry;
     }
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
@@ -683,6 +706,18 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <!-- Telemetry fault banner -->
+    <div
+      v-if="telemetryWarning"
+      class="page-enter mb-4 flex items-start gap-2.5 rounded-md border border-warn/40 bg-warn-glow px-3 py-2.5"
+    >
+      <Icon name="alert" :size="18" class="mt-0.5 shrink-0 text-warn" />
+      <div class="min-w-0">
+        <div class="text-sm font-semibold text-warn">{{ telemetryWarning.title }}</div>
+        <p class="text-xs text-muted">{{ telemetryWarning.detail }}</p>
+      </div>
+    </div>
+
     <!-- Track hero: photo backdrop + name, location, description -->
     <section
       v-if="activeTrack"
@@ -742,8 +777,19 @@ onBeforeUnmount(() => {
       <Card class="lg:col-span-2" :muted="false">
         <template #header>
           <h2 class="text-sm font-bold">Track map</h2>
-          <span class="ml-auto font-mono text-xs" :class="positions.length ? 'text-ok' : 'text-dim'">
-            {{ positions.length ? `${positions.length} live position${positions.length === 1 ? "" : "s"}` : "no live telemetry" }}
+          <span
+            class="ml-auto font-mono text-xs"
+            :class="telemetryWarning ? 'text-warn' : positions.length ? 'text-ok' : 'text-dim'"
+          >
+            {{
+              telemetryWarning
+                ? "plugin offline"
+                : positions.length
+                  ? `${positions.length} live position${positions.length === 1 ? "" : "s"}`
+                  : inst.running
+                    ? "waiting for cars"
+                    : "server stopped"
+            }}
           </span>
         </template>
 

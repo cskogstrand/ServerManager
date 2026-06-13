@@ -85,6 +85,10 @@ func (inst *Instance) publishPlayers() {
 	Events.Publish("players", inst.Id(), map[string]any{"players": st.Players})
 }
 
+func (inst *Instance) publishTelemetry() {
+	Events.Publish("telemetry", inst.Id(), map[string]any{"telemetry": inst.telemetrySnapshot()})
+}
+
 // apiServerEventsSSE streams broker events as Server-Sent Events. The old UI
 // keeps polling; the SPA subscribes here instead.
 func apiServerEventsSSE(c *gin.Context) {
@@ -112,10 +116,12 @@ func apiServerEventsSSE(c *gin.Context) {
 			"instance_id": inst.Id(),
 			"ts":          time.Now().Unix(),
 			"data": map[string]any{
-				"running": st.Status,
-				"players": st.Players,
-				"session": sessionEventPayload(st.Session),
+				"running":   st.Status,
+				"players":   st.Players,
+				"session":   sessionEventPayload(st.Session),
+				"drivers":   inst.driversSnapshot(),
 				"positions": inst.positionsSnapshot(),
+				"telemetry": inst.telemetrySnapshot(),
 			},
 		})
 		if err == nil {

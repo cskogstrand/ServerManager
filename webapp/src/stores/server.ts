@@ -47,6 +47,15 @@ export interface CarPositionState {
   updated_at: number;
 }
 
+export interface TelemetryHealth {
+  udp_online: boolean;
+  last_packet_ms: number;
+  last_driver_ms: number;
+  last_position_ms: number;
+  plugin_listen_port: number;
+  plugin_send_port: number;
+}
+
 export type RunMode = "manual_queue" | "repeat_event";
 
 export interface RepeatEventInfo {
@@ -69,6 +78,7 @@ export interface InstanceState {
   session: SessionState | null;
   drivers: DriverState[];
   positions: CarPositionState[];
+  telemetry: TelemetryHealth | null;
   run_mode: RunMode;
   repeat_event_id: number | null;
   repeat_event: RepeatEventInfo | null;
@@ -143,6 +153,7 @@ export const useServerStore = defineStore("server", {
           session: this.instances[item.id]?.session ?? null,
           drivers: this.instances[item.id]?.drivers ?? [],
           positions: this.instances[item.id]?.positions ?? [],
+          telemetry: this.instances[item.id]?.telemetry ?? null,
           run_mode: item.run_mode ?? "manual_queue",
           repeat_event_id: item.repeat_event_id ?? null,
           repeat_event: item.repeat_event ?? null,
@@ -192,7 +203,9 @@ export const useServerStore = defineStore("server", {
           inst.running = event.data.running;
           inst.players = event.data.players;
           inst.session = event.data.session;
+          inst.drivers = event.data.drivers ?? [];
           inst.positions = event.data.positions ?? [];
+          inst.telemetry = event.data.telemetry ?? null;
           break;
         case "server":
           if (!inst) return;
@@ -202,7 +215,12 @@ export const useServerStore = defineStore("server", {
             inst.session = null;
             inst.drivers = [];
             inst.positions = [];
+            if (inst.telemetry) inst.telemetry.udp_online = false;
           }
+          break;
+        case "telemetry":
+          if (!inst) return;
+          inst.telemetry = event.data.telemetry ?? inst.telemetry;
           break;
         case "players":
           if (!inst) return;

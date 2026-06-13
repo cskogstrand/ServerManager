@@ -2,7 +2,7 @@
 // Event shape mirrors src/events.go: {type, instance_id, ts, data}.
 
 export interface ServerEvent {
-  type: "snapshot" | "session" | "players" | "server" | "content_job" | "drivers" | "positions";
+  type: "snapshot" | "session" | "players" | "server" | "content_job" | "drivers" | "positions" | "telemetry";
   instance_id: number;
   ts: number;
   data: any;

@@ -42,6 +42,7 @@ func (inst *Instance) updateCarPosition(cu CarUpdate) {
 	}
 	pos := positionStateFromUpdate(cu)
 	inst.positions[cu.carId] = &pos
+	inst.tel.lastPositionAt = time.Now()
 	shouldPublish := time.Since(inst.lastPositionPublish) >= 200*time.Millisecond
 	if shouldPublish {
 		inst.lastPositionPublish = time.Now()

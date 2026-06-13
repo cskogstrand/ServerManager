@@ -17,17 +17,71 @@ import (
 type Instance struct {
 	Conf ServerInstance
 
-	// mu guards cmd, lines, Status, drivers and positions.
+	// mu guards cmd, lines, Status, drivers, positions and tel.
 	mu                  sync.Mutex
 	cmd                 *exec.Cmd
 	lines               string
 	drivers             map[int]*DriverState
 	positions           map[int]*CarPositionState
 	lastPositionPublish time.Time
+	tel                 telemetryHealth
 
 	Udp    *UdpPlugin
 	Status ServerStatus
 	Cr     ConfigRenderer
+}
+
+// telemetryHealth tracks the liveness of the AC UDP plugin stream for one
+// instance. Guarded by Instance.mu. It lets the UI tell "server running but no
+// telemetry" (plugin misconfigured / crashed) apart from "running, no cars yet".
+type telemetryHealth struct {
+	udpOnline      bool
+	lastPacketAt   time.Time
+	lastDriverAt   time.Time
+	lastPositionAt time.Time
+}
+
+// TelemetrySnapshot is the JSON-facing view of telemetryHealth plus the
+// configured plugin ports. Times are unix-millis, 0 meaning "never".
+type TelemetrySnapshot struct {
+	UdpOnline        bool  `json:"udp_online"`
+	LastPacketMs     int64 `json:"last_packet_ms"`
+	LastDriverMs     int64 `json:"last_driver_ms"`
+	LastPositionMs   int64 `json:"last_position_ms"`
+	PluginListenPort int   `json:"plugin_listen_port"`
+	PluginSendPort   int   `json:"plugin_send_port"`
+}
+
+func (inst *Instance) markPacket() {
+	inst.mu.Lock()
+	inst.tel.lastPacketAt = time.Now()
+	inst.mu.Unlock()
+}
+
+func (inst *Instance) markOnline(online bool) {
+	inst.mu.Lock()
+	inst.tel.udpOnline = online
+	inst.mu.Unlock()
+}
+
+func (inst *Instance) telemetrySnapshot() TelemetrySnapshot {
+	listen, server := inst.pluginPorts()
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+	ms := func(t time.Time) int64 {
+		if t.IsZero() {
+			return 0
+		}
+		return t.UnixMilli()
+	}
+	return TelemetrySnapshot{
+		UdpOnline:        inst.tel.udpOnline,
+		LastPacketMs:     ms(inst.tel.lastPacketAt),
+		LastDriverMs:     ms(inst.tel.lastDriverAt),
+		LastPositionMs:   ms(inst.tel.lastPositionAt),
+		PluginListenPort: listen,
+		PluginSendPort:   server,
+	}
 }
 
 func (inst *Instance) Id() int {

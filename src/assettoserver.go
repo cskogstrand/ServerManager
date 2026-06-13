@@ -481,12 +481,34 @@ func ensureAssettoServerExtraCfg(dir string, relax bool) {
 	for _, k := range relaxableConfigErrors {
 		content = setIgnoreConfigError(content, k, desired)
 	}
+	// The Kunos-compatible UDP plugin interface is what feeds Server Manager's
+	// telemetry (players, drivers, live positions). AssettoServer leaves it off
+	// by default, so always enable it.
+	content = setYamlTopLevelBool(content, "EnableLegacyPluginInterface", true)
 	if content == string(data) {
 		return
 	}
 	if wErr := os.WriteFile(path, []byte(content), 0644); wErr != nil {
 		log.Print("Could not update extra_cfg.yml: ", wErr)
 	}
+}
+
+// setYamlTopLevelBool ensures a top-level `key: value` boolean exists, patching
+// it in place if present (matching only an inline scalar, never a nested
+// mapping) or appending it otherwise.
+func setYamlTopLevelBool(content, key string, value bool) string {
+	v := "false"
+	if value {
+		v = "true"
+	}
+	re := regexp.MustCompile(`(?m)^(` + regexp.QuoteMeta(key) + `:[ \t]*).*$`)
+	if re.MatchString(content) {
+		return re.ReplaceAllString(content, "${1}"+v)
+	}
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return content + key + ": " + v + "\n"
 }
 
 // seedExtraCfgFromDefault returns the default instance's extra_cfg.yml (a real

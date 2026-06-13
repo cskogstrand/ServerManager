@@ -330,6 +330,9 @@ func (inst *Instance) udpReceive() bool {
 		return true
 	}
 
+	// A packet arrived: the plugin stream is alive.
+	inst.markPacket()
+
 	r := UdpReader{}
 	r.New(data)
 
@@ -353,6 +356,8 @@ func (inst *Instance) udpReceive() bool {
 		v := r.ReadUint8()
 		log.Print("ACSP_VERSION: ", v)
 		udp.online = true
+		inst.markOnline(true)
+		inst.publishTelemetry()
 		udp.WriteRealtimePositionInterval(200)
 
 	case acspNewSession:

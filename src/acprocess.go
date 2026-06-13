@@ -72,6 +72,7 @@ func (inst *Instance) start() {
 	cmd := exec.Command(fpath)
 	cmd.Dir = dir
 	inst.Udp.online = false
+	inst.tel = telemetryHealth{}
 	stdOut, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Print("Could not capture acServer stdout: ", err)
@@ -93,8 +94,40 @@ func (inst *Instance) start() {
 
 	go inst.appendOutput(stdOut, "stdout")
 	go inst.appendOutput(stdErr, "stderr")
+	go inst.waitForExit(cmd)
 
 	inst.publishRunning(true)
+}
+
+// waitForExit reaps the server process. Without this the OS process becomes a
+// zombie on exit and, worse, the UI keeps showing "running" after a crash
+// because inst.cmd is never cleared. When the process we started exits, we
+// clear runtime state and publish running=false — unless stop() already swapped
+// inst.cmd (a deliberate stop/restart), in which case it owns the cleanup.
+func (inst *Instance) waitForExit(cmd *exec.Cmd) {
+	err := cmd.Wait()
+
+	inst.mu.Lock()
+	if inst.cmd != cmd {
+		// A stop() or restart already replaced/cleared this process; that path
+		// handles its own cleanup.
+		inst.mu.Unlock()
+		return
+	}
+	inst.cmd = nil
+	inst.Udp.online = false
+	inst.tel.udpOnline = false
+	inst.Status.Players = 0
+	inst.mu.Unlock()
+
+	if err != nil {
+		log.Printf("acServer process for %q exited: %v", inst.Name(), err)
+	} else {
+		log.Printf("acServer process for %q exited", inst.Name())
+	}
+
+	inst.clearDrivers()
+	inst.publishRunning(false)
 }
 
 func (inst *Instance) logContent() string {

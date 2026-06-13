@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // DriverState is one connected (or recently connected) car on an instance,
 // built from ACSP connection and lap-completed events. It powers the live
@@ -30,6 +33,7 @@ func (inst *Instance) driverJoin(nc NewConnection) {
 		Guid:      nc.driverGuid,
 		Connected: true,
 	}
+	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
 	inst.publishDrivers()
 }
@@ -37,6 +41,7 @@ func (inst *Instance) driverJoin(nc NewConnection) {
 func (inst *Instance) driverLeave(carId int) {
 	inst.mu.Lock()
 	delete(inst.drivers, carId)
+	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
 	inst.removeCarPosition(carId)
 	inst.publishDrivers()
@@ -51,6 +56,7 @@ func (inst *Instance) driverLap(lc LapCompleted) {
 			d.BestLapMs = lc.laptime
 		}
 	}
+	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
 	inst.publishDrivers()
 }

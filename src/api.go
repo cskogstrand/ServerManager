@@ -533,6 +533,7 @@ func serverStatusPayload(inst *Instance) gin.H {
 		"current_event": currentEvent,
 		"drivers":       inst.driversSnapshot(),
 		"positions":     inst.positionsSnapshot(),
+		"telemetry":     inst.telemetrySnapshot(),
 		"current_cars": func() []DashboardClassEntryUpdate {
 			entries, err := parseEntryListFile(filepath.Join(dir, "cfg", "entry_list.ini"))
 			if err != nil {

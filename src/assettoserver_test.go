@@ -102,4 +102,68 @@ func TestEnsureExtraCfg(t *testing.T) {
 			t.Fatalf("expected false:\n%s", got)
 		}
 	})
+
+	t.Run("legacy plugin interface is always enabled", func(t *testing.T) {
+		root := t.TempDir()
+		TempFolder = root
+		p := writeCfg(t, root, sampleFullExtraCfg()) // no EnableLegacyPluginInterface line
+
+		ensureAssettoServerExtraCfg(root, false)
+
+		got, _ := os.ReadFile(p)
+		s := string(got)
+		if !strings.Contains(s, "EnableLegacyPluginInterface: true") {
+			t.Fatalf("legacy plugin interface not enabled:\n%s", s)
+		}
+		// Existing keys preserved.
+		if !strings.Contains(s, "UseSteamAuth: false") || !strings.Contains(s, "EnablePlugins: []") {
+			t.Fatalf("other keys lost:\n%s", s)
+		}
+	})
+
+	t.Run("existing legacy plugin interface false is flipped to true", func(t *testing.T) {
+		root := t.TempDir()
+		TempFolder = root
+		p := writeCfg(t, root, sampleFullExtraCfg()+"EnableLegacyPluginInterface: false\n")
+
+		ensureAssettoServerExtraCfg(root, true)
+
+		got, _ := os.ReadFile(p)
+		s := string(got)
+		if strings.Contains(s, "EnableLegacyPluginInterface: false") {
+			t.Fatalf("legacy interface still false:\n%s", s)
+		}
+		if !strings.Contains(s, "EnableLegacyPluginInterface: true") {
+			t.Fatalf("legacy interface not true:\n%s", s)
+		}
+	})
+}
+
+func TestSetYamlTopLevelBool(t *testing.T) {
+	t.Run("appends when absent", func(t *testing.T) {
+		out := setYamlTopLevelBool("UseSteamAuth: false\n", "EnableLegacyPluginInterface", true)
+		if !strings.Contains(out, "EnableLegacyPluginInterface: true") {
+			t.Fatalf("not appended:\n%s", out)
+		}
+		if !strings.Contains(out, "UseSteamAuth: false") {
+			t.Fatalf("existing content lost:\n%s", out)
+		}
+	})
+
+	t.Run("patches in place when present", func(t *testing.T) {
+		out := setYamlTopLevelBool("EnableLegacyPluginInterface: false\nUseSteamAuth: false\n", "EnableLegacyPluginInterface", true)
+		if strings.Contains(out, "EnableLegacyPluginInterface: false") {
+			t.Fatalf("old value not replaced:\n%s", out)
+		}
+		if strings.Count(out, "EnableLegacyPluginInterface:") != 1 {
+			t.Fatalf("key duplicated:\n%s", out)
+		}
+	})
+
+	t.Run("idempotent when already correct", func(t *testing.T) {
+		in := "EnableLegacyPluginInterface: true\n"
+		if out := setYamlTopLevelBool(in, "EnableLegacyPluginInterface", true); out != in {
+			t.Fatalf("expected no change, got:\n%s", out)
+		}
+	})
 }

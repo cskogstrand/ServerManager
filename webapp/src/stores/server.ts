@@ -119,6 +119,26 @@ interface InstanceListItem {
   spectator_skin_key: string | null;
 }
 
+// Shape of /api/server/status, the authoritative fallback snapshot used to
+// recover state the SSE stream may have missed (startup race, reconnect,
+// backgrounded tab). session.type_id is the numeric session type matching
+// SessionState.type; session.type (string) is for display elsewhere.
+export interface StatusResponse {
+  is_running: boolean;
+  players: number;
+  session:
+    | (Omit<SessionState, "type"> & { type: string; type_id: number })
+    | null;
+  drivers: DriverState[];
+  positions: CarPositionState[];
+  telemetry: TelemetryHealth | null;
+}
+
+// Recovery throttle (module-scoped: the store is a singleton). Stops a burst of
+// unknown-instance events from triggering a stampede of bootstrap fetches.
+let recoveryInflight = false;
+let lastRecoveryAt = 0;
+
 // One live store for everything the SSE stream feeds: per-instance status,
 // players, current session. Replaces the old UI's 1s polling loops.
 export const useServerStore = defineStore("server", {
@@ -177,14 +197,92 @@ export const useServerStore = defineStore("server", {
       this.loaded = true;
     },
 
+    // syncStatus applies an authoritative /api/server/status snapshot onto an
+    // existing instance. Running servers get full live state; stopped servers
+    // are cleared so no stale roster/positions linger.
+    syncStatus(id: number, s: StatusResponse) {
+      const inst = this.instances[id];
+      if (!inst) return;
+      inst.running = s.is_running;
+      if (!s.is_running) {
+        inst.players = 0;
+        inst.session = null;
+        inst.drivers = [];
+        inst.positions = [];
+        if (inst.telemetry) inst.telemetry.udp_online = false;
+        return;
+      }
+      inst.players = s.players;
+      inst.drivers = s.drivers ?? [];
+      inst.positions = s.positions ?? [];
+      inst.telemetry = s.telemetry ?? inst.telemetry;
+      inst.session = s.session
+        ? {
+            name: s.session.name,
+            type: s.session.type_id,
+            index: s.session.index,
+            current_session_index: s.session.current_session_index,
+            session_count: s.session.session_count,
+            track: s.session.track,
+            track_config: s.session.track_config,
+            server_name: s.session.server_name,
+            time: s.session.time,
+            laps: s.session.laps,
+            wait_time: s.session.wait_time,
+            ambient_temp: s.session.ambient_temp,
+            road_temp: s.session.road_temp,
+            weather_graphics: s.session.weather_graphics,
+            elapsed_ms: s.session.elapsed_ms,
+          }
+        : null;
+    },
+
+    async refreshInstanceStatus(id: number) {
+      const s = await api.get<StatusResponse>(`/api/server/status?instance=${id}`);
+      this.syncStatus(id, s);
+    },
+
+    // bootstrapLiveState is the authoritative full hydrate: load the instance
+    // list, then pull each instance's live status. Used on login, SSE
+    // reconnect, and tab-visibility recovery so the UI never needs a refresh.
+    async bootstrapLiveState() {
+      await this.load();
+      await Promise.all(
+        this.instanceList.map((i) => this.refreshInstanceStatus(i.id).catch(() => {})),
+      );
+    },
+
+    // recoverRunning is the cheap periodic heal: only re-pull status for
+    // instances currently marked running, recovering dropped one-time
+    // players/drivers events without a full instance-list round trip.
+    async recoverRunning() {
+      await Promise.all(
+        this.instanceList
+          .filter((i) => i.running)
+          .map((i) => this.refreshInstanceStatus(i.id).catch(() => {})),
+      );
+    },
+
+    // scheduleRecovery runs a throttled bootstrap when an event arrives for an
+    // instance we do not yet know about — instead of silently dropping it.
+    scheduleRecovery() {
+      const now = Date.now();
+      if (recoveryInflight || now - lastRecoveryAt < 3000) return;
+      recoveryInflight = true;
+      lastRecoveryAt = now;
+      void this.bootstrapLiveState().finally(() => {
+        recoveryInflight = false;
+      });
+    },
+
     connect() {
       if (this.unsubscribe) return;
       this.unsubscribe = subscribeServerEvents(
         (event) => this.applyEvent(event),
         (connected) => {
           this.connected = connected;
-          // Re-sync after a reconnect: events may have been missed
-          if (connected && this.loaded) void this.load();
+          // Re-sync after a reconnect: events may have been missed while down.
+          if (connected && this.loaded) void this.bootstrapLiveState();
         },
       );
     },
@@ -196,10 +294,22 @@ export const useServerStore = defineStore("server", {
     },
 
     applyEvent(event: ServerEvent) {
+      if (event.type === "content_job") {
+        useContentStore().applyJobEvent(event);
+        return;
+      }
+
       const inst = this.instances[event.instance_id];
+      if (!inst) {
+        // Event for an instance we have not loaded yet (startup race, or one
+        // created since last load). Heal via a throttled bootstrap instead of
+        // dropping the update and going stale until a manual refresh.
+        this.scheduleRecovery();
+        return;
+      }
+
       switch (event.type) {
         case "snapshot":
-          if (!inst) return;
           inst.running = event.data.running;
           inst.players = event.data.players;
           inst.session = event.data.session;
@@ -208,7 +318,6 @@ export const useServerStore = defineStore("server", {
           inst.telemetry = event.data.telemetry ?? null;
           break;
         case "server":
-          if (!inst) return;
           inst.running = event.data.running;
           if (!event.data.running) {
             inst.players = 0;
@@ -219,27 +328,19 @@ export const useServerStore = defineStore("server", {
           }
           break;
         case "telemetry":
-          if (!inst) return;
           inst.telemetry = event.data.telemetry ?? inst.telemetry;
           break;
         case "players":
-          if (!inst) return;
           inst.players = event.data.players;
           break;
         case "drivers":
-          if (!inst) return;
           inst.drivers = event.data.drivers ?? [];
           break;
         case "positions":
-          if (!inst) return;
           inst.positions = event.data.positions ?? [];
           break;
         case "session":
-          if (!inst) return;
           inst.session = event.data;
-          break;
-        case "content_job":
-          useContentStore().applyJobEvent(event);
           break;
       }
     },

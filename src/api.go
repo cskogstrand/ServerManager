@@ -516,6 +516,7 @@ func serverStatusPayload(inst *Instance) gin.H {
 		"session": gin.H{
 			"name":                 st.Session.name,
 			"type":                 sessionType,
+			"type_id":              st.Session.typ,
 			"index":                st.Session.sessionIndex,
 			"current_session_index": st.Session.currentSessionIndex,
 			"session_count":        st.Session.sessionCount,

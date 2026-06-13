@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
@@ -17,12 +17,42 @@ const server = useServerStore();
 // First-run setup: until config + install path are saved, no event can run
 const setupNeeded = ref(false);
 
+// Low-rate recovery: re-pull live status for running servers so dropped
+// one-time events (players/drivers) self-heal without heavy polling.
+let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+
+function onVisible() {
+  if (document.visibilityState === "visible" && auth.loggedIn) {
+    void server.bootstrapLiveState();
+  }
+}
+
+function startRecovery() {
+  if (!recoveryTimer) {
+    recoveryTimer = setInterval(() => {
+      if (server.instanceList.some((i) => i.running)) void server.recoverRunning();
+    }, 15000);
+  }
+  document.addEventListener("visibilitychange", onVisible);
+}
+
+function stopRecovery() {
+  if (recoveryTimer) {
+    clearInterval(recoveryTimer);
+    recoveryTimer = null;
+  }
+  document.removeEventListener("visibilitychange", onVisible);
+}
+
 watch(
   () => auth.loggedIn,
   async (loggedIn) => {
     if (loggedIn) {
-      void server.load();
+      // Hydrate full live state before opening SSE so the first snapshot/events
+      // land on populated instances instead of being dropped.
+      await server.bootstrapLiveState();
       server.connect();
+      startRecovery();
       try {
         const cfg = await api.get<UserConfig>("/api/config");
         setupNeeded.value = cfg.cfg_filled !== 1 || cfg.mod_filled !== 1;
@@ -31,10 +61,13 @@ watch(
       }
     } else {
       server.disconnect();
+      stopRecovery();
     }
   },
   { immediate: true },
 );
+
+onBeforeUnmount(stopRecovery);
 
 async function logout() {
   await auth.logout();

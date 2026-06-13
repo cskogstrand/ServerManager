@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "@/lib/api";
-import { useServerStore, type CarPositionState, type DriverState, type InstanceState, type TelemetryHealth } from "@/stores/server";
+import { useServerStore, type CarPositionState, type DriverState, type InstanceState, type StatusResponse, type TelemetryHealth } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
@@ -54,6 +54,7 @@ interface StatusPayload {
   current_cars: { cache_car_key: string; skin_key: string }[];
   session: {
     type: string;
+    type_id: number;
     name: string;
     current_session_index: number;
     session_count: number;
@@ -168,12 +169,9 @@ async function fetchDetail() {
   try {
     const payload = await api.get<StatusPayload>(`/api/server/status?instance=${instanceId.value}`);
     detail.value = payload;
-    const live = server.instances[instanceId.value];
-    if (live) {
-      live.drivers = payload.drivers ?? [];
-      live.positions = payload.positions ?? [];
-      live.telemetry = payload.telemetry ?? live.telemetry;
-    }
+    // Sync the full live state (running, players, session, drivers, positions,
+    // telemetry) into the store so every page reads one source of truth.
+    server.syncStatus(instanceId.value, payload as unknown as StatusResponse);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
@@ -300,8 +298,46 @@ function lapTime(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}.${String(t).padStart(3, "0")}`;
 }
 
+// AC numeric session type → display label (mirrors the backend mapping).
+function sessionTypeLabel(t: number): string {
+  return ["Booking", "Practice", "Qualify", "Race"][t] ?? "—";
+}
+
+// Unified live session view: the SSE-fed store is the source of truth (numeric
+// type → label); the REST detail payload is only a fallback for the brief
+// window before the store hydrates.
+const liveSession = computed(() => {
+  const s = inst.value?.session;
+  if (s) {
+    return {
+      typeLabel: sessionTypeLabel(s.type),
+      current_session_index: s.current_session_index,
+      session_count: s.session_count,
+      time: s.time,
+      laps: s.laps,
+      ambient_temp: s.ambient_temp,
+      road_temp: s.road_temp,
+      elapsed_ms: s.elapsed_ms,
+    };
+  }
+  const d = detail.value?.session;
+  if (d) {
+    return {
+      typeLabel: d.type || "—",
+      current_session_index: d.current_session_index,
+      session_count: d.session_count,
+      time: d.time,
+      laps: d.laps,
+      ambient_temp: d.ambient_temp,
+      road_temp: d.road_temp,
+      elapsed_ms: d.elapsed_ms,
+    };
+  }
+  return null;
+});
+
 function elapsed(): string {
-  const ms = detail.value?.session?.elapsed_ms ?? 0;
+  const ms = liveSession.value?.elapsed_ms ?? 0;
   if (ms <= 0) return "—";
   const min = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
@@ -426,10 +462,10 @@ function consoleLines(): string {
 }
 
 const sessionTiles = computed(() => {
-  const s = detail.value?.session;
+  const s = liveSession.value;
   const running = inst.value?.running;
   return [
-    { label: "Session", value: running && s ? `${s.type || "—"}` : "—", sub: running && s ? `${(s.current_session_index ?? 0) + 1} of ${s.session_count}` : "stopped" },
+    { label: "Session", value: running && s ? s.typeLabel : "—", sub: running && s ? `${(s.current_session_index ?? 0) + 1} of ${s.session_count}` : "stopped" },
     { label: "Elapsed", value: running ? elapsed() : "—", sub: running && s ? (s.laps ? `${s.laps} laps` : `${s.time} min`) : "" },
     { label: "Air / Road", value: running && s ? `${s.ambient_temp}° / ${s.road_temp}°` : "—", sub: "temperature" },
     { label: "Drivers", value: running ? String(connected.value.length) : "0", sub: `${positions.value.length} live on map` },
@@ -441,14 +477,14 @@ const sessionTiles = computed(() => {
 // sessions we also derive a fill fraction from elapsed/total; lap sessions
 // have no clean denominator so the bar stays indeterminate.
 const sessionTimeline = computed(() => {
-  const s = detail.value?.session;
+  const s = liveSession.value;
   if (!inst.value?.running || !s || !s.session_count) return null;
   const idx = s.current_session_index ?? 0;
   const timed = !s.laps && s.time > 0;
   const totalMs = timed ? s.time * 60000 : 0;
   const fraction = timed ? Math.max(0, Math.min(1, s.elapsed_ms / totalMs)) : null;
   return {
-    type: s.type,
+    type: s.typeLabel,
     index: idx,
     count: s.session_count,
     timed,

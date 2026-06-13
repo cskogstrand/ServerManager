@@ -75,12 +75,18 @@ function publicIp(): string {
   return first ? (details.value[first.id]?.public_ip ?? "") : "";
 }
 
+// Live session values come from the SSE-fed store, not the REST detail payload.
 function elapsed(id: number): string {
-  const ms = details.value[id]?.session?.elapsed_ms ?? 0;
+  const ms = server.instances[id]?.session?.elapsed_ms ?? 0;
   if (ms <= 0) return "—";
   const min = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
   return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+// AC numeric session type → display label (mirrors the backend mapping).
+function sessionTypeLabel(t: number): string {
+  return ["Booking", "Practice", "Qualify", "Race"][t] ?? "—";
 }
 
 function previewUrl(id: number): string {
@@ -257,7 +263,7 @@ onMounted(async () => {
         >
           <dt class="text-dim">Session</dt>
           <dd class="font-mono">
-            {{ details[inst.id]?.session?.type ?? "—" }}
+            {{ sessionTypeLabel(inst.session.type) }}
             <span class="text-dim">{{ (inst.session.current_session_index ?? 0) + 1 }}/{{ inst.session.session_count }}</span>
           </dd>
           <dt class="text-dim">Elapsed</dt>

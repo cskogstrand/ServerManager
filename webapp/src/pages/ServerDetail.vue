@@ -17,6 +17,7 @@ import Icon from "@/components/ui/Icon.vue";
 import Sheet from "@/components/ui/Sheet.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
+import LineChart from "@/components/ui/LineChart.vue";
 
 interface CurrentEvent {
   id: number;
@@ -317,6 +318,78 @@ function carImageUrl(row: GridRow): string {
   return `/api/car/image/${encodeURIComponent(row.carKey)}/${encodeURIComponent(row.skinKey)}`;
 }
 
+// --- Car detail viewer: photo, specs and power/torque curves ---
+interface CarCurves {
+  key: string;
+  desc: string;
+  power: number[];
+  torque: number[];
+  labels: number[];
+}
+
+const carViewer = ref<GridRow | null>(null);
+const carCurves = ref<CarCurves | null>(null);
+const carCurvesLoading = ref(false);
+const curveCache = new Map<string, CarCurves>();
+
+async function openCar(row: GridRow) {
+  carViewer.value = row;
+  carCurves.value = curveCache.get(row.carKey) ?? null;
+  if (carCurves.value) return;
+  carCurvesLoading.value = true;
+  try {
+    const res = await api.get<CarCurves>(`/api/car/${encodeURIComponent(row.carKey)}`);
+    curveCache.set(row.carKey, res);
+    // Guard against a stale response if the user reopened a different car.
+    if (carViewer.value?.carKey === row.carKey) carCurves.value = res;
+  } catch {
+    if (carViewer.value?.carKey === row.carKey) carCurves.value = null;
+  } finally {
+    carCurvesLoading.value = false;
+  }
+}
+
+const carChartSeries = computed(() => {
+  const c = carCurves.value;
+  if (!c) return [];
+  const out: { name: string; color: string; values: number[]; unit?: string }[] = [];
+  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "#62b3e8", values: c.power, unit: " bhp" });
+  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "#f0b95a", values: c.torque, unit: " Nm" });
+  return out;
+});
+
+const carSpecRows = computed(() => {
+  const s = carViewer.value?.car?.specs;
+  if (!s) return [];
+  return [
+    { label: "Power", value: s.bhp },
+    { label: "Torque", value: s.torque },
+    { label: "Weight", value: s.weight },
+    { label: "Top speed", value: s.topspeed },
+    { label: "0–100", value: s.acceleration },
+    { label: "P/W ratio", value: s.pwratio },
+  ].filter((r) => r.value);
+});
+
+// Strip any HTML tags/entities mods stuff into the description; render plain.
+const carDescText = computed(() => {
+  const raw = carCurves.value?.desc;
+  if (!raw) return "";
+  return raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+});
+
+// --- Weather thumbnail ---
+function weatherImageUrl(key: string): string {
+  return `/api/weather/preview/${encodeURIComponent(key)}`;
+}
+
 function consoleLines(): string {
   const text = detail.value?.text ?? "";
   return text.split("\n").slice(-200).join("\n").trim() || "No output yet.";
@@ -332,6 +405,51 @@ const sessionTiles = computed(() => {
     { label: "Drivers", value: running ? String(connected.value.length) : "0", sub: `${positions.value.length} live on map` },
   ];
 });
+
+// --- Session timeline ---
+// pips: one per session in the weekend (current highlighted). For timed
+// sessions we also derive a fill fraction from elapsed/total; lap sessions
+// have no clean denominator so the bar stays indeterminate.
+const sessionTimeline = computed(() => {
+  const s = detail.value?.session;
+  if (!inst.value?.running || !s || !s.session_count) return null;
+  const idx = s.current_session_index ?? 0;
+  const timed = !s.laps && s.time > 0;
+  const totalMs = timed ? s.time * 60000 : 0;
+  const fraction = timed ? Math.max(0, Math.min(1, s.elapsed_ms / totalMs)) : null;
+  return {
+    type: s.type,
+    index: idx,
+    count: s.session_count,
+    timed,
+    fraction,
+    elapsedLabel: elapsed(),
+    totalLabel: timed ? `${s.time} min` : s.laps ? `${s.laps} laps` : "—",
+    remaining: timed ? Math.max(0, Math.ceil((totalMs - s.elapsed_ms) / 60000)) : null,
+  };
+});
+
+// --- Live telemetry helpers ---
+// AC gear convention: 0 = reverse, 1 = neutral, 2 = first gear, …
+function gearLabel(pos?: CarPositionState): string {
+  if (!pos) return "—";
+  const g = pos.gear;
+  if (g <= 0) return "R";
+  if (g === 1) return "N";
+  return String(g - 1);
+}
+
+// Bar scales against the fastest-revving car on track (floor 8000) so the
+// fill stays meaningful without knowing each car's redline.
+const rpmMax = computed(() => {
+  const peak = Math.max(8000, ...positions.value.map((p) => p.engine_rpm || 0));
+  return Math.ceil(peak / 1000) * 1000;
+});
+
+function rpmPct(pos?: CarPositionState): number {
+  if (!pos?.engine_rpm) return 0;
+  return Math.max(0, Math.min(100, (pos.engine_rpm / rpmMax.value) * 100));
+}
 
 onMounted(async () => {
   await server.load();
@@ -405,6 +523,60 @@ onBeforeUnmount(() => {
         </Button>
       </div>
     </header>
+
+    <!-- Track hero: photo backdrop + name, location, description -->
+    <section
+      v-if="activeTrack"
+      class="track-hero page-enter relative mb-4 overflow-hidden rounded-lg border border-line"
+      style="animation-delay: 30ms"
+    >
+      <img
+        :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
+        alt=""
+        class="absolute inset-0 size-full object-cover"
+        @error="($event.target as HTMLImageElement).style.display = 'none'"
+      />
+      <div class="relative flex min-h-44 flex-col justify-end gap-1 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center gap-2">
+          <span
+            v-if="activeTrack.source === 'queued'"
+            class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs font-semibold text-accent"
+          >
+            Up next
+          </span>
+          <span v-if="trackInfo?.country || trackInfo?.city" class="text-xs font-medium tracking-wide text-muted uppercase">
+            {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(" · ") }}
+          </span>
+        </div>
+        <h2 class="max-w-3xl text-2xl font-black tracking-tight text-text drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+          {{ trackInfo?.name || activeTrack.name }}
+        </h2>
+        <p
+          v-if="trackInfo?.desc"
+          class="line-clamp-3 max-w-3xl text-sm text-muted drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]"
+        >
+          {{ trackInfo.desc }}
+        </p>
+        <dl class="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted">
+          <div class="flex items-center gap-1.5">
+            <span class="text-dim">Length</span>
+            <span class="text-text">{{ trackLengthLabel(trackInfo) }}</span>
+          </div>
+          <div v-if="trackInfo?.width" class="flex items-center gap-1.5">
+            <span class="text-dim">Width</span>
+            <span class="text-text">{{ trackInfo.width }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-dim">Pitboxes</span>
+            <span class="text-text">{{ trackInfo?.pitboxes ?? "—" }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-dim">Layout</span>
+            <span class="text-text">{{ activeTrack.config || "default" }}</span>
+          </div>
+        </dl>
+      </div>
+    </section>
 
     <!-- Hero: map + circuit panel -->
     <div class="page-enter grid gap-4 lg:grid-cols-3" style="animation-delay: 60ms">
@@ -481,37 +653,27 @@ onBeforeUnmount(() => {
         </EmptyState>
       </Card>
 
-      <!-- Circuit facts -->
+      <!-- Layout outline + tags -->
       <Card>
         <template #header>
-          <h2 class="text-sm font-bold">Circuit</h2>
+          <h2 class="text-sm font-bold">Layout</h2>
           <span v-if="activeTrack" class="ml-auto font-mono text-xs text-dim">{{ activeTrack.key }}</span>
         </template>
         <template v-if="activeTrack">
-          <img
-            :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
-            alt=""
-            class="mb-3 aspect-video w-full rounded-sm border border-line object-cover"
-          />
-          <div class="text-sm font-semibold">{{ trackInfo?.name || activeTrack.name }}</div>
-          <div v-if="trackInfo?.country || trackInfo?.city" class="mb-2 text-xs text-dim">
-            {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(", ") }}
+          <div class="map-canvas grid place-items-center rounded-md border border-line p-4">
+            <img
+              :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
+              alt=""
+              class="max-h-52 w-auto opacity-90"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
           </div>
-          <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-            <dt class="text-muted">Length</dt>
-            <dd class="font-mono text-xs leading-5">{{ trackLengthLabel(trackInfo) }}</dd>
-            <dt class="text-muted">Width</dt>
-            <dd class="font-mono text-xs leading-5">{{ trackInfo?.width || "—" }}</dd>
-            <dt class="text-muted">Pitboxes</dt>
-            <dd class="font-mono text-xs leading-5">{{ trackInfo?.pitboxes ?? "—" }}</dd>
-            <dt class="text-muted">Layout</dt>
-            <dd class="font-mono text-xs leading-5">{{ activeTrack.config || "default" }}</dd>
-          </dl>
           <div v-if="trackInfo?.tags?.length" class="mt-3 flex flex-wrap gap-1.5">
-            <span v-for="tag in trackInfo.tags.slice(0, 8)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            <span v-for="tag in trackInfo.tags.slice(0, 10)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
               {{ tag }}
             </span>
           </div>
+          <p v-else-if="!trackInfo" class="mt-3 text-xs text-dim">Content metadata not cached for this track.</p>
         </template>
         <p v-else class="text-sm text-dim">No track selected.</p>
       </Card>
@@ -528,18 +690,77 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <!-- Session timeline -->
+    <Card v-if="sessionTimeline" class="page-enter mt-4" style="animation-delay: 150ms">
+      <template #header>
+        <h2 class="text-sm font-bold">Session timeline</h2>
+        <span class="ml-auto font-mono text-xs text-dim">
+          {{ sessionTimeline.elapsedLabel }} / {{ sessionTimeline.totalLabel }}
+        </span>
+      </template>
+
+      <!-- weekend pips -->
+      <div class="mb-3 flex items-center gap-1.5">
+        <span
+          v-for="n in sessionTimeline.count"
+          :key="n"
+          class="h-1.5 flex-1 rounded-full transition-colors"
+          :class="
+            n - 1 < sessionTimeline.index
+              ? 'bg-ok/70'
+              : n - 1 === sessionTimeline.index
+                ? 'bg-accent'
+                : 'bg-surface-3'
+          "
+          :title="`Session ${n} of ${sessionTimeline.count}`"
+        />
+      </div>
+
+      <div class="flex items-center justify-between text-xs">
+        <span class="font-semibold text-text">{{ sessionTimeline.type }}</span>
+        <span class="text-dim">Session {{ sessionTimeline.index + 1 }} of {{ sessionTimeline.count }}</span>
+      </div>
+
+      <!-- elapsed fill for timed sessions -->
+      <div v-if="sessionTimeline.timed" class="mt-2">
+        <div class="h-2 overflow-hidden rounded-full bg-surface-3">
+          <div
+            class="h-full rounded-full bg-gradient-to-r from-accent/70 to-accent transition-[width] duration-700 ease-out"
+            :style="{ width: `${(sessionTimeline.fraction ?? 0) * 100}%` }"
+          />
+        </div>
+        <div class="mt-1 flex justify-between font-mono text-xs text-dim">
+          <span>{{ sessionTimeline.elapsedLabel }} elapsed</span>
+          <span v-if="sessionTimeline.remaining !== null">~{{ sessionTimeline.remaining }} min left</span>
+        </div>
+      </div>
+      <p v-else class="mt-2 font-mono text-xs text-dim">
+        Lap session — {{ sessionTimeline.totalLabel }}, {{ sessionTimeline.elapsedLabel }} elapsed
+      </p>
+    </Card>
+
     <!-- Current event -->
     <Card v-if="detail?.current_event?.id" class="page-enter mt-4" style="animation-delay: 180ms">
       <template #header>
         <h2 class="text-sm font-bold">Current event</h2>
         <span class="ml-auto text-xs text-dim">{{ detail.current_event.category }}</span>
       </template>
-      <div class="flex flex-wrap gap-1.5 text-xs">
+      <div class="flex flex-wrap items-center gap-1.5 text-xs">
         <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.class }}</span>
         <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.session }}</span>
         <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.time }}</span>
         <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.difficulty }}</span>
-        <span v-if="detail.current_event.weather" class="rounded-full border border-line bg-surface-2 px-2 py-0.5">
+        <span
+          v-if="detail.current_event.weather"
+          class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-0.5 pr-2.5 pl-0.5"
+        >
+          <img
+            v-if="detail.current_event.weather_key"
+            :src="weatherImageUrl(detail.current_event.weather_key)"
+            alt=""
+            class="size-5 rounded-full border border-line object-cover"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
           {{ detail.current_event.weather }}
         </span>
       </div>
@@ -558,6 +779,8 @@ onBeforeUnmount(() => {
               <th class="py-1.5 pr-2 font-semibold">Driver</th>
               <th class="py-1.5 pr-2 font-semibold max-sm:hidden">Car</th>
               <th class="py-1.5 pr-2 text-right font-semibold">Speed</th>
+              <th class="py-1.5 pr-3 pl-2 font-semibold max-md:hidden">RPM</th>
+              <th class="py-1.5 pr-2 text-center font-semibold">Gear</th>
               <th class="py-1.5 pr-2 text-right font-semibold">Laps</th>
               <th class="py-1.5 pr-2 text-right font-semibold">Last</th>
               <th class="py-1.5 pr-2 text-right font-semibold">Best</th>
@@ -571,6 +794,22 @@ onBeforeUnmount(() => {
               <td class="py-1.5 pr-2 text-right font-mono text-xs">
                 {{ positionFor(d.car_id) ? `${speedKmh(positionFor(d.car_id))} km/h` : "—" }}
               </td>
+              <td class="py-1.5 pr-3 pl-2 max-md:hidden">
+                <div v-if="positionFor(d.car_id)?.engine_rpm" class="flex items-center gap-2">
+                  <div class="h-1.5 w-20 overflow-hidden rounded-full bg-surface-3">
+                    <div
+                      class="h-full rounded-full transition-[width] duration-300"
+                      :class="rpmPct(positionFor(d.car_id)) > 88 ? 'bg-danger' : rpmPct(positionFor(d.car_id)) > 70 ? 'bg-warn' : 'bg-accent'"
+                      :style="{ width: `${rpmPct(positionFor(d.car_id))}%` }"
+                    />
+                  </div>
+                  <span class="w-12 text-right font-mono text-xs tabular-nums text-muted">
+                    {{ positionFor(d.car_id)!.engine_rpm.toLocaleString() }}
+                  </span>
+                </div>
+                <span v-else class="font-mono text-xs text-dim">—</span>
+              </td>
+              <td class="py-1.5 pr-2 text-center font-mono text-xs font-semibold">{{ gearLabel(positionFor(d.car_id)) }}</td>
               <td class="py-1.5 pr-2 text-right">{{ d.laps }}</td>
               <td class="py-1.5 pr-2 text-right font-mono text-xs">{{ lapTime(d.last_lap_ms) }}</td>
               <td class="py-1.5 pr-2 text-right font-mono text-xs text-ok">{{ lapTime(d.best_lap_ms) }}</td>
@@ -594,14 +833,26 @@ onBeforeUnmount(() => {
         </span>
       </template>
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <div v-for="row in gridRows" :key="`${row.carKey}-${row.skinKey}`" class="overflow-hidden rounded-md border border-line bg-surface-2/40">
-          <img
-            :src="carImageUrl(row)"
-            alt=""
-            loading="lazy"
-            class="aspect-video w-full border-b border-line object-cover"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
+        <button
+          v-for="row in gridRows"
+          :key="`${row.carKey}-${row.skinKey}`"
+          type="button"
+          class="group overflow-hidden rounded-md border border-line bg-surface-2/40 text-left transition-colors hover:border-line-hi hover:bg-surface-2"
+          @click="openCar(row)"
+        >
+          <div class="relative">
+            <img
+              :src="carImageUrl(row)"
+              alt=""
+              loading="lazy"
+              class="aspect-video w-full border-b border-line object-cover"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span class="absolute right-1.5 bottom-1.5 inline-flex items-center gap-1 rounded-md border border-line bg-bg/80 px-1.5 py-0.5 text-xs text-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+              <Icon name="activity" :size="12" />
+              Specs
+            </span>
+          </div>
           <div class="p-2.5">
             <div class="flex items-baseline justify-between gap-2">
               <span class="min-w-0 truncate text-sm font-semibold">{{ row.car?.name || row.carKey }}</span>
@@ -614,7 +865,7 @@ onBeforeUnmount(() => {
               <span v-if="row.car.specs.topspeed">{{ row.car.specs.topspeed }}</span>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     </Card>
 
@@ -679,6 +930,53 @@ onBeforeUnmount(() => {
         class="mt-2 max-h-72 overflow-y-auto rounded-md border border-line bg-bg p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted"
         >{{ consoleLines() }}</pre>
     </div>
+
+    <!-- Car detail: photo, skin, specs, power/torque curves -->
+    <Sheet :open="!!carViewer" :title="carViewer?.car?.name || carViewer?.carKey || 'Car'" @close="carViewer = null">
+      <template v-if="carViewer">
+        <img
+          :src="carImageUrl(carViewer)"
+          alt=""
+          class="aspect-video w-full rounded-md border border-line object-cover"
+          @error="($event.target as HTMLImageElement).style.display = 'none'"
+        />
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <span v-if="carViewer.car?.brand" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            {{ carViewer.car.brand }}
+          </span>
+          <span v-if="carViewer.car?.class" class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent">
+            {{ carViewer.car.class }}
+          </span>
+          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">{{ carViewer.skinName }}</span>
+          <span class="ml-auto text-xs text-dim">×{{ carViewer.count }} on grid</span>
+        </div>
+
+        <dl v-if="carSpecRows.length" class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+          <div v-for="spec in carSpecRows" :key="spec.label" class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5">
+            <dt class="text-xs text-dim">{{ spec.label }}</dt>
+            <dd class="font-mono text-sm text-text">{{ spec.value }}</dd>
+          </div>
+        </dl>
+
+        <div class="mt-4">
+          <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Power &amp; torque</h3>
+          <div v-if="carCurvesLoading" class="grid h-44 place-items-center rounded-md border border-line bg-surface-2/40 text-sm text-dim">
+            Loading curves…
+          </div>
+          <div v-else-if="carChartSeries.length" class="rounded-md border border-line bg-surface-2/40 p-3">
+            <LineChart :series="carChartSeries" :labels="carCurves?.labels ?? []" :height="200" x-label="RPM" />
+          </div>
+          <p v-else class="rounded-md border border-line bg-surface-2/40 px-3 py-3 text-sm text-dim">
+            No dyno data shipped with this car.
+          </p>
+        </div>
+
+        <p v-if="carDescText" class="mt-4 text-sm leading-relaxed whitespace-pre-line text-muted">{{ carDescText }}</p>
+      </template>
+      <template #footer>
+        <Button variant="ghost" @click="carViewer = null">Close</Button>
+      </template>
+    </Sheet>
 
     <Sheet :open="!!streamViewer" :title="streamViewer?.title ?? 'Stream'" @close="streamViewer = null">
       <template v-if="streamViewer">

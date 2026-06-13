@@ -1491,10 +1491,20 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 // install path, content cache, presets, events and per-instance port/queue
 // state. The frontend turns these facts into pass/fail checks with links.
 func apiServerReadiness(c *gin.Context) {
-	cfg, err := Dba.selectConfig()
+	d, err := readinessData()
 	if err != nil {
 		apiDbError(c, err)
 		return
+	}
+	c.PureJSON(http.StatusOK, d)
+}
+
+// readinessData aggregates the facts the setup checklist and the setup
+// workbench both need. Returned as a map so callers can extend it.
+func readinessData() (gin.H, error) {
+	cfg, err := Dba.selectConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	installPath := ""
@@ -1558,17 +1568,153 @@ func apiServerReadiness(c *gin.Context) {
 	cfgFilled := cfg.CfgFilled != nil && *cfg.CfgFilled == 1
 	modFilled := cfg.ModFilled != nil && *cfg.ModFilled == 1
 
-	c.PureJSON(http.StatusOK, gin.H{
-		"install_path":    installPath,
-		"acserver_found":  acserverFound,
-		"cfg_filled":      cfgFilled,
-		"mod_filled":      modFilled,
-		"content":         gin.H{"tracks": tracks, "cars": cars, "weathers": weathers},
-		"presets":         gin.H{"difficulties": filled("user_difficulty"), "sessions": filled("user_session"), "classes": filled("user_class"), "times": filled("user_time")},
-		"events":          len(events),
-		"instances":       instances,
-		"port_conflict":   portConflict,
-	})
+	return gin.H{
+		"install_path":   installPath,
+		"acserver_found": acserverFound,
+		"cfg_filled":     cfgFilled,
+		"mod_filled":     modFilled,
+		"content":        gin.H{"tracks": tracks, "cars": cars, "weathers": weathers},
+		"presets":        gin.H{"difficulties": filled("user_difficulty"), "sessions": filled("user_session"), "classes": filled("user_class"), "times": filled("user_time")},
+		"events":         len(events),
+		"instances":      instances,
+		"port_conflict":  portConflict,
+	}, nil
+}
+
+// nextFreePort suggests a port one above the highest currently used, falling
+// back to the supplied default for a fresh install. Mirrors the frontend
+// instance-port suggestion so the workbench and the instances modal agree.
+func nextFreePort(used []int, fallback int) int {
+	max := 0
+	for _, p := range used {
+		if p > max {
+			max = p
+		}
+	}
+	if max == 0 {
+		return fallback
+	}
+	return max + 1
+}
+
+// setupBlockingIssues turns the readiness map into a list of blocking issues
+// keyed by the setup step that fixes each, plus whether the server can be
+// started (no blockers). Pure so it is unit-testable without a DB.
+func setupBlockingIssues(d gin.H) ([]gin.H, bool) {
+	content, _ := d["content"].(gin.H)
+	presets, _ := d["presets"].(gin.H)
+	blocking := make([]gin.H, 0)
+	add := func(step, message string) { blocking = append(blocking, gin.H{"step": step, "message": message}) }
+
+	if ok, _ := d["acserver_found"].(bool); !ok {
+		add("install", "Set the Assetto Corsa install path so the server binary can be found.")
+	}
+	if content != nil && (content["tracks"].(int) == 0 || content["cars"].(int) == 0) {
+		add("content", "Import content and rebuild the cache — no tracks or cars are available.")
+	}
+	if ok, _ := d["cfg_filled"].(bool); !ok {
+		add("server", "Save the base server configuration (lobby name, limits).")
+	}
+	if presets != nil && (presets["classes"].(int) == 0 || presets["sessions"].(int) == 0 || presets["times"].(int) == 0 || presets["difficulties"].(int) == 0) {
+		add("race", "Create at least one car class, session, time/weather and difficulty preset.")
+	}
+	if n, _ := d["events"].(int); n == 0 {
+		add("race", "Create a race setup to run.")
+	}
+	if pc, _ := d["port_conflict"].(string); pc != "" {
+		add("instance", pc)
+	}
+	return blocking, len(blocking) == 0
+}
+
+// apiSetupSummary extends readiness with everything the setup workbench needs
+// to drive a guided first-run without visiting the other pages: a config
+// snapshot, the usable preset lists, event groups, suggested instance ports
+// for a new instance, and a normalized list of blocking issues keyed by setup
+// step so each can be fixed inline.
+func apiSetupSummary(c *gin.Context) {
+	d, err := readinessData()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	cfg, err := Dba.selectConfig()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+
+	str := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	intVal := func(p *int) int {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
+	configSnap := gin.H{
+		"name":               str(cfg.Name),
+		"has_password":       strings.TrimSpace(str(cfg.Password)) != "",
+		"has_admin_password": strings.TrimSpace(str(cfg.AdminPassword)) != "",
+		"engine":             str(cfg.ServerEngine),
+		"max_clients":        intVal(cfg.MaxClients),
+		"register_to_lobby":  intVal(cfg.RegisterToLobby) == 1,
+	}
+
+	presetList := func(table string) []DropDownList {
+		l, _ := Dba.selectDropDownList(true, table)
+		return l
+	}
+	groups, _ := Dba.selectEventCategoryList(false)
+
+	// Suggest the next free port block for a brand-new instance.
+	var udpP, tcpP, httpP, pluginP, pluginListenP []int
+	for _, inst := range Instances.All() {
+		if inst.Conf.UdpPort != nil {
+			udpP = append(udpP, *inst.Conf.UdpPort)
+		}
+		if inst.Conf.TcpPort != nil {
+			tcpP = append(tcpP, *inst.Conf.TcpPort)
+		}
+		if inst.Conf.HttpPort != nil {
+			httpP = append(httpP, *inst.Conf.HttpPort)
+		}
+		if inst.Conf.PluginPort != nil {
+			pluginP = append(pluginP, *inst.Conf.PluginPort)
+		}
+		if inst.Conf.PluginListenPort != nil {
+			pluginListenP = append(pluginListenP, *inst.Conf.PluginListenPort)
+		}
+	}
+	pluginBase := nextFreePort(append(pluginP, pluginListenP...), 5000)
+	suggestedPorts := gin.H{
+		"udp_port":           nextFreePort(udpP, 9600),
+		"tcp_port":           nextFreePort(tcpP, 9600),
+		"http_port":          nextFreePort(httpP, 8081),
+		"plugin_port":        pluginBase,
+		"plugin_listen_port": pluginBase + 1,
+	}
+
+	blocking, canStart := setupBlockingIssues(d)
+
+	d["config"] = configSnap
+	d["preset_lists"] = gin.H{
+		"difficulties": presetList("user_difficulty"),
+		"sessions":     presetList("user_session"),
+		"classes":      presetList("user_class"),
+		"times":        presetList("user_time"),
+	}
+	d["groups"] = groups
+	d["suggested_ports"] = suggestedPorts
+	d["blocking"] = blocking
+	d["can_start"] = canStart
+
+	c.PureJSON(http.StatusOK, d)
 }
 
 // --- Race control: live commands over the ACSP UDP plugin ---

@@ -990,7 +990,7 @@ onBeforeUnmount(() => {
       <template #actions>
         <Button variant="dark" size="sm" :disabled="busy" @click="openGrid">
           <Icon name="edit" :size="14" />
-          Edit grid &amp; weather
+          Edit race setup
         </Button>
       </template>
       <div class="flex flex-wrap items-center gap-1.5 text-xs">

@@ -262,6 +262,7 @@ func main() {
 		api.POST("/server/stop", apiServerStop)
 		api.GET("/server/status", apiServerStatus)
 		api.GET("/server/readiness", apiServerReadiness)
+		api.GET("/setup/summary", apiSetupSummary)
 		api.GET("/server/events", apiServerEventsSSE)
 		api.POST("/server/current-event", apiServerUpdateCurrentEvent)
 		api.POST("/server/broadcast", apiRaceBroadcast)

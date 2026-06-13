@@ -275,7 +275,9 @@ onMounted(async () => {
 
       <p v-else class="text-sm text-dim">
         Server stopped — nothing loaded.
-        <RouterLink to="/queue" class="text-accent hover:underline">Open queue →</RouterLink>
+        <RouterLink to="/setup" class="text-accent hover:underline">Set up a race</RouterLink>
+        or
+        <RouterLink to="/queue" class="text-accent hover:underline">open the run plan →</RouterLink>
       </p>
     </Card>
   </div>

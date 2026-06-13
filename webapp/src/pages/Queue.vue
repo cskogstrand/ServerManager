@@ -230,8 +230,8 @@ watch(
 
 <template>
   <PageHeader
-    title="Queue"
-    subtitle="Manage the per-instance run order, start servers, and queue individual events or whole event groups."
+    title="Run Plan"
+    subtitle="Manage the per-instance run order, start servers, and queue individual race setups or whole groups."
     icon="queue"
   >
     <template #actions>

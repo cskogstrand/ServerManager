@@ -81,8 +81,8 @@ const allSections = [
     label: "Operate",
     items: [
       { to: "/", label: "Dashboard", icon: "dashboard" },
-      { to: "/events", label: "Events", icon: "events" },
-      { to: "/queue", label: "Queue", icon: "queue" },
+      { to: "/events", label: "Race Setups", icon: "events" },
+      { to: "/queue", label: "Run Plan", icon: "queue" },
     ],
   },
   {

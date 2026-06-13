@@ -10,7 +10,7 @@ import { useServerStore, type CarPositionState, type DriverState, type InstanceS
 import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
-import type { CacheCar, CacheTrack } from "@/types/generated";
+import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
@@ -18,9 +18,15 @@ import Sheet from "@/components/ui/Sheet.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import LineChart from "@/components/ui/LineChart.vue";
+import Input from "@/components/ui/Input.vue";
+import Select from "@/components/ui/Select.vue";
+import Combobox from "@/components/ui/Combobox.vue";
+import FormRow from "@/components/ui/FormRow.vue";
+import Toggle from "@/components/ui/Toggle.vue";
 
 interface CurrentEvent {
   id: number;
+  name: string;
   category: string;
   track: string;
   track_key: string;
@@ -73,6 +79,7 @@ interface QueueItem {
   id: number;
   event_id: number;
   instance_id: number;
+  name: string | null;
   category: string;
   track: string;
   track_key: string | null;
@@ -451,6 +458,148 @@ function rpmPct(pos?: CarPositionState): number {
   return Math.max(0, Math.min(100, (pos.engine_rpm / rpmMax.value) * 100));
 }
 
+// --- Race control (live UDP commands; only meaningful while running) ---
+const broadcastMsg = ref("");
+const adminCmd = ref("");
+
+async function raceAction(fn: () => Promise<unknown>, ok: string) {
+  busy.value = true;
+  try {
+    await fn();
+    toast.success(ok);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+function broadcast() {
+  const message = broadcastMsg.value.trim();
+  if (!message) return;
+  void raceAction(() => api.post(`/api/server/broadcast?instance=${instanceId.value}`, { message }), "Message broadcast.").then(
+    () => (broadcastMsg.value = ""),
+  );
+}
+
+function runAdmin() {
+  const command = adminCmd.value.trim();
+  if (!command) return;
+  void raceAction(() => api.post(`/api/server/admin-command?instance=${instanceId.value}`, { command }), "Command sent.").then(
+    () => (adminCmd.value = ""),
+  );
+}
+
+async function nextSession() {
+  const ok = await confirm.ask({
+    title: "Advance session",
+    message: "Skip to the next session now?",
+    detail: "The current session ends immediately for everyone.",
+    confirmLabel: "Next session",
+  });
+  if (ok) void raceAction(() => api.post(`/api/server/next-session?instance=${instanceId.value}`), "Advancing to next session.");
+}
+
+async function restartSession() {
+  const ok = await confirm.ask({
+    title: "Restart session",
+    message: "Restart the current session?",
+    detail: "Everyone returns to the start of the current session.",
+    confirmLabel: "Restart session",
+  });
+  if (ok) void raceAction(() => api.post(`/api/server/restart-session?instance=${instanceId.value}`), "Restarting session.");
+}
+
+async function skipEvent() {
+  const ok = await confirm.ask({
+    title: "Skip current event",
+    message: "Skip the current event and advance the queue?",
+    detail: "Everyone on the server is kicked when the event rotates.",
+    confirmLabel: "Skip event",
+    tone: "danger",
+  });
+  if (!ok) return;
+  busy.value = true;
+  try {
+    await api.post(`/api/queue/skipevent?instance=${instanceId.value}`);
+    await fetchDetail();
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+// --- Grid / weather editor for the running event ---
+const gridOpen = ref(false);
+const gridClassId = ref<number | null>(null);
+const gridForm = ref<UserClass | null>(null);
+const gridWeatherKey = ref("");
+const gridRestart = ref(false);
+const gridSaving = ref(false);
+
+async function openGrid() {
+  const ev = detail.value?.current_event;
+  if (!ev?.id || !ev.class_id) {
+    toast.error("No current event to edit.");
+    return;
+  }
+  gridClassId.value = ev.class_id;
+  gridWeatherKey.value = ev.weather_key ?? "";
+  gridRestart.value = false;
+  try {
+    void content.load();
+    const { data } = await api.get<{ data: UserClass }>(`/api/class/${ev.class_id}`);
+    data.entries ??= [];
+    for (const e of data.entries) e.count ??= 1;
+    gridForm.value = data;
+    gridOpen.value = true;
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+function gridSkins(carKey: string | undefined) {
+  return content.carByKey(carKey)?.skins ?? [];
+}
+function addGridEntry() {
+  gridForm.value?.entries?.push({ cache_car_key: undefined, skin_key: "", count: 1 } as UserClassEntry);
+}
+function removeGridEntry(i: number) {
+  gridForm.value?.entries?.splice(i, 1);
+}
+function onGridCar(entry: UserClassEntry) {
+  entry.skin_key = gridSkins(entry.cache_car_key)[0]?.key ?? "";
+}
+
+async function saveGrid() {
+  const ev = detail.value?.current_event;
+  if (!ev?.id || !gridForm.value) return;
+  gridSaving.value = true;
+  try {
+    const entries = (gridForm.value.entries ?? [])
+      .filter((e) => e.cache_car_key)
+      .map((e) => ({ cache_car_key: e.cache_car_key, skin_key: e.skin_key ?? "", count: e.count ?? 1 }));
+    const res = await api.post<{ restarted: boolean; restart_required: boolean }>(
+      `/api/server/current-event?instance=${instanceId.value}`,
+      {
+        event_id: ev.id,
+        class_id: gridClassId.value,
+        weather_key: gridWeatherKey.value || undefined,
+        class_entries: entries,
+        restart_now: gridRestart.value,
+      },
+    );
+    toast.success(res.restarted ? "Applied and restarted." : "Saved — restart the event to apply on track.");
+    gridOpen.value = false;
+    await fetchDetail();
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    gridSaving.value = false;
+  }
+}
+
 onMounted(async () => {
   await server.load();
   if (!server.instances[instanceId.value]) {
@@ -517,6 +666,16 @@ onBeforeUnmount(() => {
           <Icon name="activity" :size="14" />
           {{ detail.public_ip }}
         </span>
+        <Button
+          v-if="inst.running && (detail?.current_event?.id ?? 0) > 0"
+          variant="ghost"
+          size="sm"
+          :disabled="busy"
+          @click="skipEvent"
+        >
+          <Icon name="skip" :size="15" />
+          Skip
+        </Button>
         <Button :variant="inst.running ? 'danger' : 'success'" size="sm" :disabled="busy" @click="toggleServer">
           <Icon :name="inst.running ? 'stop' : 'power'" :size="15" />
           {{ busy ? "Working" : inst.running ? "Stop" : "Start" }}
@@ -743,7 +902,14 @@ onBeforeUnmount(() => {
     <Card v-if="detail?.current_event?.id" class="page-enter mt-4" style="animation-delay: 180ms">
       <template #header>
         <h2 class="text-sm font-bold">Current event</h2>
+        <span v-if="detail.current_event.name" class="truncate text-sm font-semibold text-accent">{{ detail.current_event.name }}</span>
         <span class="ml-auto text-xs text-dim">{{ detail.current_event.category }}</span>
+      </template>
+      <template #actions>
+        <Button variant="dark" size="sm" :disabled="busy" @click="openGrid">
+          <Icon name="edit" :size="14" />
+          Edit grid &amp; weather
+        </Button>
       </template>
       <div class="flex flex-wrap items-center gap-1.5 text-xs">
         <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.class }}</span>
@@ -905,8 +1071,10 @@ onBeforeUnmount(() => {
             @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
           />
           <div class="min-w-0">
-            <div class="truncate text-sm font-medium">{{ q.track }}</div>
-            <div class="truncate text-xs text-dim">{{ q.class }} · {{ q.session }} · {{ q.time }}</div>
+            <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>
+            <div class="truncate text-xs text-dim">
+              {{ q.name ? `${q.track} · ` : "" }}{{ q.class }} · {{ q.session }} · {{ q.time }}
+            </div>
           </div>
           <span v-if="q.started_at" class="ml-auto shrink-0 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
             In progress
@@ -915,8 +1083,40 @@ onBeforeUnmount(() => {
       </ul>
     </Card>
 
+    <!-- Race control -->
+    <Card v-if="inst.running" class="page-enter mt-4" style="animation-delay: 360ms">
+      <template #header>
+        <h2 class="text-sm font-bold">Race control</h2>
+      </template>
+      <div class="space-y-3">
+        <div class="flex flex-wrap gap-2">
+          <Button variant="dark" size="sm" :disabled="busy" @click="nextSession">
+            <Icon name="skip" :size="14" />
+            Next session
+          </Button>
+          <Button variant="dark" size="sm" :disabled="busy" @click="restartSession">
+            <Icon name="repeat" :size="14" />
+            Restart session
+          </Button>
+        </div>
+
+        <form class="flex gap-2" @submit.prevent="broadcast">
+          <Input v-model="broadcastMsg" placeholder="Broadcast a message to all drivers…" class="flex-1" />
+          <Button type="submit" size="sm" :disabled="busy || !broadcastMsg.trim()">Send</Button>
+        </form>
+
+        <form class="flex gap-2" @submit.prevent="runAdmin">
+          <Input v-model="adminCmd" placeholder="Admin command, e.g. /kick name or /ballast 0 50" class="flex-1 font-mono" />
+          <Button type="submit" variant="dark" size="sm" :disabled="busy || !adminCmd.trim()">Run</Button>
+        </form>
+        <p class="text-xs text-dim">
+          Admin commands run through the server's ACSP plugin — the same ones the in-game admin uses.
+        </p>
+      </div>
+    </Card>
+
     <!-- Console -->
-    <div class="page-enter mt-4" style="animation-delay: 380ms">
+    <div class="page-enter mt-4" style="animation-delay: 400ms">
       <button
         type="button"
         class="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
@@ -930,6 +1130,56 @@ onBeforeUnmount(() => {
         class="mt-2 max-h-72 overflow-y-auto rounded-md border border-line bg-bg p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted"
         >{{ consoleLines() }}</pre>
     </div>
+
+    <!-- Grid & weather editor for the running event -->
+    <Sheet :open="gridOpen" title="Edit grid & weather" @close="gridOpen = false">
+      <template v-if="gridForm">
+        <FormRow label="Weather" hint="Applies to the event's time/weather preset">
+          <Combobox
+            v-model="gridWeatherKey"
+            placeholder="Search weather…"
+            :options="content.weathers.map((w) => ({ value: w.key ?? '', label: w.name ?? w.key ?? '' }))"
+          />
+        </FormRow>
+
+        <h3 class="mt-4 mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Grid entries</h3>
+        <div
+          v-for="(entry, i) in gridForm.entries"
+          :key="i"
+          class="mb-2 flex flex-wrap items-end gap-2 rounded-md border border-line bg-surface-2/50 p-2"
+        >
+          <div class="min-w-40 flex-1">
+            <Combobox
+              v-model="entry.cache_car_key"
+              placeholder="Search cars…"
+              :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
+              @update:model-value="onGridCar(entry)"
+            />
+          </div>
+          <Select
+            v-model="entry.skin_key"
+            class="w-32"
+            :options="gridSkins(entry.cache_car_key).map((s) => ({ value: s.key, label: s.name || s.key }))"
+          />
+          <Input v-model="entry.count" type="number" :min="1" :max="64" class="w-16" />
+          <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeGridEntry(i)">
+            <Icon name="x" :size="14" />
+          </Button>
+        </div>
+        <Button variant="dark" size="sm" @click="addGridEntry">
+          <Icon name="plus" :size="14" />
+          Add car
+        </Button>
+
+        <div class="mt-4 border-t border-line pt-3">
+          <Toggle v-model="gridRestart" label="Restart the event now to apply on track" />
+        </div>
+      </template>
+      <template #footer>
+        <Button variant="ghost" @click="gridOpen = false">Cancel</Button>
+        <Button :disabled="gridSaving" @click="saveGrid">{{ gridSaving ? "Saving…" : "Save changes" }}</Button>
+      </template>
+    </Sheet>
 
     <!-- Car detail: photo, skin, specs, power/torque curves -->
     <Sheet :open="!!carViewer" :title="carViewer?.car?.name || carViewer?.carKey || 'Car'" @close="carViewer = null">

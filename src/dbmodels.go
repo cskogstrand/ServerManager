@@ -109,7 +109,8 @@ const (
 )
 
 type UserEvent struct {
-	Id                *int `form:"id"`
+	Id                *int    `form:"id"`
+	Name              *string `form:"name" json:"name"`
 	EventCategoryId   *int
 	CategoryName      *string
 	RaceLaps          *int `form:"race_laps" json:"race_laps,string"`
@@ -150,6 +151,7 @@ type UserEvent struct {
 type UserEventList struct {
 	Id              *int    `json:"id"`
 	EventCategoryId *int    `json:"event_category_id"`
+	Name            *string `json:"name"`
 	TrackName       *string `json:"track_name"`
 }
 

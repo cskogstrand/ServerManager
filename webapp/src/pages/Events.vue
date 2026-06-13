@@ -4,6 +4,7 @@
 // links to its editor for creating new presets.
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
@@ -26,6 +27,7 @@ import Skeleton from "@/components/ui/Skeleton.vue";
 
 interface EventRow {
   id: number | null;
+  name: string;
   track_key: string;
   track_config: string;
   track_name: string;
@@ -80,6 +82,7 @@ function normalizeEvent(raw: any): EventRow {
   const num = (v: any) => (v === null || v === undefined || v === "" ? null : Number(v));
   return {
     id: raw.Id ?? null,
+    name: raw.name ?? "",
     track_key: raw.CacheTrackKey ?? "",
     track_config: raw.CacheTrackConfig ?? "",
     track_name: raw.TrackName ?? raw.CacheTrackKey ?? "",
@@ -178,9 +181,15 @@ const builderOpen = ref(false);
 const trackPickerOpen = ref(false);
 const editing = ref<EventRow | null>(null);
 
+// Warn before navigating away while the builder holds unsaved edits.
+let builderBaseline = "";
+const markBuilderClean = () => (builderBaseline = editing.value ? JSON.stringify(editing.value) : "");
+useUnsavedGuard(() => builderOpen.value && editing.value !== null && JSON.stringify(editing.value) !== builderBaseline);
+
 function emptyEvent(): EventRow {
   return {
     id: null,
+    name: "",
     track_key: "",
     track_config: "",
     track_name: "",
@@ -201,6 +210,7 @@ function emptyEvent(): EventRow {
 
 function openBuilder(event?: EventRow) {
   editing.value = event ? { ...event } : emptyEvent();
+  markBuilderClean();
   builderOpen.value = true;
 }
 
@@ -228,6 +238,7 @@ const saveEvent = () =>
 
     const body = {
       event_category_id: selectedId.value,
+      name: e.name?.trim() ?? "",
       track_key: e.track_key,
       track_config: e.track_config,
       difficulty_id: e.difficulty_id,
@@ -271,6 +282,7 @@ const duplicateEvent = (e: EventRow) =>
     if (!e.id || !selectedId.value) return;
     await api.post("/api/events", {
       event_category_id: selectedId.value,
+      name: e.name ? `${e.name} (copy)` : "",
       track_key: e.track_key,
       track_config: e.track_config,
       difficulty_id: e.difficulty_id,
@@ -418,7 +430,8 @@ onMounted(() =>
         <Card v-for="e in events" :key="e.id ?? 0">
           <template #header>
             <Icon name="events" :size="16" class="text-accent" />
-            <h2 class="min-w-0 truncate text-sm font-bold">{{ e.track_name }}</h2>
+            <h2 class="min-w-0 truncate text-sm font-bold">{{ e.name || e.track_name }}</h2>
+            <span v-if="e.name" class="min-w-0 truncate text-xs text-muted">{{ e.track_name }}</span>
             <span v-if="e.track_config" class="text-xs text-dim">{{ e.track_config }}</span>
           </template>
           <template #actions>
@@ -484,6 +497,9 @@ onMounted(() =>
   <!-- Builder -->
   <Sheet :open="builderOpen" :title="editing?.id ? 'Edit event' : 'New event'" @close="builderOpen = false">
     <template v-if="editing">
+      <FormRow label="Event name" hint="Optional — shown in lists and appended to the lobby name. Defaults to the group name.">
+        <Input v-model="editing.name" placeholder="e.g. Round 3 — Night Sprint" maxlength="80" />
+      </FormRow>
       <FormRow label="Track">
         <button
           type="button"

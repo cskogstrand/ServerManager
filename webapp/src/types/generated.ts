@@ -94,6 +94,7 @@ export interface DriverStream {
 }
 export interface UserEvent {
   Id?: number /* int */;
+  name?: string;
   EventCategoryId?: number /* int */;
   CategoryName?: string;
   race_laps?: number /* int */;
@@ -133,6 +134,7 @@ export interface UserEvent {
 export interface UserEventList {
   id?: number /* int */;
   event_category_id?: number /* int */;
+  name?: string;
   track_name?: string;
 }
 export interface UserEventCategory {

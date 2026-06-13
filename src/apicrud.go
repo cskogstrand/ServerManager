@@ -414,6 +414,7 @@ func apiCategoryDelete(c *gin.Context) {
 // (UserEvent's json tags carry ",string" quirks the old dashboard relies on.)
 type eventRequest struct {
 	EventCategoryId int    `json:"event_category_id"`
+	Name            string `json:"name"`
 	TrackKey        string `json:"track_key"`
 	TrackConfig     string `json:"track_config"`
 	DifficultyId    int    `json:"difficulty_id"`
@@ -441,6 +442,10 @@ func (req eventRequest) toUserEvent() (UserEvent, string) {
 		TimeId:           &req.TimeId,
 		RaceLaps:         &req.RaceLaps,
 		Strategy:         &req.Strategy,
+	}
+	// Empty name stays NULL so the lobby title falls back to the category name.
+	if name := strings.TrimSpace(req.Name); name != "" {
+		evt.Name = &name
 	}
 	return evt, ""
 }
@@ -599,19 +604,20 @@ func apiQueueList(c *gin.Context) {
 	items := make([]gin.H, 0, len(events))
 	for _, se := range events {
 		items = append(items, gin.H{
-			"id":          se.Id,
-			"event_id":    se.UserEvent.Id,
-			"instance_id": se.InstanceId,
+			"id":           se.Id,
+			"event_id":     se.UserEvent.Id,
+			"instance_id":  se.InstanceId,
+			"name":         se.UserEvent.Name,
 			"category":     se.UserEvent.CategoryName,
 			"track":        se.UserEvent.TrackName,
 			"track_key":    se.UserEvent.CacheTrackKey,
 			"track_config": se.UserEvent.CacheTrackConfig,
 			"difficulty":   se.UserEvent.DifficultyName,
-			"session":     se.UserEvent.SessionName,
-			"class":       se.UserEvent.ClassName,
-			"time":        se.UserEvent.TimeName,
-			"started_at":  se.StartedAt,
-			"finished":    se.Finished,
+			"session":      se.UserEvent.SessionName,
+			"class":        se.UserEvent.ClassName,
+			"time":         se.UserEvent.TimeName,
+			"started_at":   se.StartedAt,
+			"finished":     se.Finished,
 		})
 	}
 	c.PureJSON(http.StatusOK, gin.H{"items": items})

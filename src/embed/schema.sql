@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS user_event (
   class_id INTEGER NOT NULL,
   time_id INTEGER NOT NULL,
 
+  name TEXT,
   race_laps INTEGER,
   strategy INTEGER,
 

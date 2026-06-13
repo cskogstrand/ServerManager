@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -20,10 +21,20 @@ const busy = ref(false);
 const notice = ref("");
 const error = ref("");
 
+// Dirty when units differ from the loaded values or a new password is typed.
+const loadedUnits = ref("");
+useUnsavedGuard(
+  () =>
+    `${measurementUnit.value}/${tempUnit.value}` !== loadedUnits.value ||
+    newPassword.value !== "" ||
+    confirmPassword.value !== "",
+);
+
 onMounted(async () => {
   await auth.ensureChecked();
   measurementUnit.value = auth.user?.measurement_unit ?? 0;
   tempUnit.value = auth.user?.temp_unit ?? 0;
+  loadedUnits.value = `${measurementUnit.value}/${tempUnit.value}`;
 });
 
 async function save() {
@@ -45,6 +56,7 @@ async function save() {
     notice.value = newPassword.value ? "Preferences saved. Password updated." : "Preferences saved.";
     newPassword.value = "";
     confirmPassword.value = "";
+    loadedUnits.value = `${measurementUnit.value}/${tempUnit.value}`;
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e);
   } finally {

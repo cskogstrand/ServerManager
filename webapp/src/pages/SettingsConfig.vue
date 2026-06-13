@@ -4,6 +4,7 @@
 // Phase 5).
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import type { UserConfig } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -18,6 +19,11 @@ const form = ref<UserConfig | null>(null);
 const busy = ref(false);
 const notice = ref("");
 const error = ref("");
+
+// Unsaved-changes detection: snapshot the form on load/save and compare.
+let baseline = "";
+const markClean = () => (baseline = form.value ? JSON.stringify(form.value) : "");
+useUnsavedGuard(() => form.value !== null && JSON.stringify(form.value) !== baseline);
 
 // Dedicated-server engine + AssettoServer install state
 type EngineStatus = {
@@ -68,6 +74,7 @@ const autoStart = intToggle("auto_start_server");
 
 onMounted(async () => {
   form.value = await api.get<UserConfig>("/api/config");
+  markClean();
   try {
     engineStatus.value = await api.get<EngineStatus>("/api/server/engine");
   } catch {
@@ -82,6 +89,7 @@ async function save() {
   error.value = "";
   try {
     await api.put("/api/config", form.value);
+    markClean();
     notice.value = "Configuration saved.";
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e);

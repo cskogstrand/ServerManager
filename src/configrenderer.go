@@ -365,6 +365,13 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 		}
 	}
 
+	// The lobby title suffix uses the event's custom name when set, otherwise
+	// the event category name (legacy behavior).
+	eventName := eventcat.Name
+	if event.Name != nil && strings.TrimSpace(*event.Name) != "" {
+		eventName = event.Name
+	}
+
 	data := map[string]any{
 		"event":       event,
 		"config":      cfg,
@@ -377,7 +384,7 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 		"max_clients": maxclients,
 		"sunangle":    cr.timeToSunAngle(tm.Time),
 		"cspstr":      cspstr,
-		"name":        eventcat.Name,
+		"name":        eventName,
 	}
 
 	var b bytes.Buffer

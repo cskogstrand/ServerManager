@@ -427,6 +427,7 @@ func serverStatusPayload(inst *Instance) gin.H {
 
 	currentEvent := gin.H{
 		"id":         0,
+		"name":       "",
 		"category":   "",
 		"track":      "",
 		"track_key":  "",
@@ -444,6 +445,9 @@ func serverStatusPayload(inst *Instance) gin.H {
 	}
 	if inst.Cr.serverEvent.Id != nil {
 		currentEvent["id"] = *inst.Cr.serverEvent.Id
+	}
+	if inst.Cr.serverEvent.UserEvent.Name != nil {
+		currentEvent["name"] = *inst.Cr.serverEvent.UserEvent.Name
 	}
 	if inst.Cr.serverEvent.UserEvent.CategoryName != nil {
 		currentEvent["category"] = *inst.Cr.serverEvent.UserEvent.CategoryName

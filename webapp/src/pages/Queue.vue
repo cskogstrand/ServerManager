@@ -20,6 +20,7 @@ interface QueueRow {
   id: number;
   event_id: number;
   instance_id: number;
+  name: string | null;
   category: string;
   track: string;
   difficulty: string;
@@ -373,8 +374,8 @@ watch(
               <Icon v-else name="check" :size="15" class="text-dim" />
             </td>
             <td class="py-2 pr-2">
-              <div class="font-medium">{{ r.track }}</div>
-              <div class="text-xs text-dim">{{ r.category }}</div>
+              <div class="font-medium">{{ r.name || r.track }}</div>
+              <div class="text-xs text-dim">{{ r.name ? `${r.track} · ${r.category}` : r.category }}</div>
             </td>
             <td class="py-2 pr-2 max-md:hidden">{{ r.class }}</td>
             <td class="py-2 pr-2 text-xs text-muted max-lg:hidden">
@@ -430,7 +431,7 @@ watch(
         <Select
           id="qevent"
           v-model="addEvent"
-          :options="eventsInCategory.map((e) => ({ value: e.id ?? 0, label: e.track_name ?? '' }))"
+          :options="eventsInCategory.map((e) => ({ value: e.id ?? 0, label: e.name || e.track_name || '' }))"
         />
       </FormRow>
       <Button class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">

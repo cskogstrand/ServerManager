@@ -3,6 +3,7 @@
 // own ports and queue.
 import { onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useServerStore, type InstanceState } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
 import Card from "@/components/ui/Card.vue";
@@ -68,6 +69,18 @@ interface DriverStreamForm {
 const editorOpen = ref(false);
 const form = ref<InstanceForm | null>(null);
 
+// Unsaved-changes guards for the two modal editors. Each open() snapshots the
+// form; the route guard fires only while an editor is open and edited.
+let instanceBaseline = "";
+let driverBaseline = "";
+const markInstanceClean = () => (instanceBaseline = form.value ? JSON.stringify(form.value) : "");
+const markDriverClean = () => (driverBaseline = driverForm.value ? JSON.stringify(driverForm.value) : "");
+useUnsavedGuard(
+  () =>
+    (editorOpen.value && form.value !== null && JSON.stringify(form.value) !== instanceBaseline) ||
+    (driverEditorOpen.value && driverForm.value !== null && JSON.stringify(driverForm.value) !== driverBaseline),
+);
+
 function nextFree(values: (number | null)[], fallback: number): number {
   const used = values.filter((v): v is number => v !== null);
   return used.length ? Math.max(...used) + 1 : fallback;
@@ -96,6 +109,7 @@ function openCreate() {
     spectator_car_key: "",
     spectator_skin_key: "",
   };
+  markInstanceClean();
   editorOpen.value = true;
 }
 
@@ -118,6 +132,7 @@ function openEdit(inst: InstanceState) {
     spectator_car_key: inst.spectator_car_key ?? "",
     spectator_skin_key: inst.spectator_skin_key ?? "",
   };
+  markInstanceClean();
   editorOpen.value = true;
 }
 
@@ -206,6 +221,7 @@ function openDriverCreate() {
     stream_embed_url: "",
     stream_status_url: "",
   };
+  markDriverClean();
   driverEditorOpen.value = true;
 }
 
@@ -218,6 +234,7 @@ function openDriverEdit(stream: DriverStream) {
     stream_embed_url: stream.stream_embed_url ?? "",
     stream_status_url: stream.stream_status_url ?? "",
   };
+  markDriverClean();
   driverEditorOpen.value = true;
 }
 

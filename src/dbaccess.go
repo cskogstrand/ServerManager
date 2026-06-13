@@ -131,6 +131,9 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_instance", "start_on_boot", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.start_on_boot: ", err)
 	}
+	if err := dba.ensureColumn("user_event", "name", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for user_event.name: ", err)
+	}
 	// Existing single-user installs default to admin so nobody is locked out.
 	if err := dba.ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
 		log.Fatal("Error applying database migration for users.role: ", err)
@@ -487,6 +490,7 @@ func (dba Dbaccess) selectServerEvents(notfinished bool, instanceId int) ([]Serv
 SELECT
 	s.id as id,
 	u.id as event_id,
+	u.name as event_name,
 	t.name as track_name,
 	u.cache_track_key as track_key,
 	u.cache_track_config as track_config,
@@ -528,7 +532,7 @@ JOIN user_time tw
 	list := make([]ServerEvent, 0)
 	for rows.Next() {
 		se := ServerEvent{}
-		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
+		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -819,12 +823,12 @@ func (dba Dbaccess) deleteServerEventsByUserEvent(id int) (int64, error) {
 
 func (dba Dbaccess) selectEvent(id int) (UserEvent, error) {
 	evt := UserEvent{}
-	stmt, err := dba.db.Prepare("SELECT id, event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy FROM user_event WHERE id = ? LIMIT 1")
+	stmt, err := dba.db.Prepare("SELECT id, event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy FROM user_event WHERE id = ? LIMIT 1")
 	if err != nil {
 		return evt, err
 	}
 	defer stmt.Close()
-	err = stmt.QueryRow(id).Scan(&evt.Id, &evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy)
+	err = stmt.QueryRow(id).Scan(&evt.Id, &evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy)
 	if err != nil {
 		return evt, err
 	}
@@ -834,7 +838,7 @@ func (dba Dbaccess) selectEvent(id int) (UserEvent, error) {
 
 func (dba Dbaccess) selectEventList() ([]UserEventList, error) {
 	ddl := make([]UserEventList, 0)
-	rows, err := dba.db.Query("SELECT s.id, t.name, s.event_category_id from user_event s JOIN cache_track t on s.cache_track_key = t.key AND s.cache_track_config = t.config")
+	rows, err := dba.db.Query("SELECT s.id, t.name, s.event_category_id, s.name from user_event s JOIN cache_track t on s.cache_track_key = t.key AND s.cache_track_config = t.config")
 
 	if err != nil {
 		return ddl, err
@@ -848,7 +852,7 @@ func (dba Dbaccess) selectEventList() ([]UserEventList, error) {
 
 	for rows.Next() {
 		item := UserEventList{}
-		err = rows.Scan(&item.Id, &item.TrackName, &item.EventCategoryId)
+		err = rows.Scan(&item.Id, &item.TrackName, &item.EventCategoryId, &item.Name)
 		if err != nil {
 			return ddl, err
 		}
@@ -865,11 +869,11 @@ func (dba Dbaccess) selectEventList() ([]UserEventList, error) {
 }
 
 func (dba Dbaccess) insertEvent(evt UserEvent) (int64, error) {
-	stmt, err := dba.db.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := dba.db.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
-	res, err := stmt.Exec(&evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy)
+	res, err := stmt.Exec(&evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy)
 	defer stmt.Close()
 
 	if err != nil {
@@ -885,11 +889,11 @@ func (dba Dbaccess) insertEvent(evt UserEvent) (int64, error) {
 }
 
 func (dba Dbaccess) updateEvent(evt UserEvent) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, race_laps = ?, strategy = ? WHERE id = ?")
+	stmt, err := dba.db.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, name = ?, race_laps = ?, strategy = ? WHERE id = ?")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
-	res, err := stmt.Exec(evt.CacheTrackKey, evt.CacheTrackConfig, evt.DifficultyId, evt.SessionId, evt.ClassId, evt.TimeId, evt.RaceLaps, evt.Strategy, evt.Id)
+	res, err := stmt.Exec(evt.CacheTrackKey, evt.CacheTrackConfig, evt.DifficultyId, evt.SessionId, evt.ClassId, evt.TimeId, evt.Name, evt.RaceLaps, evt.Strategy, evt.Id)
 	defer stmt.Close()
 
 	if err != nil {
@@ -937,6 +941,7 @@ func (dba Dbaccess) selectCategoryEvents(id int) (UserEventCategory, error) {
 	query := `
 SELECT
 	s.id as id,
+	s.name as name,
 	s.race_laps as race_laps,
 	s.strategy as strategy,
 	t.name as track_name,
@@ -1008,7 +1013,7 @@ GROUP BY s.id`
 
 	for rows.Next() {
 		evt := UserEvent{}
-		err = rows.Scan(&evt.Id, &evt.RaceLaps, &evt.Strategy, &evt.TrackName, &evt.TrackLength, &evt.Pitboxes, &evt.CacheTrack, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.DifficultyName, &evt.AbsAllowed, &evt.TcAllowed, &evt.StabilityAllowed, &evt.AutoclutchAllowed, &evt.SessionId, &evt.SessionName, &evt.BookingEnabled, &evt.BookingTime, &evt.PracticeEnabled, &evt.PracticeTime, &evt.QualifyEnabled, &evt.QualifyTime, &evt.RaceEnabled, &evt.RaceTime, &evt.ClassId, &evt.ClassName, &evt.Entries, &evt.TimeId, &evt.TimeName, &evt.Time, &evt.Graphics, &evt.TruncWeather, &evt.CspWeather)
+		err = rows.Scan(&evt.Id, &evt.Name, &evt.RaceLaps, &evt.Strategy, &evt.TrackName, &evt.TrackLength, &evt.Pitboxes, &evt.CacheTrack, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.DifficultyName, &evt.AbsAllowed, &evt.TcAllowed, &evt.StabilityAllowed, &evt.AutoclutchAllowed, &evt.SessionId, &evt.SessionName, &evt.BookingEnabled, &evt.BookingTime, &evt.PracticeEnabled, &evt.PracticeTime, &evt.QualifyEnabled, &evt.QualifyTime, &evt.RaceEnabled, &evt.RaceTime, &evt.ClassId, &evt.ClassName, &evt.Entries, &evt.TimeId, &evt.TimeName, &evt.Time, &evt.Graphics, &evt.TruncWeather, &evt.CspWeather)
 		if err != nil {
 			return cat, err
 		}
@@ -1691,7 +1696,7 @@ func (dba Dbaccess) updateServerInstanceSchedule(id int, ts *int64) (int64, erro
 // which re-applies the same event without consuming the queue.
 func (dba Dbaccess) selectServerEventForEvent(eventId int) (ServerEvent, error) {
 	row := dba.db.QueryRow(`
-SELECT u.id, t.name, d.name, e.name, c.name, tw.name, ct.name
+SELECT u.id, u.name, t.name, d.name, e.name, c.name, tw.name, ct.name
 FROM user_event u
 JOIN user_event_category ct on u.event_category_id = ct.id
 JOIN cache_track t on u.cache_track_key = t.key AND u.cache_track_config = t.config
@@ -1702,7 +1707,7 @@ JOIN user_time tw on u.time_id = tw.id
 WHERE u.id = ?`, eventId)
 
 	se := ServerEvent{}
-	err := row.Scan(&se.UserEvent.Id, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName)
+	err := row.Scan(&se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName)
 	if err != nil {
 		return ServerEvent{}, tracerr.Wrap(err)
 	}

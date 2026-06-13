@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useContentStore } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { intToggle } from "@/lib/forms";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
 import type { UserConfig } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
@@ -28,9 +29,15 @@ const cspPhytracks = intToggle(config, "csp_phytracks");
 const cspHidepit = intToggle(config, "csp_hidepit");
 const pathValid = ref<boolean | null>(null);
 
+// Guard the install/CSP form: snapshot on load/save, compare for dirtiness.
+let baseline = "";
+const markClean = () => (baseline = config.value ? JSON.stringify(config.value) : "");
+useUnsavedGuard(() => config.value !== null && JSON.stringify(config.value) !== baseline);
+
 onMounted(async () => {
   content.load().finally(() => (libraryLoading.value = false));
   config.value = await api.get<UserConfig>("/api/config");
+  markClean();
 });
 
 async function validatePath() {
@@ -55,6 +62,7 @@ async function saveInstall() {
   }
   try {
     await api.put("/api/config/content", config.value);
+    markClean();
     toast.success("Installation settings saved. Rebuild the cache to import content.");
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));

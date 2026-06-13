@@ -206,7 +206,11 @@ onMounted(() =>
     await server.load();
     instanceId.value = server.instanceList[0]?.id ?? null;
     const [cats, events] = await Promise.all([
-      api.get<{ items: DropDownList[] }>("/api/categories?filled=1"),
+      // All event groups — a group is just a folder of events. The legacy
+      // ?filled=1 hid groups that were never renamed (filled stays 0 on create),
+      // so only some of the user's groups showed. The event dropdown below
+      // already narrows to events in the chosen group.
+      api.get<{ items: DropDownList[] }>("/api/categories"),
       api.get<{ items: UserEventList[] }>("/api/events"),
     ]);
     categories.value = cats.items;

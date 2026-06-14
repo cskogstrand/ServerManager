@@ -18,6 +18,7 @@ import {
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
 import { computeRunningOrder, type TimingRow } from "@/lib/raceTelemetry";
+import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -25,6 +26,7 @@ import Icon from "@/components/ui/Icon.vue";
 import Sheet from "@/components/ui/Sheet.vue";
 import Modal from "@/components/ui/Modal.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
+import StreamTheater from "@/components/StreamTheater.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import LineChart from "@/components/ui/LineChart.vue";
@@ -121,7 +123,16 @@ const mapImageOk = ref(true);
 const loading = ref(true);
 const busy = ref(false);
 const consoleOpen = ref(false);
-const streamViewer = ref<{ title: string; url: string } | null>(null);
+
+// --- Watchable streams (spectator cam + per-driver cams) ---
+const driverStreams = useDriverStreams();
+const theaterOpen = ref(false);
+const theaterKey = ref<string | null>(null);
+
+function openStream(key: string) {
+  theaterKey.value = key;
+  theaterOpen.value = true;
+}
 
 // Track shown on the page: the loaded event wins; with nothing loaded we fall
 // back to the next unfinished queue entry so the map never disappears.
@@ -171,6 +182,31 @@ const broadcastTo = computed(() => `/server/${instanceId.value}/broadcast`);
 function timingFor(carId: number): TimingRow | undefined {
   return timingRows.value.find((r) => r.car_id === carId);
 }
+
+// Driver-stream lookup for the timing tower: car → guid → configured stream.
+function guidForCar(carId: number): string | undefined {
+  return drivers.value.find((d) => d.car_id === carId)?.guid;
+}
+function hasStreamForCar(carId: number): boolean {
+  return !!driverStreams.streamForGuid(guidForCar(carId));
+}
+
+// Channels offered by the theater: the fixed spectator cam (if enabled) plus
+// one per connected driver that has a stream configured.
+const streamChannels = computed<StreamChannel[]>(() => {
+  const channels: StreamChannel[] = [];
+  if (inst.value?.stream_enabled === 1 && inst.value.stream_embed_url) {
+    channels.push({
+      key: `spectator:${instanceId.value}`,
+      title: `${inst.value.name} spectator`,
+      subtitle: "Fixed spectator cam",
+      url: inst.value.stream_embed_url,
+      health: "unknown",
+    });
+  }
+  channels.push(...driverStreams.channelsFor(connected.value));
+  return channels;
+});
 
 // Telemetry health: the server can be "running" yet send nothing over the AC
 // UDP plugin (misconfigured AssettoServer, crashed process, wrong ports). Flag
@@ -787,6 +823,8 @@ onMounted(async () => {
     return;
   }
   void content.load();
+  void driverStreams.loadStreams();
+  driverStreams.startHealthPoll(() => instanceId.value);
   await Promise.all([fetchDetail(), fetchQueue()]);
   await fetchMapMeta();
   loading.value = false;
@@ -804,6 +842,7 @@ watch(consoleOpen, (open) => {
 });
 onBeforeUnmount(() => {
   if (consoleTimer) clearInterval(consoleTimer);
+  driverStreams.stopHealthPoll();
 });
 </script>
 
@@ -1163,6 +1202,16 @@ onBeforeUnmount(() => {
                   <div class="font-mono text-[11px] text-dim">L{{ row.laps }}</div>
                 </div>
                 <button
+                  v-if="hasStreamForCar(row.car_id)"
+                  type="button"
+                  class="shrink-0 rounded-md p-1 text-accent/80 transition-colors hover:bg-accent-dim hover:text-accent"
+                  :aria-label="`Watch ${row.name}'s stream`"
+                  :title="`Watch ${row.name}'s stream`"
+                  @click="openStream(`driver:${guidForCar(row.car_id)}`)"
+                >
+                  <Icon name="play" :size="14" />
+                </button>
+                <button
                   type="button"
                   class="shrink-0 rounded-md p-1 text-dim opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
                   :disabled="busy"
@@ -1397,8 +1446,8 @@ onBeforeUnmount(() => {
       <template #header>
         <Icon name="broadcast" :size="15" class="text-dim" />
         <h2 class="text-sm font-bold">Spectator stream</h2>
-        <Button variant="ghost" size="sm" class="ml-auto" @click="streamViewer = { title: `${inst.name} spectator`, url: inst.stream_embed_url! }">
-          <Icon name="activity" :size="14" />
+        <Button variant="ghost" size="sm" class="ml-auto" @click="openStream(`spectator:${instanceId}`)">
+          <Icon name="play" :size="14" />
           Watch
         </Button>
       </template>
@@ -1607,20 +1656,12 @@ onBeforeUnmount(() => {
       </template>
     </Sheet>
 
-    <Sheet :open="!!streamViewer" :title="streamViewer?.title ?? 'Stream'" @close="streamViewer = null">
-      <template v-if="streamViewer">
-        <iframe
-          :src="streamViewer.url"
-          :title="streamViewer.title"
-          class="aspect-video w-full rounded-md border border-line bg-bg"
-          allow="autoplay; fullscreen; picture-in-picture"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-        />
-      </template>
-      <template #footer>
-        <Button variant="ghost" @click="streamViewer = null">Close</Button>
-      </template>
-    </Sheet>
+    <StreamTheater
+      :open="theaterOpen"
+      :channels="streamChannels"
+      :initial-key="theaterKey"
+      @close="theaterOpen = false"
+    />
   </template>
 </template>
 

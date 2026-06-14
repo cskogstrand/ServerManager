@@ -10,6 +10,7 @@ import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
+import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import {
   normalizeRaceSetup,
   raceSetupBody,
@@ -17,6 +18,7 @@ import {
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
 import Card from "@/components/ui/Card.vue";
+import StreamTheater from "@/components/StreamTheater.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Sheet from "@/components/ui/Sheet.vue";
@@ -62,6 +64,20 @@ const { summary, reload: reloadSummary } = useSetupSummary();
 const details = ref<Record<number, StatusPayload>>({});
 const busy = ref<Record<number, boolean>>({});
 const loading = ref(true);
+
+// --- Watchable driver streams (overview-level, no live health poll) ---
+const driverStreams = useDriverStreams();
+const theaterOpen = ref(false);
+const theaterChannels = ref<StreamChannel[]>([]);
+
+// Connected drivers come from the SSE-fed store (App keeps it live app-wide).
+function streamChannelsFor(id: number): StreamChannel[] {
+  return driverStreams.channelsFor(server.instances[id]?.drivers ?? []);
+}
+function openStreams(id: number) {
+  theaterChannels.value = streamChannelsFor(id);
+  if (theaterChannels.value.length) theaterOpen.value = true;
+}
 
 async function fetchDetail(id: number) {
   try {
@@ -227,6 +243,7 @@ watch(
 
 onMounted(async () => {
   await server.load();
+  void driverStreams.loadStreams();
   await refreshAll();
   loading.value = false;
 });
@@ -289,6 +306,16 @@ onMounted(async () => {
         </span>
       </template>
       <template #actions>
+        <Button
+          v-if="inst.running && streamChannelsFor(inst.id).length"
+          variant="ghost"
+          size="sm"
+          @click="openStreams(inst.id)"
+        >
+          <Icon name="play" :size="14" />
+          Watch
+          <span class="font-mono text-dim">{{ streamChannelsFor(inst.id).length }}</span>
+        </Button>
         <Button
           v-if="inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
           variant="ghost"
@@ -449,4 +476,6 @@ onMounted(async () => {
       </Button>
     </template>
   </Sheet>
+
+  <StreamTheater :open="theaterOpen" :channels="theaterChannels" @close="theaterOpen = false" />
 </template>

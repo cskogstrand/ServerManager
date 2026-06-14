@@ -24,7 +24,9 @@ import {
   speedKmh,
   type TimingRow,
 } from "@/lib/raceTelemetry";
+import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import Icon from "@/components/ui/Icon.vue";
+import StreamTheater from "@/components/StreamTheater.vue";
 
 interface CurrentEvent {
   name: string;
@@ -167,6 +169,23 @@ function timingFor(carId: number): TimingRow | undefined {
   return timingRows.value.find((r) => r.car_id === carId);
 }
 
+// --- Watchable driver streams ---
+const driverStreams = useDriverStreams();
+const theaterOpen = ref(false);
+const theaterKey = ref<string | null>(null);
+const streamChannels = computed<StreamChannel[]>(() => driverStreams.channelsFor(drivers.value));
+
+function guidForCar(carId: number): string | undefined {
+  return drivers.value.find((d) => d.car_id === carId)?.guid;
+}
+function hasStreamForCar(carId: number): boolean {
+  return !!driverStreams.streamForGuid(guidForCar(carId));
+}
+function openStream(carId: number) {
+  theaterKey.value = `driver:${guidForCar(carId)}`;
+  theaterOpen.value = true;
+}
+
 async function fetchStatus() {
   try {
     const payload = await api.get<StatusPayload & StatusResponse>(
@@ -206,6 +225,8 @@ function toggleFullscreen() {
 onMounted(async () => {
   if (!server.loaded) await server.load();
   void content.load();
+  void driverStreams.loadStreams();
+  driverStreams.startHealthPoll(() => instanceId.value);
   await fetchStatus();
   await fetchMapMeta();
 });
@@ -217,6 +238,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
+  driverStreams.stopHealthPoll();
 });
 </script>
 
@@ -472,6 +494,16 @@ onBeforeUnmount(() => {
               </div>
               <div class="font-mono text-[10px] text-dim">LAP {{ row.laps }}</div>
             </div>
+            <button
+              v-if="hasStreamForCar(row.car_id)"
+              type="button"
+              class="grid size-8 shrink-0 place-items-center rounded-md border border-accent/40 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
+              :aria-label="`Watch ${row.name}'s stream`"
+              :title="`Watch ${row.name}'s stream`"
+              @click.stop="openStream(row.car_id)"
+            >
+              <Icon name="play" :size="14" />
+            </button>
           </div>
 
           <div class="mt-2 flex items-center gap-3 font-mono text-[11px]">
@@ -498,6 +530,13 @@ onBeforeUnmount(() => {
         {{ running ? "Waiting for cars to join the session…" : "Server is stopped." }}
       </div>
     </footer>
+
+    <StreamTheater
+      :open="theaterOpen"
+      :channels="streamChannels"
+      :initial-key="theaterKey"
+      @close="theaterOpen = false"
+    />
   </div>
 </template>
 

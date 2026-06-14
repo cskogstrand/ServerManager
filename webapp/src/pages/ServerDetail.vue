@@ -855,10 +855,9 @@ onBeforeUnmount(() => {
         </span>
         <RouterLink
           :to="broadcastTo"
-          target="_blank"
           class="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-accent/45 bg-accent/15 px-2.5 text-xs font-semibold text-accent transition-colors hover:border-accent/70 hover:bg-accent/25"
           :class="inst.running ? 'shadow-[0_0_20px_rgba(98,179,232,0.28)]' : ''"
-          title="Open the full-screen broadcast overlay (new window)"
+          title="Open the full-screen broadcast overlay"
         >
           <span v-if="inst.running" class="size-1.5 animate-pulse rounded-full bg-accent" />
           <Icon name="broadcast" :size="14" />
@@ -1016,7 +1015,6 @@ onBeforeUnmount(() => {
             <RouterLink
               v-if="inst.running"
               :to="broadcastTo"
-              target="_blank"
               class="absolute right-2 bottom-2 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
             >
               <Icon name="maximize" :size="13" />

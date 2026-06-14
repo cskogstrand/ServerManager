@@ -64,5 +64,20 @@ export const useContentStore = defineStore("content", {
     carByKey(key: string | undefined | null): CacheCar | undefined {
       return key ? this.cars.find((c) => c.key === key) : undefined;
     },
+
+    // Delete content from disk + cache, then drop the local copy. The track key
+    // covers every layout, so all matching rows leave the list.
+    async deleteTrack(key: string) {
+      await api.delete(`/api/track/${encodeURIComponent(key)}`);
+      this.tracks = this.tracks.filter((t) => t.key !== key);
+    },
+    async deleteCar(key: string) {
+      await api.delete(`/api/car/${encodeURIComponent(key)}`);
+      this.cars = this.cars.filter((c) => c.key !== key);
+    },
+    async deleteWeather(key: string) {
+      await api.delete(`/api/weather/${encodeURIComponent(key)}`);
+      this.weathers = this.weathers.filter((w) => w.key !== key);
+    },
   },
 });

@@ -2172,3 +2172,20 @@ func (dba Dbaccess) selectCacheWeather(weatherkey string) (CacheWeather, error) 
 
 	return w, nil
 }
+
+// deleteCacheTrack removes every cached layout of a track (all configs share
+// the same on-disk folder, which is deleted alongside).
+func (dba Dbaccess) deleteCacheTrack(key string) error {
+	_, err := dba.db.Exec("DELETE FROM cache_track WHERE key = ?", key)
+	return tracerr.Wrap(err)
+}
+
+func (dba Dbaccess) deleteCacheCar(key string) error {
+	_, err := dba.db.Exec("DELETE FROM cache_car WHERE key = ?", key)
+	return tracerr.Wrap(err)
+}
+
+func (dba Dbaccess) deleteCacheWeather(key string) error {
+	_, err := dba.db.Exec("DELETE FROM cache_weather WHERE key = ?", key)
+	return tracerr.Wrap(err)
+}

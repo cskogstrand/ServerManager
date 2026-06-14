@@ -257,6 +257,9 @@ func main() {
 		api.GET("/content/jobs/active", apiContentJobsActive)
 		api.GET("/content/jobs/:id", apiContentJob)
 		api.POST("/content/upload", apiContentUpload)
+		api.DELETE("/track/:key", apiTrackDelete)
+		api.DELETE("/car/:key", apiCarDelete)
+		api.DELETE("/weather/:key", apiWeatherDelete)
 
 		api.POST("/validate/installpath", apiValidateInstallpath)
 

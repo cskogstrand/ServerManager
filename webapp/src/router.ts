@@ -11,10 +11,10 @@ const router = createRouter({
     { path: "/events", name: "events", component: () => import("@/pages/Events.vue") },
     { path: "/queue", name: "queue", component: () => import("@/pages/Queue.vue") },
     { path: "/content", name: "content", component: () => import("@/pages/Content.vue") },
-    { path: "/presets/difficulty", name: "preset-difficulty", component: () => import("@/pages/PresetDifficulty.vue") },
-    { path: "/presets/sessions", name: "preset-sessions", component: () => import("@/pages/PresetSession.vue") },
-    { path: "/presets/time", name: "preset-time", component: () => import("@/pages/PresetTime.vue") },
-    { path: "/presets/classes", name: "preset-classes", component: () => import("@/pages/PresetClass.vue") },
+    { path: "/presets/difficulty", name: "preset-difficulty", component: () => import("@/pages/PresetDifficulty.vue"), meta: { admin: true } },
+    { path: "/presets/sessions", name: "preset-sessions", component: () => import("@/pages/PresetSession.vue"), meta: { admin: true } },
+    { path: "/presets/time", name: "preset-time", component: () => import("@/pages/PresetTime.vue"), meta: { admin: true } },
+    { path: "/presets/classes", name: "preset-classes", component: () => import("@/pages/PresetClass.vue"), meta: { operate: true } },
     { path: "/setup", name: "setup", component: () => import("@/pages/SetupWorkbench.vue") },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue") },
     { path: "/settings/instances", name: "instances", component: () => import("@/pages/SettingsInstances.vue") },
@@ -33,6 +33,9 @@ router.beforeEach(async (to) => {
     return { name: "login", query: { redirect: to.fullPath } };
   }
   if (to.meta.admin && !auth.isAdmin) {
+    return { name: "dashboard" };
+  }
+  if (to.meta.operate && !auth.canOperate) {
     return { name: "dashboard" };
   }
   return true;

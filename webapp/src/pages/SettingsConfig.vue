@@ -3,8 +3,9 @@
 // here anymore — each server instance owns its ports (Settings → Instances,
 // Phase 5).
 import { computed, onMounted, ref } from "vue";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, csrfToken } from "@/lib/api";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
+import { useToastStore } from "@/stores/toast";
 import type { UserConfig } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -15,15 +16,41 @@ import Toggle from "@/components/ui/Toggle.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 
+const toast = useToastStore();
 const form = ref<UserConfig | null>(null);
 const busy = ref(false);
 const notice = ref("");
 const error = ref("");
 
-// Unsaved-changes detection: snapshot the form on load/save and compare.
-let baseline = "";
-const markClean = () => (baseline = form.value ? JSON.stringify(form.value) : "");
-useUnsavedGuard(() => form.value !== null && JSON.stringify(form.value) !== baseline);
+// The install/CSP fields live on the same config row but save through their own
+// endpoint (with path validation), so they get a separate baseline. Tracking
+// them apart from the main config fields keeps each Save button's dirty state
+// — and the unsaved guard — honest.
+const INSTALL_KEYS: (keyof UserConfig)[] = [
+  "install_path",
+  "csp_required",
+  "csp_version",
+  "csp_phycars",
+  "csp_phytracks",
+  "csp_hidepit",
+];
+const snapshot = (keep: boolean) => {
+  if (!form.value) return "";
+  const o: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(form.value)) {
+    if (INSTALL_KEYS.includes(k as keyof UserConfig) === keep) o[k] = v;
+  }
+  return JSON.stringify(o);
+};
+
+// Two baselines: the config half and the install half, compared independently.
+let cfgBaseline = "";
+let installBaseline = "";
+const markCfgClean = () => (cfgBaseline = snapshot(false));
+const markInstallClean = () => (installBaseline = snapshot(true));
+const cfgDirty = () => form.value !== null && snapshot(false) !== cfgBaseline;
+const installDirty = () => form.value !== null && snapshot(true) !== installBaseline;
+useUnsavedGuard(() => cfgDirty() || installDirty());
 
 // Dedicated-server engine + AssettoServer install state
 type EngineStatus = {
@@ -71,10 +98,16 @@ const appendEventname = intToggle("append_eventname");
 const appendModlinks = intToggle("append_modlinks");
 const relaxChecksums = intToggle("as_relax_checksums");
 const autoStart = intToggle("auto_start_server");
+const cspRequired = intToggle("csp_required");
+const cspPhycars = intToggle("csp_phycars");
+const cspPhytracks = intToggle("csp_phytracks");
+const cspHidepit = intToggle("csp_hidepit");
+const pathValid = ref<boolean | null>(null);
 
 onMounted(async () => {
   form.value = await api.get<UserConfig>("/api/config");
-  markClean();
+  markCfgClean();
+  markInstallClean();
   try {
     engineStatus.value = await api.get<EngineStatus>("/api/server/engine");
   } catch {
@@ -89,12 +122,41 @@ async function save() {
   error.value = "";
   try {
     await api.put("/api/config", form.value);
-    markClean();
+    markCfgClean();
     notice.value = "Configuration saved.";
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     busy.value = false;
+  }
+}
+
+async function validatePath() {
+  pathValid.value = null;
+  const data = new FormData();
+  data.append("path", form.value?.install_path ?? "");
+  const res = await fetch("/api/validate/installpath", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken() },
+    body: data,
+  });
+  const json = await res.json();
+  pathValid.value = json.result === true;
+  return pathValid.value;
+}
+
+async function saveInstall() {
+  if (!form.value) return;
+  if (!(await validatePath())) {
+    toast.error("No acServer binary found under that path — expected <path>/server/acServer.");
+    return;
+  }
+  try {
+    await api.put("/api/config/content", form.value);
+    markInstallClean();
+    toast.success("Installation settings saved. Rebuild the content cache to import content.");
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 </script>
@@ -219,5 +281,41 @@ async function save() {
       <Icon name="check" :size="15" />
       {{ busy ? "Saving…" : "Save configuration" }}
     </Button>
+  </form>
+
+  <form v-if="form" class="mt-4 max-w-2xl" @submit.prevent="saveInstall">
+    <Card title="Installation">
+      <FormRow
+        label="Assetto Corsa install path"
+        for-id="installpath"
+        hint="Folder containing server/acServer — e.g. .../steamapps/common/assettocorsa (or /corsa in docker)"
+      >
+        <div class="flex gap-1">
+          <Input id="installpath" v-model="form.install_path" class="flex-1" />
+          <Button type="button" variant="dark" size="sm" @click="validatePath">
+            <Icon v-if="pathValid === true" name="check" :size="14" />
+            <Icon v-else-if="pathValid === false" name="x" :size="14" />
+            <span>{{ pathValid === null ? "Check" : pathValid ? "Valid" : "Invalid" }}</span>
+          </Button>
+        </div>
+      </FormRow>
+
+      <Toggle v-model="cspRequired" label="Require Custom Shaders Patch (CSP)" />
+      <div v-if="cspRequired" class="mt-3">
+        <FormRow label="Minimum CSP version" for-id="cspver" hint="Build number, e.g. 3155">
+          <Input id="cspver" v-model="form.csp_version" type="number" :min="0" />
+        </FormRow>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Toggle v-model="cspPhycars" label="Extended car physics" />
+          <Toggle v-model="cspPhytracks" label="Extended track physics" />
+          <Toggle v-model="cspHidepit" label="Hide pitboxes" />
+        </div>
+      </div>
+
+      <Button type="submit" class="mt-3">
+        <Icon name="check" :size="15" />
+        Save installation
+      </Button>
+    </Card>
   </form>
 </template>

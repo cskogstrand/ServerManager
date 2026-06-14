@@ -45,7 +45,8 @@ func RoleMiddleware(c *gin.Context) {
 }
 
 // stewardCanMutate whitelists the operate-time mutations a steward may perform:
-// running-server commands, the queue, and per-instance run mode / schedule.
+// running-server commands, the queue, per-instance run mode / schedule, and
+// car-class presets.
 func stewardCanMutate(path string) bool {
 	p := strings.TrimPrefix(path, "/api")
 	switch {
@@ -54,6 +55,8 @@ func stewardCanMutate(path string) bool {
 	case strings.HasPrefix(p, "/queue"):
 		return true
 	case strings.HasPrefix(p, "/instances/") && (strings.HasSuffix(p, "/runmode") || strings.HasSuffix(p, "/schedule")):
+		return true
+	case p == "/classes" || strings.HasPrefix(p, "/class/"):
 		return true
 	}
 	return false

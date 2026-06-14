@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useContentStore } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useQueryParam, enumParam } from "@/lib/useQueryParam";
-import { intToggle } from "@/lib/forms";
-import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
-import type { UserConfig } from "@/types/generated";
+import { useConfirmStore } from "@/stores/confirm";
+import type { CacheCar, CacheTrack, CacheWeather } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -20,51 +20,70 @@ import Skeleton from "@/components/ui/Skeleton.vue";
 
 const content = useContentStore();
 const toast = useToastStore();
+const confirm = useConfirmStore();
+const router = useRouter();
 const libraryLoading = ref(true);
 
-// --- Installation & CSP (the content half of user_config) ---
-const config = ref<UserConfig | null>(null);
-const cspRequired = intToggle(config, "csp_required");
-const cspPhycars = intToggle(config, "csp_phycars");
-const cspPhytracks = intToggle(config, "csp_phytracks");
-const cspHidepit = intToggle(config, "csp_hidepit");
-const pathValid = ref<boolean | null>(null);
-
-// Guard the install/CSP form: snapshot on load/save, compare for dirtiness.
-let baseline = "";
-const markClean = () => (baseline = config.value ? JSON.stringify(config.value) : "");
-useUnsavedGuard(() => config.value !== null && JSON.stringify(config.value) !== baseline);
-
-onMounted(async () => {
+onMounted(() => {
   content.load().finally(() => (libraryLoading.value = false));
-  config.value = await api.get<UserConfig>("/api/config");
-  markClean();
 });
 
-async function validatePath() {
-  pathValid.value = null;
-  const data = new FormData();
-  data.append("path", config.value?.install_path ?? "");
-  const res = await fetch("/api/validate/installpath", {
-    method: "POST",
-    headers: { "X-CSRF-Token": csrfToken() },
-    body: data,
-  });
-  const json = await res.json();
-  pathValid.value = json.result === true;
-  return pathValid.value;
+// --- Delete content (removes from disk + cache) ---
+async function deleteTrack(t: CacheTrack) {
+  if (
+    !(await confirm.ask({
+      title: "Delete track?",
+      message: `Permanently delete "${t.name || t.key}" and all its layouts from disk?`,
+      detail: "This removes the track folder from your Assetto Corsa install and cannot be undone.",
+      confirmLabel: "Delete track",
+      cancelLabel: "Keep",
+      tone: "danger",
+    }))
+  )
+    return;
+  try {
+    await content.deleteTrack(t.key!);
+    toast.success(`Deleted ${t.name || t.key}.`);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
 }
 
-async function saveInstall() {
-  if (!config.value) return;
-  if (!(await validatePath())) {
-    toast.error("No acServer binary found under that path — expected <path>/server/acServer.");
+async function deleteCar(carItem: CacheCar) {
+  if (
+    !(await confirm.ask({
+      title: "Delete car?",
+      message: `Permanently delete "${carItem.name || carItem.key}" from disk?`,
+      detail: "This removes the car folder from your Assetto Corsa install and cannot be undone.",
+      confirmLabel: "Delete car",
+      cancelLabel: "Keep",
+      tone: "danger",
+    }))
+  )
     return;
-  }
   try {
-    await api.put("/api/config/content", config.value);
-    markClean();
-    toast.success("Installation settings saved. Rebuild the cache to import content.");
+    await content.deleteCar(carItem.key!);
+    toast.success(`Deleted ${carItem.name || carItem.key}.`);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+async function deleteWeather(w: CacheWeather) {
+  if (
+    !(await confirm.ask({
+      title: "Delete weather?",
+      message: `Permanently delete "${w.name || w.key}" from disk?`,
+      detail: "This removes the weather folder from your Assetto Corsa install and cannot be undone.",
+      confirmLabel: "Delete weather",
+      cancelLabel: "Keep",
+      tone: "danger",
+    }))
+  )
+    return;
+  try {
+    await content.deleteWeather(w.key!);
+    toast.success(`Deleted ${w.name || w.key}.`);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
@@ -149,11 +168,10 @@ async function recache() {
   }
 }
 
-// Empty-state CTAs jump to the relevant panel in the right column.
+// Empty-state CTAs: install path now lives on the Configuration page; upload
+// stays here in the right column.
 function focusInstall() {
-  const el = document.getElementById("installpath");
-  el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  (el as HTMLInputElement | null)?.focus();
+  void router.push("/settings");
 }
 function focusUpload() {
   document.getElementById("upload-content")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -169,7 +187,7 @@ function jobTone(status: string) {
 <template>
   <PageHeader
     title="Content"
-    subtitle="Browse installed tracks, cars, and weather; validate the AC path; upload or rebuild content cache."
+    subtitle="Browse installed tracks, cars, and weather; upload, delete, or rebuild the content cache."
     icon="content"
   />
 
@@ -203,13 +221,21 @@ function jobTone(status: string) {
 
       <template v-else>
       <div v-if="tab === 'tracks'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="overflow-hidden rounded-md border border-line">
+        <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="group relative overflow-hidden rounded-md border border-line">
           <img
             :src="`/api/track/preview/${t.key}${t.config ? '/' + t.config : ''}`"
             alt=""
             loading="lazy"
             class="aspect-video w-full object-cover"
           />
+          <button
+            type="button"
+            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
+            :aria-label="`Delete ${t.name || t.key}`"
+            @click="deleteTrack(t)"
+          >
+            <Icon name="trash" :size="15" />
+          </button>
           <div class="p-2">
             <div class="truncate text-sm font-medium">{{ t.name }}</div>
             <div class="text-xs text-dim">{{ t.config || "default" }} · {{ t.pitboxes }} pits</div>
@@ -218,7 +244,7 @@ function jobTone(status: string) {
       </div>
 
       <div v-else-if="tab === 'cars'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="c in filteredCars" :key="c.key" class="overflow-hidden rounded-md border border-line">
+        <div v-for="c in filteredCars" :key="c.key" class="group relative overflow-hidden rounded-md border border-line">
           <img
             v-if="c.skins?.length"
             :src="`/api/car/image/${c.key}/${c.skins[0].key}`"
@@ -226,6 +252,14 @@ function jobTone(status: string) {
             loading="lazy"
             class="aspect-video w-full object-cover"
           />
+          <button
+            type="button"
+            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
+            :aria-label="`Delete ${c.name || c.key}`"
+            @click="deleteCar(c)"
+          >
+            <Icon name="trash" :size="15" />
+          </button>
           <div class="p-2">
             <div class="truncate text-sm font-medium">{{ c.name }}</div>
             <div class="text-xs text-dim">{{ c.brand }} · {{ c.skins?.length ?? 0 }} skins</div>
@@ -234,8 +268,16 @@ function jobTone(status: string) {
       </div>
 
       <div v-else class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="w in filteredWeathers" :key="w.key" class="rounded-md border border-line p-2 text-sm">
-          {{ w.name }}
+        <div v-for="w in filteredWeathers" :key="w.key" class="flex items-center gap-2 rounded-md border border-line p-2 text-sm">
+          <span class="min-w-0 flex-1 truncate">{{ w.name }}</span>
+          <button
+            type="button"
+            class="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition hover:bg-danger hover:text-white"
+            :aria-label="`Delete ${w.name || w.key}`"
+            @click="deleteWeather(w)"
+          >
+            <Icon name="trash" :size="15" />
+          </button>
         </div>
       </div>
 
@@ -265,37 +307,6 @@ function jobTone(status: string) {
 
     <!-- Upload & jobs -->
     <div class="space-y-4">
-      <Card v-if="config" title="Installation">
-        <FormRow
-          label="Assetto Corsa install path"
-          for-id="installpath"
-          hint="Folder containing server/acServer — e.g. .../steamapps/common/assettocorsa (or /corsa in docker)"
-        >
-          <div class="flex gap-1">
-            <Input id="installpath" v-model="config.install_path" class="flex-1" />
-            <Button variant="dark" size="sm" @click="validatePath">
-              <Icon v-if="pathValid === true" name="check" :size="14" />
-              <Icon v-else-if="pathValid === false" name="x" :size="14" />
-              <span>{{ pathValid === null ? "Check" : pathValid ? "Valid" : "Invalid" }}</span>
-            </Button>
-          </div>
-        </FormRow>
-
-        <Toggle v-model="cspRequired" label="Require Custom Shaders Patch (CSP)" />
-        <div v-if="cspRequired" class="mt-3">
-          <FormRow label="Minimum CSP version" for-id="cspver" hint="Build number, e.g. 3155">
-            <Input id="cspver" v-model="config.csp_version" type="number" :min="0" />
-          </FormRow>
-          <div class="grid gap-2 sm:grid-cols-2">
-            <Toggle v-model="cspPhycars" label="Extended car physics" />
-            <Toggle v-model="cspPhytracks" label="Extended track physics" />
-            <Toggle v-model="cspHidepit" label="Hide pitboxes" />
-          </div>
-        </div>
-
-        <Button class="mt-3" @click="saveInstall">Save installation</Button>
-      </Card>
-
       <Card id="upload-content" title="Upload content">
         <FormRow label="Type" for-id="kind">
           <Select

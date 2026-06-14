@@ -5,4 +5,6 @@ Done:
 - [x] Ability to set custom name on events (user_event.name column; editable in Events builder; shown in lists/queue/dashboard/detail; appended to lobby server name)
 - [x] Servers on dashboard takes up too much space. We have the serverdetail page for a reason. Strip the serverlist page down. (dashboard now compact one-card-per-instance overview; map/live timing/grid editor/race control/console moved to /server/:id)
 - [x] On the queue page, the Event group dropdown is only showing 3 of the 5 groups I have added. (Queue dropdown used `?filled=1`; category `filled` is 0 until a group is renamed, hiding created-but-unrenamed groups. Dropped the filter so all groups show, matching the Events page.)
-- [ ] On the content page, the "installation" part should be moved to the configuration page.
+- [x] On the content page, the "installation" part should be moved to the configuration page. (Install path + CSP card now lives on Settings → Configuration with its own validate/save via `/api/config/content`; Content page empty-state "Set install path" CTA routes to /settings.)
+- [x] Add a "delete" button to the content page. (Per-card delete on tracks/cars/weather → `DELETE /api/{track,car,weather}/:key`, removes the content folder from disk + cache rows after a confirm dialog. Deleting a track removes all its layouts.)
+- [x] User type Steward should be able to set up car classes. (`stewardCanMutate` whitelists `/classes` + `/class/`; nav + router gate Car Classes to steward+admin via new `operate` flag, other presets stay admin-only.)

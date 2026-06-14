@@ -87,12 +87,11 @@ const allSections = [
   },
   {
     label: "Build",
-    admin: true,
     items: [
-      { to: "/presets/classes", label: "Car Classes", icon: "car" },
-      { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty" },
-      { to: "/presets/sessions", label: "Sessions", icon: "clock" },
-      { to: "/presets/time", label: "Time & Weather", icon: "weather" },
+      { to: "/presets/classes", label: "Car Classes", icon: "car", operate: true },
+      { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty", admin: true },
+      { to: "/presets/sessions", label: "Sessions", icon: "clock", admin: true },
+      { to: "/presets/time", label: "Time & Weather", icon: "weather", admin: true },
     ],
   },
   {
@@ -110,12 +109,16 @@ const allSections = [
   },
 ] as const;
 
-type NavItem = { to: string; label: string; icon: string; admin?: boolean };
+type NavItem = { to: string; label: string; icon: string; admin?: boolean; operate?: boolean };
+
+// Item visibility: admin items need admin; operate items need steward-or-admin;
+// everything else is open to any role.
+const canSee = (it: NavItem) => (it.admin ? auth.isAdmin : it.operate ? auth.canOperate : true);
 
 const navSections = computed(() =>
   allSections
     .filter((s) => !("admin" in s && s.admin) || auth.isAdmin)
-    .map((s) => ({ label: s.label, items: (s.items as readonly NavItem[]).filter((it) => !it.admin || auth.isAdmin) }))
+    .map((s) => ({ label: s.label, items: (s.items as readonly NavItem[]).filter(canSee) }))
     .filter((s) => s.items.length > 0),
 );
 

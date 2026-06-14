@@ -1122,6 +1122,62 @@ func apiRecacheContent(c *gin.Context) {
 	})
 }
 
+// safeContentKey rejects keys that could escape the content directory. Cache
+// keys are always a single folder name; anything with separators or dot-dot is
+// malicious or malformed.
+func safeContentKey(key string) bool {
+	if key == "" || key == "." || key == ".." {
+		return false
+	}
+	return !strings.ContainsAny(key, `/\`)
+}
+
+// deleteContentItem removes one content item: its on-disk folder under the AC
+// install and every cache row keyed by it. kind is "tracks", "cars" or
+// "weather" (the content sub-directory name).
+func deleteContentItem(c *gin.Context, kind, key string, dropRows func() error) {
+	if !safeContentKey(key) {
+		apiBadRequest(c, "Invalid content key.")
+		return
+	}
+
+	basepath, err := Dba.basepath()
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errInstallPathNotConfigured) {
+			status = http.StatusBadRequest
+		}
+		apiError(c, status, "install_path", err.Error())
+		return
+	}
+
+	folder := filepath.Join(basepath, "content", kind, key)
+	if err := os.RemoveAll(folder); err != nil {
+		apiError(c, http.StatusInternalServerError, "delete_failed", "Could not remove content folder: "+err.Error())
+		return
+	}
+	if err := dropRows(); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"success": true})
+}
+
+func apiTrackDelete(c *gin.Context) {
+	key := c.Param("key")
+	deleteContentItem(c, "tracks", key, func() error { return Dba.deleteCacheTrack(key) })
+}
+
+func apiCarDelete(c *gin.Context) {
+	key := c.Param("key")
+	deleteContentItem(c, "cars", key, func() error { return Dba.deleteCacheCar(key) })
+}
+
+func apiWeatherDelete(c *gin.Context) {
+	key := c.Param("key")
+	deleteContentItem(c, "weather", key, func() error { return Dba.deleteCacheWeather(key) })
+}
+
 func apiContentUpload(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxContentUploadSize)
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {

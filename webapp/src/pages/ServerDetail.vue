@@ -287,13 +287,16 @@ function kick(carId: number, name: string) {
 }
 
 // --- Map geometry ---
-// Cap the map at 80vh: width follows from the height cap so tall, narrow
-// circuits don't fill the whole page; wide ones still span the card.
+// The map is a supporting view, not the centrepiece: cap it so it never eats
+// the viewport. Width follows from the height cap (so tall, narrow circuits
+// stay small) and is clamped to the card width for wide ones.
 function mapCanvasStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
+  const cap = "min(42vh, 420px)";
   return {
     aspectRatio: String(ratio),
-    width: `min(100%, calc(80vh * ${ratio}))`,
+    width: `min(100%, calc(${cap} * ${ratio}))`,
+    maxHeight: cap,
     marginInline: "auto",
   };
 }
@@ -488,17 +491,6 @@ function consoleLines(): string {
   const text = detail.value?.text ?? "";
   return text.split("\n").slice(-200).join("\n").trim() || "No output yet.";
 }
-
-const sessionTiles = computed(() => {
-  const s = liveSession.value;
-  const running = inst.value?.running;
-  return [
-    { label: "Session", value: running && s ? s.typeLabel : "—", sub: running && s ? `${(s.current_session_index ?? 0) + 1} of ${s.session_count}` : "stopped" },
-    { label: "Elapsed", value: running ? elapsed() : "—", sub: running && s ? (s.laps ? `${s.laps} laps` : `${s.time} min`) : "" },
-    { label: "Air / Road", value: running && s ? `${s.ambient_temp}° / ${s.road_temp}°` : "—", sub: "temperature" },
-    { label: "Drivers", value: running ? String(connected.value.length) : "0", sub: `${positions.value.length} live on map` },
-  ];
-});
 
 // --- Session timeline ---
 // pips: one per session in the weekend (current highlighted). For timed
@@ -892,177 +884,258 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Track hero: photo backdrop + name, location, description -->
+    <!-- Overview ribbon — the whole server at a glance: status, session, time,
+         drivers, conditions and the loaded event in one scannable band. -->
     <section
-      v-if="activeTrack"
-      class="track-hero page-enter relative mb-4 overflow-hidden rounded-lg border border-line"
+      class="page-enter mb-4 overflow-hidden rounded-lg border border-line shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
       style="animation-delay: 30ms"
     >
-      <img
-        :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
-        alt=""
-        class="absolute inset-0 size-full object-cover"
-        @error="($event.target as HTMLImageElement).style.display = 'none'"
-      />
-      <div class="relative flex min-h-44 flex-col justify-end gap-1 p-4 sm:p-5">
-        <div class="flex flex-wrap items-center gap-2">
-          <span
-            v-if="activeTrack.source === 'queued'"
-            class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs font-semibold text-accent"
-          >
-            Up next
-          </span>
-          <span v-if="trackInfo?.country || trackInfo?.city" class="text-xs font-medium tracking-wide text-muted uppercase">
-            {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(" · ") }}
-          </span>
+      <div class="grid grid-cols-2 gap-px bg-line sm:grid-cols-3 xl:grid-cols-6">
+        <!-- Status -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Status</div>
+          <div class="mt-1 flex items-center gap-2">
+            <span
+              class="size-2.5 rounded-full"
+              :class="inst.running ? 'bg-ok shadow-[0_0_12px_rgba(79,216,132,0.55)]' : 'bg-dim'"
+            />
+            <span class="text-base font-bold" :class="inst.running ? 'text-text' : 'text-dim'">
+              {{ inst.running ? "Running" : "Stopped" }}
+            </span>
+          </div>
+          <div class="mt-0.5 font-mono text-xs text-dim">{{ inst.running ? `${elapsed()} elapsed` : "offline" }}</div>
         </div>
-        <h2 class="max-w-3xl text-2xl font-black tracking-tight text-text drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
-          {{ trackInfo?.name || activeTrack.name }}
-        </h2>
-        <p
-          v-if="trackInfo?.desc"
-          class="line-clamp-3 max-w-3xl text-sm text-muted drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]"
-        >
-          {{ trackInfo.desc }}
-        </p>
-        <dl class="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted">
-          <div class="flex items-center gap-1.5">
-            <span class="text-dim">Length</span>
-            <span class="text-text">{{ trackLengthLabel(trackInfo) }}</span>
+
+        <!-- Session -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Session</div>
+          <div class="mt-1 truncate text-base font-bold" :class="inst.running && liveSession ? 'text-text' : 'text-dim'">
+            {{ inst.running && liveSession ? liveSession.typeLabel : "—" }}
           </div>
-          <div v-if="trackInfo?.width" class="flex items-center gap-1.5">
-            <span class="text-dim">Width</span>
-            <span class="text-text">{{ trackInfo.width }}</span>
+          <div v-if="inst.running && liveSession?.session_count" class="mt-2 flex items-center gap-1">
+            <span
+              v-for="n in liveSession.session_count"
+              :key="n"
+              class="h-1 flex-1 rounded-full transition-colors"
+              :class="
+                n - 1 < (liveSession.current_session_index ?? 0)
+                  ? 'bg-ok/70'
+                  : n - 1 === (liveSession.current_session_index ?? 0)
+                    ? 'bg-accent'
+                    : 'bg-surface-3'
+              "
+            />
           </div>
-          <div class="flex items-center gap-1.5">
-            <span class="text-dim">Pitboxes</span>
-            <span class="text-text">{{ trackInfo?.pitboxes ?? "—" }}</span>
+          <div v-else class="mt-0.5 font-mono text-xs text-dim">no session</div>
+        </div>
+
+        <!-- Time -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Time</div>
+          <div class="mt-1 font-mono text-base font-bold" :class="inst.running ? 'text-text' : 'text-dim'">
+            {{ inst.running ? elapsed() : "—" }}
           </div>
-          <div class="flex items-center gap-1.5">
-            <span class="text-dim">Layout</span>
-            <span class="text-text">{{ activeTrack.config || "default" }}</span>
+          <template v-if="sessionTimeline?.timed">
+            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+              <div
+                class="h-full rounded-full bg-gradient-to-r from-accent/70 to-accent transition-[width] duration-700 ease-out"
+                :style="{ width: `${(sessionTimeline.fraction ?? 0) * 100}%` }"
+              />
+            </div>
+            <div class="mt-1 font-mono text-xs text-dim">
+              {{ sessionTimeline.remaining !== null ? `~${sessionTimeline.remaining} min left` : sessionTimeline.totalLabel }}
+            </div>
+          </template>
+          <div v-else class="mt-0.5 font-mono text-xs text-dim">{{ sessionTimeline?.totalLabel ?? "—" }}</div>
+        </div>
+
+        <!-- Drivers -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Drivers</div>
+          <div class="mt-1 font-mono text-base font-bold" :class="inst.running ? 'text-text' : 'text-dim'">
+            {{ inst.running ? connected.length : 0 }}
           </div>
-        </dl>
+          <div class="mt-0.5 font-mono text-xs text-dim">{{ positions.length }} on map · {{ detail?.current_cars?.length ?? 0 }} slots</div>
+        </div>
+
+        <!-- Conditions -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Conditions</div>
+          <div class="mt-1 font-mono text-base font-bold" :class="inst.running && liveSession ? 'text-text' : 'text-dim'">
+            {{ inst.running && liveSession ? `${liveSession.ambient_temp}° / ${liveSession.road_temp}°` : "—" }}
+          </div>
+          <div class="mt-0.5 font-mono text-xs text-dim">air / road</div>
+        </div>
+
+        <!-- Event -->
+        <div class="bg-surface px-4 py-3">
+          <div class="text-[11px] font-semibold tracking-wide text-dim uppercase">Event</div>
+          <div
+            class="mt-1 truncate text-base font-bold"
+            :class="detail?.current_event?.id ? 'text-text' : 'text-dim'"
+            :title="detail?.current_event?.name || detail?.current_event?.track || ''"
+          >
+            {{ detail?.current_event?.id ? detail.current_event.name || detail.current_event.track : "None" }}
+          </div>
+          <div class="mt-0.5 truncate font-mono text-xs text-dim">{{ detail?.current_event?.category || "nothing loaded" }}</div>
+        </div>
       </div>
     </section>
 
-    <!-- Hero: live map + live-timing tower -->
-    <div class="page-enter grid gap-4 lg:grid-cols-5" style="animation-delay: 60ms">
-      <Card class="overflow-hidden lg:col-span-3" :muted="false">
-        <template #header>
-          <Icon name="dashboard" :size="15" class="text-accent" />
-          <h2 class="text-sm font-bold">Live track map</h2>
-          <span
-            class="ml-auto inline-flex items-center gap-1.5 font-mono text-xs"
-            :class="telemetryWarning ? 'text-warn' : positions.length ? 'text-ok' : 'text-dim'"
-          >
+    <!-- Live region: spatial track map (a supporting view) beside the timing tower -->
+    <div class="page-enter grid gap-4 lg:grid-cols-3" style="animation-delay: 60ms">
+      <section class="overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] lg:col-span-2">
+        <!-- Compact track header: photo backdrop + name, location, live status -->
+        <div v-if="activeTrack" class="relative">
+          <img
+            :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
+            alt=""
+            class="absolute inset-0 size-full object-cover"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/90 to-surface/35" />
+          <div class="relative flex items-end gap-3 px-4 pt-12 pb-3">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span
+                  v-if="activeTrack.source === 'queued'"
+                  class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-[11px] font-semibold text-accent"
+                >
+                  Up next
+                </span>
+                <span v-if="trackInfo?.country || trackInfo?.city" class="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(" · ") }}
+                </span>
+              </div>
+              <h2 class="truncate text-xl font-black tracking-tight text-text drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+                {{ trackInfo?.name || activeTrack.name }}
+              </h2>
+            </div>
             <span
-              v-if="positions.length && !telemetryWarning"
-              class="size-1.5 animate-pulse rounded-full bg-ok shadow-[0_0_10px_rgba(79,216,132,0.7)]"
-            />
-            {{
-              telemetryWarning
-                ? "plugin offline"
-                : positions.length
-                  ? `${positions.length} car${positions.length === 1 ? "" : "s"} on track`
-                  : inst.running
-                    ? "waiting for cars"
-                    : "server stopped"
-            }}
-          </span>
-        </template>
+              class="ml-auto inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border px-2 py-1 font-mono text-xs"
+              :class="telemetryWarning ? 'border-warn/40 bg-warn-glow text-warn' : positions.length ? 'border-ok/40 bg-ok-glow text-ok' : 'border-line bg-surface-2/80 text-dim'"
+            >
+              <span v-if="positions.length && !telemetryWarning" class="size-1.5 animate-pulse rounded-full bg-ok" />
+              {{
+                telemetryWarning
+                  ? "plugin offline"
+                  : positions.length
+                    ? `${positions.length} car${positions.length === 1 ? "" : "s"} on track`
+                    : inst.running
+                      ? "waiting for cars"
+                      : "stopped"
+              }}
+            </span>
+          </div>
+          <!-- Circuit facts strip -->
+          <dl class="relative flex flex-wrap gap-x-5 gap-y-1 border-t border-line bg-surface-2/40 px-4 py-2 font-mono text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="text-dim">Length</span>
+              <span class="text-muted">{{ trackLengthLabel(trackInfo) }}</span>
+            </div>
+            <div v-if="trackInfo?.width" class="flex items-center gap-1.5">
+              <span class="text-dim">Width</span>
+              <span class="text-muted">{{ trackInfo.width }}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-dim">Pitboxes</span>
+              <span class="text-muted">{{ trackInfo?.pitboxes ?? "—" }}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-dim">Layout</span>
+              <span class="text-muted">{{ activeTrack.config || "default" }}</span>
+            </div>
+          </dl>
+        </div>
 
-        <template v-if="activeTrack">
-          <div
-            v-if="mapMeta && mapImageOk"
-            class="map-canvas relative overflow-hidden rounded-md border border-line"
-            :style="mapCanvasStyle(mapMeta)"
-          >
-            <img
-              :src="trackUrl('map', activeTrack.key, activeTrack.config)"
-              alt=""
-              class="absolute inset-0 size-full object-fill opacity-85"
-              @error="mapImageOk = false"
-            />
-            <template v-for="d in drivers" :key="d.car_id">
-              <button
-                v-if="positionFor(d.car_id)"
-                type="button"
-                class="map-puck absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[10px] font-black transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
-                :class="
-                  timingFor(d.car_id)?.isLeader
-                    ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
-                    : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
-                "
-                :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
-                :title="`P${timingFor(d.car_id)?.position ?? '?'} · ${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${gearLabel(positionFor(d.car_id))}`"
+        <!-- Map canvas (height-capped so it never dominates the page) -->
+        <div class="p-4">
+          <template v-if="activeTrack">
+            <div
+              v-if="mapMeta && mapImageOk"
+              class="map-canvas relative overflow-hidden rounded-md border border-line"
+              :style="mapCanvasStyle(mapMeta)"
+            >
+              <img
+                :src="trackUrl('map', activeTrack.key, activeTrack.config)"
+                alt=""
+                class="absolute inset-0 size-full object-fill opacity-85"
+                @error="mapImageOk = false"
+              />
+              <template v-for="d in drivers" :key="d.car_id">
+                <button
+                  v-if="positionFor(d.car_id)"
+                  type="button"
+                  class="map-puck absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[10px] font-black transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
+                  :class="
+                    timingFor(d.car_id)?.isLeader
+                      ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
+                      : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
+                  "
+                  :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
+                  :title="`P${timingFor(d.car_id)?.position ?? '?'} · ${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${gearLabel(positionFor(d.car_id))}`"
+                >
+                  {{ timingFor(d.car_id)?.position ?? (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
+                </button>
+              </template>
+              <span
+                v-if="!positions.length"
+                class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm"
               >
-                {{ timingFor(d.car_id)?.position ?? (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
-              </button>
-            </template>
-            <span
-              v-if="!positions.length"
-              class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm"
-            >
-              Cars appear here once drivers are on track
-            </span>
-            <span
-              v-if="activeTrack.source === 'queued'"
-              class="absolute top-2 left-2 rounded-md border border-accent/40 bg-accent-dim px-2 py-1 text-xs text-accent backdrop-blur-sm"
-            >
-              Up next — not on track yet
-            </span>
-            <RouterLink
-              v-if="inst.running"
-              :to="broadcastTo"
-              class="absolute right-2 bottom-2 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
-            >
-              <Icon name="maximize" :size="13" />
-              Broadcast view
+                Cars appear here once drivers are on track
+              </span>
+              <RouterLink
+                v-if="inst.running"
+                :to="broadcastTo"
+                class="absolute right-2 bottom-2 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
+              >
+                <Icon name="maximize" :size="13" />
+                Broadcast view
+              </RouterLink>
+            </div>
+
+            <!-- No map.ini / map.png: fall back to the outline drawing -->
+            <div v-else class="map-canvas relative grid place-items-center overflow-hidden rounded-md border border-line py-8">
+              <img
+                :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
+                alt=""
+                class="max-h-64 opacity-80"
+                @error="($event.target as HTMLImageElement).style.display = 'none'"
+              />
+              <span class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm">
+                This layout ships no live-map metadata — outline only
+              </span>
+            </div>
+          </template>
+          <EmptyState
+            v-else
+            icon="events"
+            title="No track to show"
+            message="Queue an event for this instance and its track map appears here."
+          >
+            <RouterLink to="/queue">
+              <Button size="sm">
+                <Icon name="queue" :size="14" />
+                Open queue
+              </Button>
             </RouterLink>
-          </div>
+          </EmptyState>
+        </div>
+      </section>
 
-          <!-- No map.ini / map.png: fall back to the outline drawing -->
-          <div v-else class="map-canvas relative grid place-items-center overflow-hidden rounded-md border border-line py-8">
-            <img
-              :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
-              alt=""
-              class="max-h-72 opacity-80"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            <span class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm">
-              This layout ships no live-map metadata — outline only
-            </span>
-          </div>
-        </template>
-        <EmptyState
-          v-else
-          icon="events"
-          title="No track to show"
-          message="Queue an event for this instance and its track map appears here."
-        >
-          <RouterLink to="/queue">
-            <Button size="sm">
-              <Icon name="queue" :size="14" />
-              Open queue
-            </Button>
-          </RouterLink>
-        </EmptyState>
-      </Card>
-
-      <!-- Side: live-timing tower while running; circuit layout when idle -->
-      <Card class="overflow-hidden lg:col-span-2">
+      <!-- Timing tower while running; circuit detail when idle -->
+      <Card class="overflow-hidden lg:col-span-1">
         <template #header>
-          <Icon :name="inst.running ? 'activity' : 'events'" :size="15" :class="inst.running ? 'text-accent' : 'text-dim'" />
-          <h2 class="text-sm font-bold">{{ inst.running ? "Live timing" : "Layout" }}</h2>
-          <span class="ml-auto font-mono text-xs text-dim">
+          <Icon :name="inst.running ? 'activity' : 'info'" :size="15" :class="inst.running ? 'text-accent' : 'text-dim'" />
+          <h2 class="text-sm font-bold">{{ inst.running ? "Live timing" : "Circuit" }}</h2>
+          <span class="ml-auto truncate font-mono text-xs text-dim">
             {{ inst.running ? `${connected.length} on grid` : activeTrack?.key }}
           </span>
         </template>
 
         <!-- Running: ordered timing tower (tuned for a small field) -->
         <template v-if="inst.running">
-          <ol v-if="timingRows.length" class="space-y-2">
+          <ol v-if="timingRows.length" class="max-h-[58vh] space-y-2 overflow-y-auto pr-0.5">
             <li
               v-for="row in timingRows"
               :key="row.car_id"
@@ -1149,18 +1222,12 @@ onBeforeUnmount(() => {
           </div>
         </template>
 
-        <!-- Idle: circuit layout + tags -->
+        <!-- Idle: circuit description + tags (the outline map sits beside this) -->
         <template v-else-if="activeTrack">
-          <div class="map-canvas grid place-items-center rounded-md border border-line p-4">
-            <img
-              :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
-              alt=""
-              class="max-h-52 w-auto opacity-90"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-          </div>
+          <p v-if="trackInfo?.desc" class="text-sm leading-relaxed text-muted line-clamp-6">{{ trackInfo.desc }}</p>
+          <p v-else class="text-sm text-dim">No description shipped with this layout.</p>
           <div v-if="trackInfo?.tags?.length" class="mt-3 flex flex-wrap gap-1.5">
-            <span v-for="tag in trackInfo.tags.slice(0, 10)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            <span v-for="tag in trackInfo.tags.slice(0, 12)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
               {{ tag }}
             </span>
           </div>
@@ -1170,103 +1237,119 @@ onBeforeUnmount(() => {
       </Card>
     </div>
 
-    <!-- Session telemetry strip -->
-    <div class="page-enter mt-4 grid grid-cols-2 gap-3 md:grid-cols-4" style="animation-delay: 120ms">
-      <div v-for="tile in sessionTiles" :key="tile.label" class="rounded-md border border-line bg-surface px-3 py-2.5">
-        <div class="text-xs font-semibold tracking-wide text-muted uppercase">{{ tile.label }}</div>
-        <div class="mt-0.5 truncate font-mono text-lg font-medium" :class="tile.value === '—' ? 'text-dim' : 'text-text'">
-          {{ tile.value }}
+    <!-- Operate now: the loaded event and what's queued next, side by side -->
+    <div class="page-enter mt-4 grid gap-4 lg:grid-cols-2" style="animation-delay: 90ms">
+      <!-- Current event -->
+      <Card v-if="detail?.current_event?.id">
+        <template #header>
+          <Icon name="events" :size="15" class="text-accent" />
+          <h2 class="text-sm font-bold">Current event</h2>
+          <span class="truncate text-xs text-dim">{{ detail.current_event.category }}</span>
+        </template>
+        <template #actions>
+          <Button variant="dark" size="sm" :disabled="busy" @click="openEditSetup">
+            <Icon name="edit" :size="14" />
+            Edit race setup
+          </Button>
+        </template>
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.class }}</span>
+          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.session }}</span>
+          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.time }}</span>
+          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.difficulty }}</span>
+          <span
+            v-if="detail.current_event.weather"
+            class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-0.5 pr-2.5 pl-0.5"
+          >
+            <img
+              v-if="detail.current_event.weather_key"
+              :src="weatherImageUrl(detail.current_event.weather_key)"
+              alt=""
+              class="size-5 rounded-full border border-line object-cover"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            {{ detail.current_event.weather }}
+          </span>
         </div>
-        <div class="text-xs text-dim">{{ tile.sub }}</div>
-      </div>
+      </Card>
+      <Card v-else>
+        <template #header>
+          <Icon name="events" :size="15" class="text-dim" />
+          <h2 class="text-sm font-bold">Current event</h2>
+        </template>
+        <p class="text-sm text-dim">Nothing loaded. Start the server or queue an event to load one.</p>
+      </Card>
+
+      <!-- Up next -->
+      <Card>
+        <template #header>
+          <Icon name="queue" :size="15" class="text-dim" />
+          <h2 class="text-sm font-bold">Up next</h2>
+          <RouterLink to="/queue" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
+        </template>
+        <ul v-if="upcoming.length" class="divide-y divide-line/60">
+          <li v-for="(q, i) in upcoming" :key="q.id" class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+            <span class="w-5 shrink-0 text-right font-mono text-xs text-dim">{{ i + 1 }}</span>
+            <img
+              v-if="q.track_key"
+              :src="trackUrl('outline', q.track_key, q.track_config ?? '')"
+              alt=""
+              loading="lazy"
+              class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50 object-contain p-0.5"
+              @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+            />
+            <div class="min-w-0">
+              <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>
+              <div class="truncate text-xs text-dim">
+                {{ q.name ? `${q.track} · ` : "" }}{{ q.class }} · {{ q.session }} · {{ q.time }}
+              </div>
+            </div>
+            <span v-if="q.started_at" class="ml-auto shrink-0 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
+              In progress
+            </span>
+          </li>
+        </ul>
+        <p v-else class="text-sm text-dim">Queue is empty — add events from the queue page.</p>
+      </Card>
     </div>
 
-    <!-- Session timeline -->
-    <Card v-if="sessionTimeline" class="page-enter mt-4" style="animation-delay: 150ms">
+    <!-- Race control: live UDP commands, surfaced near the top while running -->
+    <Card v-if="inst.running" class="page-enter mt-4" style="animation-delay: 120ms">
       <template #header>
-        <h2 class="text-sm font-bold">Session timeline</h2>
-        <span class="ml-auto font-mono text-xs text-dim">
-          {{ sessionTimeline.elapsedLabel }} / {{ sessionTimeline.totalLabel }}
-        </span>
+        <Icon name="broadcast" :size="15" class="text-accent" />
+        <h2 class="text-sm font-bold">Race control</h2>
       </template>
-
-      <!-- weekend pips -->
-      <div class="mb-3 flex items-center gap-1.5">
-        <span
-          v-for="n in sessionTimeline.count"
-          :key="n"
-          class="h-1.5 flex-1 rounded-full transition-colors"
-          :class="
-            n - 1 < sessionTimeline.index
-              ? 'bg-ok/70'
-              : n - 1 === sessionTimeline.index
-                ? 'bg-accent'
-                : 'bg-surface-3'
-          "
-          :title="`Session ${n} of ${sessionTimeline.count}`"
-        />
-      </div>
-
-      <div class="flex items-center justify-between text-xs">
-        <span class="font-semibold text-text">{{ sessionTimeline.type }}</span>
-        <span class="text-dim">Session {{ sessionTimeline.index + 1 }} of {{ sessionTimeline.count }}</span>
-      </div>
-
-      <!-- elapsed fill for timed sessions -->
-      <div v-if="sessionTimeline.timed" class="mt-2">
-        <div class="h-2 overflow-hidden rounded-full bg-surface-3">
-          <div
-            class="h-full rounded-full bg-gradient-to-r from-accent/70 to-accent transition-[width] duration-700 ease-out"
-            :style="{ width: `${(sessionTimeline.fraction ?? 0) * 100}%` }"
-          />
+      <div class="space-y-3">
+        <div class="flex flex-wrap gap-2">
+          <Button variant="dark" size="sm" :disabled="busy" @click="nextSession">
+            <Icon name="skip" :size="14" />
+            Next session
+          </Button>
+          <Button variant="dark" size="sm" :disabled="busy" @click="restartSession">
+            <Icon name="repeat" :size="14" />
+            Restart session
+          </Button>
         </div>
-        <div class="mt-1 flex justify-between font-mono text-xs text-dim">
-          <span>{{ sessionTimeline.elapsedLabel }} elapsed</span>
-          <span v-if="sessionTimeline.remaining !== null">~{{ sessionTimeline.remaining }} min left</span>
-        </div>
-      </div>
-      <p v-else class="mt-2 font-mono text-xs text-dim">
-        Lap session — {{ sessionTimeline.totalLabel }}, {{ sessionTimeline.elapsedLabel }} elapsed
-      </p>
-    </Card>
 
-    <!-- Current event -->
-    <Card v-if="detail?.current_event?.id" class="page-enter mt-4" style="animation-delay: 180ms">
-      <template #header>
-        <h2 class="text-sm font-bold">Current event</h2>
-        <span v-if="detail.current_event.name" class="truncate text-sm font-semibold text-accent">{{ detail.current_event.name }}</span>
-        <span class="ml-auto text-xs text-dim">{{ detail.current_event.category }}</span>
-      </template>
-      <template #actions>
-        <Button variant="dark" size="sm" :disabled="busy" @click="openEditSetup">
-          <Icon name="edit" :size="14" />
-          Edit race setup
-        </Button>
-      </template>
-      <div class="flex flex-wrap items-center gap-1.5 text-xs">
-        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.class }}</span>
-        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.session }}</span>
-        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.time }}</span>
-        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.difficulty }}</span>
-        <span
-          v-if="detail.current_event.weather"
-          class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-0.5 pr-2.5 pl-0.5"
-        >
-          <img
-            v-if="detail.current_event.weather_key"
-            :src="weatherImageUrl(detail.current_event.weather_key)"
-            alt=""
-            class="size-5 rounded-full border border-line object-cover"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
-          {{ detail.current_event.weather }}
-        </span>
+        <form class="flex gap-2" @submit.prevent="broadcast">
+          <Input v-model="broadcastMsg" placeholder="Broadcast a message to all drivers…" class="flex-1" />
+          <Button type="submit" size="sm" :disabled="busy || !broadcastMsg.trim()">Send</Button>
+        </form>
+
+        <form class="flex gap-2" @submit.prevent="runAdmin">
+          <Input v-model="adminCmd" placeholder="Admin command, e.g. /kick name or /ballast 0 50" class="flex-1 font-mono" />
+          <Button type="submit" variant="dark" size="sm" :disabled="busy || !adminCmd.trim()">Run</Button>
+        </form>
+        <p class="text-xs text-dim">
+          Admin commands run through the server's ACSP plugin — the same ones the in-game admin uses.
+        </p>
       </div>
     </Card>
 
     <!-- Grid with car imagery -->
-    <Card v-if="gridRows.length" class="page-enter mt-4" style="animation-delay: 260ms">
+    <Card v-if="gridRows.length" class="page-enter mt-4" style="animation-delay: 160ms">
       <template #header>
+        <Icon name="car" :size="15" class="text-dim" />
         <h2 class="text-sm font-bold">Grid</h2>
         <span class="ml-auto font-mono text-xs text-dim">
           {{ detail?.current_cars?.length ?? 0 }} slot{{ (detail?.current_cars?.length ?? 0) === 1 ? "" : "s" }}
@@ -1312,6 +1395,7 @@ onBeforeUnmount(() => {
     <!-- Spectator stream -->
     <Card v-if="inst.stream_enabled === 1 && inst.stream_embed_url" class="page-enter mt-4" style="animation-delay: 300ms">
       <template #header>
+        <Icon name="broadcast" :size="15" class="text-dim" />
         <h2 class="text-sm font-bold">Spectator stream</h2>
         <Button variant="ghost" size="sm" class="ml-auto" @click="streamViewer = { title: `${inst.name} spectator`, url: inst.stream_embed_url! }">
           <Icon name="activity" :size="14" />
@@ -1325,68 +1409,6 @@ onBeforeUnmount(() => {
         allow="autoplay; fullscreen; picture-in-picture"
         sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
       />
-    </Card>
-
-    <!-- Upcoming queue -->
-    <Card v-if="upcoming.length" class="page-enter mt-4" style="animation-delay: 340ms">
-      <template #header>
-        <h2 class="text-sm font-bold">Up next</h2>
-        <RouterLink to="/queue" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
-      </template>
-      <ul class="divide-y divide-line/60">
-        <li v-for="(q, i) in upcoming" :key="q.id" class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-          <span class="w-5 shrink-0 text-right font-mono text-xs text-dim">{{ i + 1 }}</span>
-          <img
-            v-if="q.track_key"
-            :src="trackUrl('outline', q.track_key, q.track_config ?? '')"
-            alt=""
-            loading="lazy"
-            class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50 object-contain p-0.5"
-            @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
-          />
-          <div class="min-w-0">
-            <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>
-            <div class="truncate text-xs text-dim">
-              {{ q.name ? `${q.track} · ` : "" }}{{ q.class }} · {{ q.session }} · {{ q.time }}
-            </div>
-          </div>
-          <span v-if="q.started_at" class="ml-auto shrink-0 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
-            In progress
-          </span>
-        </li>
-      </ul>
-    </Card>
-
-    <!-- Race control -->
-    <Card v-if="inst.running" class="page-enter mt-4" style="animation-delay: 360ms">
-      <template #header>
-        <h2 class="text-sm font-bold">Race control</h2>
-      </template>
-      <div class="space-y-3">
-        <div class="flex flex-wrap gap-2">
-          <Button variant="dark" size="sm" :disabled="busy" @click="nextSession">
-            <Icon name="skip" :size="14" />
-            Next session
-          </Button>
-          <Button variant="dark" size="sm" :disabled="busy" @click="restartSession">
-            <Icon name="repeat" :size="14" />
-            Restart session
-          </Button>
-        </div>
-
-        <form class="flex gap-2" @submit.prevent="broadcast">
-          <Input v-model="broadcastMsg" placeholder="Broadcast a message to all drivers…" class="flex-1" />
-          <Button type="submit" size="sm" :disabled="busy || !broadcastMsg.trim()">Send</Button>
-        </form>
-
-        <form class="flex gap-2" @submit.prevent="runAdmin">
-          <Input v-model="adminCmd" placeholder="Admin command, e.g. /kick name or /ballast 0 50" class="flex-1 font-mono" />
-          <Button type="submit" variant="dark" size="sm" :disabled="busy || !adminCmd.trim()">Run</Button>
-        </form>
-        <p class="text-xs text-dim">
-          Admin commands run through the server's ACSP plugin — the same ones the in-game admin uses.
-        </p>
-      </div>
     </Card>
 
     <!-- Console -->

@@ -136,7 +136,8 @@ const mobileNav = computed<NavItem[]>(() =>
   <Toaster />
   <ConfirmDialog />
 
-  <RouterView v-if="route.meta.public" />
+  <!-- Public (login) and bare (full-screen broadcast) routes skip the app shell. -->
+  <RouterView v-if="route.meta.public || route.meta.bare" />
 
   <div v-else class="min-h-screen overflow-x-hidden bg-bg text-text">
     <a

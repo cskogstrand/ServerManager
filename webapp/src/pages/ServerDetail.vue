@@ -17,6 +17,7 @@ import {
   raceSetupValid,
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
+import { computeRunningOrder, type TimingRow } from "@/lib/raceTelemetry";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -152,6 +153,24 @@ const upcoming = computed(() => queue.value.filter((q) => !q.finished).slice(0, 
 const positions = computed(() => inst.value?.positions ?? []);
 const drivers = computed(() => inst.value?.drivers ?? []);
 const connected = computed(() => drivers.value.filter((d) => d.connected));
+
+// Numeric session type drives the running-order sort (race vs. best-lap).
+const sessionTypeNum = computed(() => inst.value?.session?.type ?? detail.value?.session?.type_id ?? 1);
+
+// Ordered field for the live-timing tower (shared logic with the broadcast view).
+const timingRows = computed<TimingRow[]>(() =>
+  computeRunningOrder(drivers.value, positions.value, sessionTypeNum.value),
+);
+
+function carName(model: string): string {
+  return content.carByKey(model)?.name || model;
+}
+
+const broadcastTo = computed(() => `/server/${instanceId.value}/broadcast`);
+
+function timingFor(carId: number): TimingRow | undefined {
+  return timingRows.value.find((r) => r.car_id === carId);
+}
 
 // Telemetry health: the server can be "running" yet send nothing over the AC
 // UDP plugin (misconfigured AssettoServer, crashed process, wrong ports). Flag
@@ -834,6 +853,17 @@ onBeforeUnmount(() => {
           <Icon name="activity" :size="14" />
           {{ detail.public_ip }}
         </span>
+        <RouterLink
+          :to="broadcastTo"
+          target="_blank"
+          class="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-accent/45 bg-accent/15 px-2.5 text-xs font-semibold text-accent transition-colors hover:border-accent/70 hover:bg-accent/25"
+          :class="inst.running ? 'shadow-[0_0_20px_rgba(98,179,232,0.28)]' : ''"
+          title="Open the full-screen broadcast overlay (new window)"
+        >
+          <span v-if="inst.running" class="size-1.5 animate-pulse rounded-full bg-accent" />
+          <Icon name="broadcast" :size="14" />
+          Broadcast
+        </RouterLink>
         <Button
           v-if="inst.running && (detail?.current_event?.id ?? 0) > 0"
           variant="ghost"
@@ -917,20 +947,25 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <!-- Hero: map + circuit panel -->
-    <div class="page-enter grid gap-4 lg:grid-cols-3" style="animation-delay: 60ms">
-      <Card class="lg:col-span-2" :muted="false">
+    <!-- Hero: live map + live-timing tower -->
+    <div class="page-enter grid gap-4 lg:grid-cols-5" style="animation-delay: 60ms">
+      <Card class="overflow-hidden lg:col-span-3" :muted="false">
         <template #header>
-          <h2 class="text-sm font-bold">Track map</h2>
+          <Icon name="dashboard" :size="15" class="text-accent" />
+          <h2 class="text-sm font-bold">Live track map</h2>
           <span
-            class="ml-auto font-mono text-xs"
+            class="ml-auto inline-flex items-center gap-1.5 font-mono text-xs"
             :class="telemetryWarning ? 'text-warn' : positions.length ? 'text-ok' : 'text-dim'"
           >
+            <span
+              v-if="positions.length && !telemetryWarning"
+              class="size-1.5 animate-pulse rounded-full bg-ok shadow-[0_0_10px_rgba(79,216,132,0.7)]"
+            />
             {{
               telemetryWarning
                 ? "plugin offline"
                 : positions.length
-                  ? `${positions.length} live position${positions.length === 1 ? "" : "s"}`
+                  ? `${positions.length} car${positions.length === 1 ? "" : "s"} on track`
                   : inst.running
                     ? "waiting for cars"
                     : "server stopped"
@@ -954,11 +989,16 @@ onBeforeUnmount(() => {
               <button
                 v-if="positionFor(d.car_id)"
                 type="button"
-                class="absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-bg bg-accent text-[10px] font-black text-bg shadow-[0_0_18px_rgba(98,179,232,0.65)] transition-transform hover:z-10 hover:scale-110"
+                class="map-puck absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[10px] font-black transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
+                :class="
+                  timingFor(d.car_id)?.isLeader
+                    ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
+                    : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
+                "
                 :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
-                :title="`${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${positionFor(d.car_id)?.gear ?? 0}`"
+                :title="`P${timingFor(d.car_id)?.position ?? '?'} · ${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${gearLabel(positionFor(d.car_id))}`"
               >
-                {{ (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
+                {{ timingFor(d.car_id)?.position ?? (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
               </button>
             </template>
             <span
@@ -973,6 +1013,15 @@ onBeforeUnmount(() => {
             >
               Up next — not on track yet
             </span>
+            <RouterLink
+              v-if="inst.running"
+              :to="broadcastTo"
+              target="_blank"
+              class="absolute right-2 bottom-2 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
+            >
+              <Icon name="maximize" :size="13" />
+              Broadcast view
+            </RouterLink>
           </div>
 
           <!-- No map.ini / map.png: fall back to the outline drawing -->
@@ -1003,13 +1052,107 @@ onBeforeUnmount(() => {
         </EmptyState>
       </Card>
 
-      <!-- Layout outline + tags -->
-      <Card>
+      <!-- Side: live-timing tower while running; circuit layout when idle -->
+      <Card class="overflow-hidden lg:col-span-2">
         <template #header>
-          <h2 class="text-sm font-bold">Layout</h2>
-          <span v-if="activeTrack" class="ml-auto font-mono text-xs text-dim">{{ activeTrack.key }}</span>
+          <Icon :name="inst.running ? 'activity' : 'events'" :size="15" :class="inst.running ? 'text-accent' : 'text-dim'" />
+          <h2 class="text-sm font-bold">{{ inst.running ? "Live timing" : "Layout" }}</h2>
+          <span class="ml-auto font-mono text-xs text-dim">
+            {{ inst.running ? `${connected.length} on grid` : activeTrack?.key }}
+          </span>
         </template>
-        <template v-if="activeTrack">
+
+        <!-- Running: ordered timing tower (tuned for a small field) -->
+        <template v-if="inst.running">
+          <ol v-if="timingRows.length" class="space-y-2">
+            <li
+              v-for="row in timingRows"
+              :key="row.car_id"
+              class="group rounded-md border p-2.5 transition-colors"
+              :class="row.isLeader ? 'border-accent/45 bg-accent-dim' : 'border-line bg-surface-2/40'"
+            >
+              <div class="flex items-center gap-2.5">
+                <span
+                  class="grid size-7 shrink-0 place-items-center rounded-md font-mono text-sm font-black tabular-nums"
+                  :class="row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+                >
+                  {{ row.position }}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-semibold">{{ row.name }}</div>
+                  <div class="truncate font-mono text-[11px] text-dim">{{ carName(row.carModel) }}</div>
+                </div>
+                <div class="shrink-0 text-right">
+                  <div
+                    class="font-mono text-xs font-semibold"
+                    :class="row.gapTone === 'leader' ? 'text-accent' : row.gapTone === 'warn' ? 'text-warn' : 'text-muted'"
+                  >
+                    {{ row.gapLabel }}
+                  </div>
+                  <div class="font-mono text-[11px] text-dim">L{{ row.laps }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-md p-1 text-dim opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                  :disabled="busy"
+                  aria-label="Kick driver"
+                  @click="kick(row.car_id, row.name)"
+                >
+                  <Icon name="x" :size="14" />
+                </button>
+              </div>
+
+              <div class="mt-2 flex items-center gap-3 font-mono text-xs">
+                <span class="flex items-baseline gap-1.5">
+                  <span class="text-[10px] tracking-wide text-dim">LAST</span>
+                  <span :class="row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(row.last_lap_ms) }}</span>
+                </span>
+                <span class="flex items-baseline gap-1.5">
+                  <span class="text-[10px] tracking-wide text-dim">BEST</span>
+                  <span :class="row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(row.best_lap_ms) }}</span>
+                </span>
+              </div>
+
+              <!-- Live: speed, gear, RPM -->
+              <div class="mt-2 flex items-center gap-2.5">
+                <span class="font-mono text-sm tabular-nums">
+                  <span class="font-bold">{{ speedKmh(row.pos) }}</span>
+                  <span class="text-[10px] text-dim"> km/h</span>
+                </span>
+                <span
+                  class="grid size-5 place-items-center rounded-sm bg-surface-3 font-mono text-[11px] font-bold text-muted"
+                >
+                  {{ gearLabel(row.pos) }}
+                </span>
+                <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+                  <div
+                    class="h-full rounded-full transition-[width] duration-300"
+                    :class="rpmPct(row.pos) > 88 ? 'bg-danger' : rpmPct(row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
+                    :style="{ width: `${rpmPct(row.pos)}%` }"
+                  />
+                </div>
+              </div>
+
+              <!-- Track-position progress (relative running order at a glance) -->
+              <div class="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
+                <div
+                  class="h-full rounded-full"
+                  :class="row.isLeader ? 'bg-accent/70' : 'bg-line-hi'"
+                  :style="{ width: `${row.splinePct}%` }"
+                />
+              </div>
+            </li>
+          </ol>
+
+          <div v-else class="rounded-md border border-line bg-surface-2/40 px-3 py-6 text-center">
+            <Icon name="car" :size="22" class="mx-auto text-dim" />
+            <p class="mt-2 text-sm text-muted">No drivers connected yet.</p>
+            <p class="text-xs text-dim">Live timing fills in as cars join the session.</p>
+          </div>
+        </template>
+
+        <!-- Idle: circuit layout + tags -->
+        <template v-else-if="activeTrack">
           <div class="map-canvas grid place-items-center rounded-md border border-line p-4">
             <img
               :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
@@ -1120,64 +1263,6 @@ onBeforeUnmount(() => {
           />
           {{ detail.current_event.weather }}
         </span>
-      </div>
-    </Card>
-
-    <!-- Live timing -->
-    <Card v-if="inst.running && drivers.length" class="page-enter mt-4" style="animation-delay: 220ms">
-      <template #header>
-        <h2 class="text-sm font-bold">Live timing</h2>
-        <span class="ml-auto font-mono text-xs text-dim">{{ connected.length }} connected</span>
-      </template>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">
-              <th class="py-1.5 pr-2 font-semibold">Driver</th>
-              <th class="py-1.5 pr-2 font-semibold max-sm:hidden">Car</th>
-              <th class="py-1.5 pr-2 text-right font-semibold">Speed</th>
-              <th class="py-1.5 pr-3 pl-2 font-semibold max-md:hidden">RPM</th>
-              <th class="py-1.5 pr-2 text-center font-semibold">Gear</th>
-              <th class="py-1.5 pr-2 text-right font-semibold">Laps</th>
-              <th class="py-1.5 pr-2 text-right font-semibold">Last</th>
-              <th class="py-1.5 pr-2 text-right font-semibold">Best</th>
-              <th class="py-1.5 font-semibold"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="d in drivers" :key="d.car_id" class="border-b border-line/60">
-              <td class="py-1.5 pr-2 font-medium">{{ d.name || "car " + d.car_id }}</td>
-              <td class="py-1.5 pr-2 font-mono text-xs text-muted max-sm:hidden">{{ d.car }}</td>
-              <td class="py-1.5 pr-2 text-right font-mono text-xs">
-                {{ positionFor(d.car_id) ? `${speedKmh(positionFor(d.car_id))} km/h` : "—" }}
-              </td>
-              <td class="py-1.5 pr-3 pl-2 max-md:hidden">
-                <div v-if="positionFor(d.car_id)?.engine_rpm" class="flex items-center gap-2">
-                  <div class="h-1.5 w-20 overflow-hidden rounded-full bg-surface-3">
-                    <div
-                      class="h-full rounded-full transition-[width] duration-300"
-                      :class="rpmPct(positionFor(d.car_id)) > 88 ? 'bg-danger' : rpmPct(positionFor(d.car_id)) > 70 ? 'bg-warn' : 'bg-accent'"
-                      :style="{ width: `${rpmPct(positionFor(d.car_id))}%` }"
-                    />
-                  </div>
-                  <span class="w-12 text-right font-mono text-xs tabular-nums text-muted">
-                    {{ positionFor(d.car_id)!.engine_rpm.toLocaleString() }}
-                  </span>
-                </div>
-                <span v-else class="font-mono text-xs text-dim">—</span>
-              </td>
-              <td class="py-1.5 pr-2 text-center font-mono text-xs font-semibold">{{ gearLabel(positionFor(d.car_id)) }}</td>
-              <td class="py-1.5 pr-2 text-right">{{ d.laps }}</td>
-              <td class="py-1.5 pr-2 text-right font-mono text-xs">{{ lapTime(d.last_lap_ms) }}</td>
-              <td class="py-1.5 pr-2 text-right font-mono text-xs text-ok">{{ lapTime(d.best_lap_ms) }}</td>
-              <td class="py-1.5 text-right">
-                <Button variant="ghost" size="sm" :disabled="busy" aria-label="Kick driver" @click="kick(d.car_id, d.name)">
-                  <Icon name="x" :size="14" />
-                </Button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </Card>
 

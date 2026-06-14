@@ -16,6 +16,7 @@ import {
 import { useContentStore } from "@/stores/content";
 import {
   computeRunningOrder,
+  createHeadingTracker,
   formatClock,
   gearLabel,
   lapTime,
@@ -25,6 +26,7 @@ import {
   type TimingRow,
 } from "@/lib/raceTelemetry";
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
+import CarMarker from "@/components/CarMarker.vue";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
 
@@ -153,6 +155,8 @@ function mapWrapStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
   return { aspectRatio: String(ratio), width: `min(100%, calc(72vh * ${ratio}))`, margin: "auto" };
 }
+// Per-surface heading store: holds last heading while parked, unwraps angles.
+const headingFor = createHeadingTracker();
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
   // AC map.ini projection — same maths the in-game minimap uses.
   // World (x,z) -> map.png pixels: divide by SCALE_FACTOR, add MARGIN.
@@ -342,25 +346,14 @@ onBeforeUnmount(() => {
             :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
             @click="focusCar(d.car_id)"
           >
-            <span
-              v-if="timingFor(d.car_id)?.isLeader"
-              class="puck-ring absolute inset-0 -m-1 rounded-full"
+            <CarMarker
+              :label="timingFor(d.car_id)?.position ?? '?'"
+              :heading="headingFor(positionFor(d.car_id)!)"
+              :is-leader="!!timingFor(d.car_id)?.isLeader"
+              :focused="focusRow?.car_id === d.car_id"
+              :size="32"
+              :name="d.name || 'Car ' + d.car_id"
             />
-            <span
-              class="relative grid size-8 place-items-center rounded-full border-2 numerals text-sm leading-none font-semibold tabular-nums"
-              :class="
-                timingFor(d.car_id)?.isLeader
-                  ? 'border-bg bg-accent text-bg shadow-[0_0_22px_rgba(98,179,232,0.85)]'
-                  : 'border-bg bg-surface-4 text-text shadow-[0_0_14px_rgba(0,0,0,0.7)]'
-              "
-            >
-              {{ timingFor(d.car_id)?.position ?? "?" }}
-            </span>
-            <span
-              class="pointer-events-none absolute top-9 left-1/2 -translate-x-1/2 rounded-sm bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap backdrop-blur-sm"
-            >
-              {{ d.name || "Car " + d.car_id }}
-            </span>
           </button>
         </template>
       </div>
@@ -616,22 +609,6 @@ onBeforeUnmount(() => {
 .puck:hover,
 .puck-focus {
   z-index: 10;
-}
-
-/* Leader gets a slow expanding ring. */
-.puck-ring {
-  border: 2px solid var(--color-accent);
-  animation: ring 1.8s ease-out infinite;
-}
-@keyframes ring {
-  0% {
-    transform: scale(0.7);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1.9);
-    opacity: 0;
-  }
 }
 
 .live-dot {

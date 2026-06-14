@@ -17,7 +17,8 @@ import {
   raceSetupValid,
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
-import { computeRunningOrder, type TimingRow } from "@/lib/raceTelemetry";
+import { computeRunningOrder, createHeadingTracker, type TimingRow } from "@/lib/raceTelemetry";
+import CarMarker from "@/components/CarMarker.vue";
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
@@ -337,6 +338,8 @@ function mapCanvasStyle(meta: TrackMapMeta) {
   };
 }
 
+// Per-surface heading store: holds last heading while parked, unwraps angles.
+const headingFor = createHeadingTracker();
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
   // AC map.ini projection — same maths the in-game minimap uses.
   // World (x,z) -> map.png pixels: divide by SCALE_FACTOR, add MARGIN.
@@ -1108,16 +1111,16 @@ onBeforeUnmount(() => {
                 <button
                   v-if="positionFor(d.car_id)"
                   type="button"
-                  class="map-puck absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[10px] font-black transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
-                  :class="
-                    timingFor(d.car_id)?.isLeader
-                      ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
-                      : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
-                  "
+                  class="map-puck absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
                   :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
                   :title="`P${timingFor(d.car_id)?.position ?? '?'} · ${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${gearLabel(positionFor(d.car_id))}`"
                 >
-                  {{ timingFor(d.car_id)?.position ?? (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
+                  <CarMarker
+                    :label="timingFor(d.car_id)?.position ?? (d.name || String(d.car_id)).slice(0, 1).toUpperCase()"
+                    :heading="headingFor(positionFor(d.car_id)!)"
+                    :is-leader="!!timingFor(d.car_id)?.isLeader"
+                    :size="26"
+                  />
                 </button>
               </template>
               <span

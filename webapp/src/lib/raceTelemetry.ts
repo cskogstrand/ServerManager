@@ -15,6 +15,36 @@ export function speedKmh(pos?: CarPositionState | null): number {
   return Math.round(ms * 3.6);
 }
 
+// Velocity vector → top-down heading in degrees for oriented map markers.
+// Screen axes match mapPoint(): +x right, +z down. atan2(vx, -vz) gives
+// 0° = pointing "up" (toward -z), 90° = +x — matching a sprite drawn nose-up
+// at rest. AC's UDP stream carries no chassis yaw, so this is direction of
+// travel: during a spin/drift the sprite points where the car moves, not faces.
+const HEADING_MIN_MS = 0.7; // ~2.5 km/h — below this, velocity is just noise
+export function velocityHeadingDeg(pos?: CarPositionState | null): number | null {
+  if (!pos) return null;
+  if (Math.hypot(pos.velocity_x, pos.velocity_z) < HEADING_MIN_MS) return null;
+  return (Math.atan2(pos.velocity_x, -pos.velocity_z) * 180) / Math.PI;
+}
+
+// Stateful heading-holder, one per map surface. Holds the last good heading
+// while a car is parked (velocity noise → null) so sprites don't spin on the
+// grid, and returns a continuous (unwrapped) angle so CSS rotate transitions
+// always take the short path across the ±180° seam.
+export function createHeadingTracker() {
+  const last = new Map<number, number>();
+  return (pos?: CarPositionState | null): number => {
+    if (!pos) return 0;
+    const prev = last.get(pos.car_id) ?? 0;
+    const h = velocityHeadingDeg(pos);
+    if (h === null) return prev;
+    const delta = ((h - prev + 540) % 360) - 180;
+    const next = prev + delta;
+    last.set(pos.car_id, next);
+    return next;
+  };
+}
+
 // AC gear convention: 0 = reverse, 1 = neutral, 2 = first gear, …
 export function gearLabel(pos?: CarPositionState | null): string {
   if (!pos) return "—";

@@ -154,12 +154,15 @@ function mapWrapStyle(meta: TrackMapMeta) {
   return { aspectRatio: String(ratio), width: `min(100%, calc(72vh * ${ratio}))`, margin: "auto" };
 }
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
+  // AC map.ini projection — same maths the in-game minimap uses.
+  // World (x,z) -> map.png pixels: divide by SCALE_FACTOR, add MARGIN.
+  // The Z axis is NOT flipped: map.png pixel-Y already grows with world Z.
   const scale = meta.scale_factor || 1;
-  const x = ((pos.x + meta.x_offset) * scale) / meta.width;
-  const y = (meta.height - (pos.z + meta.z_offset) * scale) / meta.height;
+  const px = (pos.x + meta.x_offset) / scale + meta.margin;
+  const py = (pos.z + meta.z_offset) / scale + meta.margin;
   return {
-    left: `${Math.max(0, Math.min(100, x * 100))}%`,
-    top: `${Math.max(0, Math.min(100, y * 100))}%`,
+    left: `${Math.max(0, Math.min(100, (px / meta.width) * 100))}%`,
+    top: `${Math.max(0, Math.min(100, (py / meta.height) * 100))}%`,
   };
 }
 function positionFor(carId: number): CarPositionState | undefined {

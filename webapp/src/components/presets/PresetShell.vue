@@ -5,6 +5,7 @@
 // existing events, a clone-before-edit banner offers to duplicate first so
 // changes don't silently rewrite every event that shares it.
 import { computed, ref } from "vue";
+import { useQueryParam } from "@/lib/useQueryParam";
 import type { DropDownList } from "@/types/generated";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
@@ -31,7 +32,7 @@ const emit = defineEmits<{
 }>();
 
 const newName = ref("");
-const search = ref("");
+const search = useQueryParam("q", "");
 
 function submitCreate() {
   const name = newName.value.trim();

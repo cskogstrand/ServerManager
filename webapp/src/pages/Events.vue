@@ -5,6 +5,7 @@
 // create/edit; presets are accelerators chosen or created inline.
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import {
   emptyRaceSetup,
@@ -41,10 +42,16 @@ const setups = ref<LibrarySetup[]>([]);
 const loading = ref(true);
 const busy = ref(false);
 
-// --- Filters ---
-const search = ref("");
-const groupFilter = ref<number | "all">("all");
-const runFilter = ref<"all" | "repeating">("all");
+// --- Filters --- (mirrored to the URL so refresh/back restores them)
+const search = useQueryParam("q", "");
+const groupFilter = useQueryParam<number | "all">("group", "all", {
+  parse: (r) => {
+    const n = Number(r);
+    return r !== "" && Number.isFinite(n) ? n : "all";
+  },
+  serialize: (v) => (v === "all" ? null : String(v)),
+});
+const runFilter = useQueryParam<"all" | "repeating">("run", "all", enumParam(["all", "repeating"] as const, "all"));
 
 // Events pinned as an instance's repeat event (from the live store).
 const repeatingIds = computed(

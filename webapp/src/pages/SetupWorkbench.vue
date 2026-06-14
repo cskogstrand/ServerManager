@@ -5,8 +5,9 @@
 // non-blocking (you can jump around) and resumable (status comes from
 // /api/setup/summary, so leaving and returning lands on the first gap).
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api, ApiError, csrfToken } from "@/lib/api";
+import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useToastStore } from "@/stores/toast";
 import { useServerStore } from "@/stores/server";
 import {
@@ -29,6 +30,7 @@ import Toggle from "@/components/ui/Toggle.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 
+const route = useRoute();
 const router = useRouter();
 const toast = useToastStore();
 const server = useServerStore();
@@ -43,7 +45,8 @@ const STEP_META: Record<SetupStep, { label: string; icon: string }> = {
   run: { label: "Run", icon: "power" },
 };
 
-const step = ref<SetupStep>("install");
+// Active step mirrored to ?step; when absent we resume at the first gap.
+const step = useQueryParam<SetupStep>("step", "install", enumParam(SETUP_STEPS, "install"));
 const busy = ref(false);
 
 // Full config (server identity + install path). Edited in place, saved whole.
@@ -77,7 +80,8 @@ async function loadConfig() {
 
 onMounted(async () => {
   await Promise.all([reload(), loadConfig(), server.load()]);
-  step.value = firstIncompleteStep(summary.value);
+  // URL wins on resume; otherwise land on the first incomplete step.
+  if (!route.query.step) step.value = firstIncompleteStep(summary.value);
   runInstanceId.value = summary.value?.instances[0]?.id ?? null;
   raceGroupId.value = summary.value?.groups[0]?.id ?? null;
 });

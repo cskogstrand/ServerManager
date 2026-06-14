@@ -3,6 +3,7 @@
 // categories. Refetches when an instance starts/stops (SSE-driven).
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useQueryParam, numberParam } from "@/lib/useQueryParam";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { emptyRaceSetup, raceSetupBody, raceSetupValid, type RaceSetupDraft } from "@/lib/useRaceSetupDraft";
 import { useServerStore } from "@/stores/server";
@@ -40,7 +41,8 @@ const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
 
-const instanceId = ref<number | null>(null);
+// Selected instance is mirrored to ?instance so refresh/back restores the tab.
+const instanceId = useQueryParam<number | null>("instance", null, numberParam());
 const rows = ref<QueueRow[]>([]);
 const busy = ref(false);
 
@@ -271,7 +273,11 @@ const saveAndQueueSetup = () =>
 onMounted(() =>
   guard(async () => {
     await server.load();
-    instanceId.value = server.instanceList[0]?.id ?? null;
+    // Honor ?instance from the URL when it points at a real instance, else
+    // fall back to the first.
+    if (!server.instanceList.some((i) => i.id === instanceId.value)) {
+      instanceId.value = server.instanceList[0]?.id ?? null;
+    }
     const [cats, events] = await Promise.all([
       // All event groups — a group is just a folder of events. The legacy
       // ?filled=1 hid groups that were never renamed (filled stays 0 on create),

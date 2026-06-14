@@ -1,5 +1,6 @@
 import { onMounted, ref, type Ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useQueryParam, numberParam } from "@/lib/useQueryParam";
 import type { presetResource } from "@/lib/presets";
 import type { DropDownList } from "@/types/generated";
 
@@ -12,7 +13,8 @@ export function usePresetPage<T extends { id?: number }>(
   prepare?: (form: T) => T,
 ) {
   const items: Ref<DropDownList[]> = ref([]);
-  const selectedId = ref<number | null>(null);
+  // Selected preset mirrored to ?sel so refresh/back reopens the same one.
+  const selectedId = useQueryParam<number | null>("sel", null, numberParam());
   const form = ref<T | null>(null) as Ref<T | null>;
   const busy = ref(false);
   const notice = ref("");
@@ -106,6 +108,14 @@ export function usePresetPage<T extends { id?: number }>(
   onMounted(() =>
     guard(async () => {
       await Promise.all([reloadList(), reloadUsage()]);
+      // Restore the preset named in ?sel (if it still exists).
+      if (selectedId.value != null && items.value.some((i) => i.id === selectedId.value)) {
+        const data = await resource.get(selectedId.value);
+        form.value = prepare ? prepare(data) : data;
+        markClean();
+      } else if (selectedId.value != null) {
+        selectedId.value = null;
+      }
     }),
   );
 

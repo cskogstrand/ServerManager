@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useContentStore } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
+import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { intToggle } from "@/lib/forms";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
@@ -69,8 +70,13 @@ async function saveInstall() {
   }
 }
 
-const tab = ref<"tracks" | "cars" | "weathers">("tracks");
-const search = ref("");
+// Library tab and search mirrored to the URL (?tab, ?q).
+const tab = useQueryParam<"tracks" | "cars" | "weathers">(
+  "tab",
+  "tracks",
+  enumParam(["tracks", "cars", "weathers"] as const, "tracks"),
+);
+const search = useQueryParam("q", "");
 
 const filteredTracks = computed(() =>
   content.tracks.filter((t) => (t.name ?? t.key ?? "").toLowerCase().includes(search.value.toLowerCase())),

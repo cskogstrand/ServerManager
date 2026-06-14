@@ -10,11 +10,20 @@ import { useServerStore, type CarPositionState, type DriverState, type InstanceS
 import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
+import {
+  normalizeRaceSetup,
+  raceSetupBody,
+  raceSetupValid,
+  type RaceSetupDraft,
+} from "@/lib/useRaceSetupDraft";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Sheet from "@/components/ui/Sheet.vue";
+import Modal from "@/components/ui/Modal.vue";
+import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import LineChart from "@/components/ui/LineChart.vue";
@@ -659,6 +668,106 @@ async function saveGrid() {
   }
 }
 
+// --- Unified "Edit race setup": scope prompt → shared editor ---
+// One entry point edits the current event's full setup. The scope prompt picks
+// how the change lands: restart the event now to apply on track, save it for the
+// next restart, or just edit the reusable source. The quick grid/weather sheet
+// stays as a fast path for car/skin/weather-only tweaks.
+type EditScope = "restart" | "after-restart" | "source";
+
+const scopeOpen = ref(false);
+const editOpen = ref(false);
+const editScope = ref<EditScope>("after-restart");
+const editDraft = ref<RaceSetupDraft | null>(null);
+const editGroupId = ref<number | null>(null);
+const editSaving = ref(false);
+
+let editBaseline = "";
+const markEditClean = () => (editBaseline = editDraft.value ? JSON.stringify(editDraft.value) : "");
+useUnsavedGuard(() => editOpen.value && editDraft.value !== null && JSON.stringify(editDraft.value) !== editBaseline);
+
+function openEditSetup() {
+  if (!detail.value?.current_event?.id) {
+    toast.error("No current event to edit.");
+    return;
+  }
+  scopeOpen.value = true;
+}
+
+// Load the full saved event into a draft, then open the shared editor in the
+// chosen scope. event_category_id isn't in the status payload, so we read it
+// (and the rest of the setup) from the event record.
+const chooseScope = (scope: EditScope) =>
+  guardEdit(async () => {
+    const ev = detail.value?.current_event;
+    if (!ev?.id) return;
+    void content.load();
+    const raw = await api.get<Record<string, unknown>>(`/api/event/${ev.id}`);
+    editDraft.value = normalizeRaceSetup(raw);
+    editGroupId.value = raw.EventCategoryId != null ? Number(raw.EventCategoryId) : null;
+    editScope.value = scope;
+    markEditClean();
+    scopeOpen.value = false;
+    editOpen.value = true;
+  });
+
+async function guardEdit(fn: () => Promise<void>) {
+  busy.value = true;
+  try {
+    await fn();
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+function openQuickGrid() {
+  scopeOpen.value = false;
+  void openGrid();
+}
+
+async function saveEditSetup() {
+  const ev = detail.value?.current_event;
+  const draft = editDraft.value;
+  if (!ev?.id || !draft || editGroupId.value === null) return;
+  if (!raceSetupValid(draft)) {
+    toast.error("Track and all four presets are required.");
+    return;
+  }
+  editSaving.value = true;
+  try {
+    await api.put(`/api/event/${ev.id}`, raceSetupBody(draft, editGroupId.value));
+    if (editScope.value === "restart") {
+      // Re-render from the freshly saved event and restart it on track.
+      const res = await api.post<{ restarted: boolean }>(`/api/server/current-event?instance=${instanceId.value}`, {
+        event_id: ev.id,
+        restart_now: true,
+      });
+      toast.success(res.restarted ? "Saved and restarted on track." : "Saved — restart the event to apply on track.");
+    } else if (editScope.value === "after-restart") {
+      toast.success("Saved — applies when the event next restarts.");
+    } else {
+      toast.success("Race setup updated.");
+    }
+    editOpen.value = false;
+    markEditClean();
+    await fetchDetail();
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    editSaving.value = false;
+  }
+}
+
+const editScopeTitle = computed(() =>
+  editScope.value === "restart"
+    ? "Edit race setup — restart now"
+    : editScope.value === "after-restart"
+      ? "Edit race setup — apply after restart"
+      : "Edit reusable race setup",
+);
+
 onMounted(async () => {
   await server.load();
   if (!server.instances[instanceId.value]) {
@@ -988,7 +1097,7 @@ onBeforeUnmount(() => {
         <span class="ml-auto text-xs text-dim">{{ detail.current_event.category }}</span>
       </template>
       <template #actions>
-        <Button variant="dark" size="sm" :disabled="busy" @click="openGrid">
+        <Button variant="dark" size="sm" :disabled="busy" @click="openEditSetup">
           <Icon name="edit" :size="14" />
           Edit race setup
         </Button>
@@ -1212,6 +1321,89 @@ onBeforeUnmount(() => {
         class="mt-2 max-h-72 overflow-y-auto rounded-md border border-line bg-bg p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted"
         >{{ consoleLines() }}</pre>
     </div>
+
+    <!-- Edit-scope prompt: how should the change land? -->
+    <Modal :open="scopeOpen" title="Edit race setup" @close="scopeOpen = false">
+      <p class="mb-3 text-sm text-muted">
+        Editing
+        <span class="font-medium text-text">{{ detail?.current_event?.name || detail?.current_event?.track }}</span>.
+        Choose how the change should apply.
+      </p>
+      <div class="space-y-2">
+        <button
+          v-if="inst?.running"
+          type="button"
+          class="flex w-full items-start gap-3 rounded-md border border-line bg-surface-2/40 p-3 text-left transition-colors hover:border-accent/50 hover:bg-surface-2"
+          :disabled="busy"
+          @click="chooseScope('restart')"
+        >
+          <Icon name="repeat" :size="18" class="mt-0.5 shrink-0 text-accent" />
+          <span>
+            <span class="block text-sm font-semibold">Restart now</span>
+            <span class="block text-xs text-muted">Save and restart the event so the new setup loads on track immediately. Players are reconnected.</span>
+          </span>
+        </button>
+        <button
+          v-if="inst?.running"
+          type="button"
+          class="flex w-full items-start gap-3 rounded-md border border-line bg-surface-2/40 p-3 text-left transition-colors hover:border-accent/50 hover:bg-surface-2"
+          :disabled="busy"
+          @click="chooseScope('after-restart')"
+        >
+          <Icon name="clock" :size="18" class="mt-0.5 shrink-0 text-muted" />
+          <span>
+            <span class="block text-sm font-semibold">Apply after restart</span>
+            <span class="block text-xs text-muted">Save changes now; they take effect the next time this event restarts. The current session keeps running.</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-start gap-3 rounded-md border border-line bg-surface-2/40 p-3 text-left transition-colors hover:border-accent/50 hover:bg-surface-2"
+          :disabled="busy"
+          @click="chooseScope('source')"
+        >
+          <Icon name="edit" :size="18" class="mt-0.5 shrink-0 text-muted" />
+          <span>
+            <span class="block text-sm font-semibold">Edit reusable source</span>
+            <span class="block text-xs text-muted">Edit the saved race setup in your library, with no effect on the running server.</span>
+          </span>
+        </button>
+      </div>
+      <div class="mt-3 border-t border-line pt-3">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-text"
+          :disabled="!detail?.current_event?.class_id"
+          @click="openQuickGrid"
+        >
+          <Icon name="activity" :size="13" />
+          Quick grid &amp; weather only
+        </button>
+      </div>
+      <template #footer>
+        <Button variant="ghost" @click="scopeOpen = false">Cancel</Button>
+      </template>
+    </Modal>
+
+    <!-- Shared race-setup editor for the current event -->
+    <Sheet :open="editOpen" :title="editScopeTitle" @close="editOpen = false">
+      <RaceSetupEditor v-if="editDraft" v-model="editDraft" :instance-id="instanceId" />
+      <template #footer>
+        <span v-if="!raceSetupValid(editDraft)" class="mr-auto self-center text-xs text-muted">
+          Track and all four presets are required.
+        </span>
+        <Button variant="ghost" @click="editOpen = false">Cancel</Button>
+        <Button :disabled="editSaving || !raceSetupValid(editDraft)" @click="saveEditSetup">
+          {{
+            editSaving
+              ? "Saving…"
+              : editScope === "restart"
+                ? "Save & restart"
+                : "Save setup"
+          }}
+        </Button>
+      </template>
+    </Sheet>
 
     <!-- Grid & weather editor for the running event -->
     <Sheet :open="gridOpen" title="Edit grid & weather" @close="gridOpen = false">

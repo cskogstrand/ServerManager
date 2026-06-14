@@ -143,6 +143,16 @@ async function recache() {
   }
 }
 
+// Empty-state CTAs jump to the relevant panel in the right column.
+function focusInstall() {
+  const el = document.getElementById("installpath");
+  el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  (el as HTMLInputElement | null)?.focus();
+}
+function focusUpload() {
+  document.getElementById("upload-content")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function jobTone(status: string) {
   if (status === "completed") return "text-ok";
   if (status === "failed") return "text-danger";
@@ -227,9 +237,22 @@ function jobTone(status: string) {
         v-if="!content.tracks.length && !content.cars.length && !content.weathers.length"
         icon="content"
         title="No content cached yet"
-        message="Set the Assetto Corsa install path, then rebuild the cache to import tracks, cars and weather. You can also upload an archive."
+        message="Point Server Manager at your Assetto Corsa install and rebuild the cache to import tracks, cars and weather — or upload an archive."
       >
-        <Button variant="dark" @click="recache">Rebuild cache</Button>
+        <div class="flex flex-wrap justify-center gap-2">
+          <Button @click="focusInstall">
+            <Icon name="settings" :size="15" />
+            Set install path
+          </Button>
+          <Button variant="dark" @click="recache">
+            <Icon name="repeat" :size="15" />
+            Rebuild cache
+          </Button>
+          <Button variant="ghost" @click="focusUpload">
+            <Icon name="plus" :size="15" />
+            Upload content
+          </Button>
+        </div>
       </EmptyState>
       </template>
     </Card>
@@ -267,7 +290,7 @@ function jobTone(status: string) {
         <Button class="mt-3" @click="saveInstall">Save installation</Button>
       </Card>
 
-      <Card title="Upload content">
+      <Card id="upload-content" title="Upload content">
         <FormRow label="Type" for-id="kind">
           <Select
             id="kind"

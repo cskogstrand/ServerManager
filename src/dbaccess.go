@@ -501,7 +501,12 @@ SELECT
 	ct.name as category_name,
 	s.started_at as started_at,
 	s.finished as finished,
-	s.instance_id as instance_id
+	s.instance_id as instance_id,
+	e.booking_enabled, e.booking_time,
+	e.practice_enabled, e.practice_time,
+	e.qualify_enabled, e.qualify_time,
+	e.race_enabled, e.race_time,
+	u.race_laps
 FROM server_event s
 JOIN user_event u
 	on s.user_event_id = u.id
@@ -532,7 +537,8 @@ JOIN user_time tw
 	list := make([]ServerEvent, 0)
 	for rows.Next() {
 		se := ServerEvent{}
-		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId)
+		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId,
+			&se.UserEvent.BookingEnabled, &se.UserEvent.BookingTime, &se.UserEvent.PracticeEnabled, &se.UserEvent.PracticeTime, &se.UserEvent.QualifyEnabled, &se.UserEvent.QualifyTime, &se.UserEvent.RaceEnabled, &se.UserEvent.RaceTime, &se.UserEvent.RaceLaps)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -914,6 +920,27 @@ func (dba Dbaccess) deleteEvent(id int) (int64, error) {
 		return -1, err
 	}
 	return dba.deleteFrom(id, "user_event")
+}
+
+// presetUsageCounts returns how many user_event rows reference each value of the
+// given foreign-key column, keyed by preset id. The column name is supplied by
+// the caller from a fixed whitelist — never from request input.
+func (dba Dbaccess) presetUsageCounts(column string) (map[int]int, error) {
+	rows, err := dba.db.Query("SELECT " + column + ", COUNT(*) FROM user_event WHERE " + column + " IS NOT NULL GROUP BY " + column)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	counts := make(map[int]int)
+	for rows.Next() {
+		var id, n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		counts[id] = n
+	}
+	return counts, rows.Err()
 }
 
 func (dba Dbaccess) selectEventCategory(id int) (UserEventCategory, error) {

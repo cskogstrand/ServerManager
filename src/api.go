@@ -1848,6 +1848,152 @@ func apiServerCfg(c *gin.Context) {
 	c.String(http.StatusOK, cr.serverCfgResult)
 }
 
+// gridCount sums the per-entry car counts of a class — the requested grid size
+// before any pitbox/max-client trim.
+func gridCount(cl UserClass) int {
+	n := 0
+	for _, e := range cl.Entries {
+		c := 1
+		if e.Count != nil && *e.Count > 0 {
+			c = *e.Count
+		}
+		n += c
+	}
+	return n
+}
+
+type renderPreviewRequest struct {
+	EventId      int    `json:"event_id"`
+	InstanceId   int    `json:"instance_id"`
+	Name         string `json:"name"`
+	TrackKey     string `json:"track_key"`
+	TrackConfig  string `json:"track_config"`
+	CategoryId   int    `json:"event_category_id"`
+	ClassId      int    `json:"class_id"`
+	SessionId    int    `json:"session_id"`
+	TimeId       int    `json:"time_id"`
+	DifficultyId int    `json:"difficulty_id"`
+	RaceLaps     int    `json:"race_laps"`
+	Strategy     int    `json:"strategy"`
+	WeatherKey   string `json:"weather_key"`
+	ClassEntries []struct {
+		CacheCarKey string `json:"cache_car_key"`
+		SkinKey     string `json:"skin_key"`
+		Count       int    `json:"count"`
+	} `json:"class_entries"`
+}
+
+// apiRenderPreview renders server_cfg/entry_list for either a saved event
+// (event_id) or an unsaved draft, returning the rendered files plus the facts
+// the editor's review section needs: grid size, pitbox cap, max clients, and
+// human warnings/errors. Nothing is persisted.
+func apiRenderPreview(c *gin.Context) {
+	var req renderPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid preview payload: "+err.Error())
+		return
+	}
+
+	inst := Instances.Get(req.InstanceId)
+	if inst == nil {
+		inst = Instances.Default()
+	}
+	if inst == nil {
+		apiError(c, http.StatusNotFound, "no_instance", "No server instance to preview against.")
+		return
+	}
+
+	cr := ConfigRenderer{}
+	requestedGrid := 0
+
+	if req.EventId > 0 {
+		cr.renderIni(req.EventId, inst.Conf)
+		if ev, err := Dba.selectEvent(req.EventId); err == nil && ev.ClassId != nil {
+			if cl, err := Dba.selectClassEntries(*ev.ClassId); err == nil {
+				requestedGrid = gridCount(cl)
+			}
+		}
+	} else {
+		if req.TrackKey == "" || req.ClassId <= 0 || req.SessionId <= 0 || req.TimeId <= 0 || req.DifficultyId <= 0 {
+			apiBadRequest(c, "A draft preview needs a track and all four presets.")
+			return
+		}
+		strategy := req.Strategy
+		if strategy == 0 {
+			strategy = 1
+		}
+		event := UserEvent{
+			EventCategoryId:  &req.CategoryId,
+			CacheTrackKey:    &req.TrackKey,
+			CacheTrackConfig: &req.TrackConfig,
+			ClassId:          &req.ClassId,
+			SessionId:        &req.SessionId,
+			TimeId:           &req.TimeId,
+			DifficultyId:     &req.DifficultyId,
+			RaceLaps:         &req.RaceLaps,
+			Strategy:         &strategy,
+		}
+		if req.Name != "" {
+			event.Name = &req.Name
+		}
+
+		var classOverride *UserClass
+		if len(req.ClassEntries) > 0 {
+			entries := make([]UserClassEntry, 0, len(req.ClassEntries))
+			for _, e := range req.ClassEntries {
+				if e.CacheCarKey == "" {
+					continue
+				}
+				ck, sk, cnt := e.CacheCarKey, e.SkinKey, e.Count
+				if cnt < 1 {
+					cnt = 1
+				}
+				entries = append(entries, UserClassEntry{CacheCarKey: &ck, SkinKey: &sk, Count: &cnt})
+			}
+			classOverride = &UserClass{Entries: entries}
+			requestedGrid = gridCount(*classOverride)
+		} else if cl, err := Dba.selectClassEntries(req.ClassId); err == nil {
+			requestedGrid = gridCount(cl)
+		}
+
+		cr.renderEvent(event, inst.Conf, classOverride, req.WeatherKey)
+	}
+
+	gridRendered := strings.Count(cr.entryListResult, "[CAR_")
+	pitboxes := 0
+	if cr.track.Pitboxes != nil {
+		pitboxes = *cr.track.Pitboxes
+	}
+	maxClients := cr.maxClients
+
+	renderErrors := make([]string, 0)
+	if cr.renderErr != nil {
+		renderErrors = append(renderErrors, cr.renderErr.Error())
+	}
+
+	warnings := make([]string, 0)
+	if gridRendered == 0 && len(renderErrors) == 0 {
+		warnings = append(warnings, "No cars in the grid — add entries to the car class.")
+	}
+	if pitboxes > 0 && requestedGrid > pitboxes {
+		warnings = append(warnings, fmt.Sprintf("Requested grid (%d) exceeds the track's %d pitboxes; the grid is trimmed to fit.", requestedGrid, pitboxes))
+	}
+	if maxClients > 0 && requestedGrid > maxClients {
+		warnings = append(warnings, fmt.Sprintf("Requested grid (%d) exceeds max clients (%d).", requestedGrid, maxClients))
+	}
+
+	c.PureJSON(http.StatusOK, gin.H{
+		"server_cfg":     cr.serverCfgResult,
+		"entry_list":     cr.entryListResult,
+		"grid_count":     gridRendered,
+		"requested_grid": requestedGrid,
+		"pitboxes":       pitboxes,
+		"max_clients":    maxClients,
+		"warnings":       warnings,
+		"render_errors":  renderErrors,
+	})
+}
+
 // queueRowRepeatLocked reports whether the queue row's instance is in repeat
 // mode, in which case its manual queue is frozen.
 func queueRowRepeatLocked(rowId int) bool {

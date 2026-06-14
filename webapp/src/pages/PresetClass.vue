@@ -21,9 +21,12 @@ useUnsavedGuard(page.isDirty);
     :items="page.items.value"
     :selected-id="page.selectedId.value"
     :busy="page.busy.value"
+    :usage="page.usage.value"
+    duplicatable
     @select="page.select"
     @create="page.create"
     @remove="page.remove"
+    @duplicate="page.duplicate"
   >
     <PresetNotices :notice="page.notice.value" :error="page.error.value" />
 

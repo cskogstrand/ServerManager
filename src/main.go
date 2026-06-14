@@ -220,6 +220,8 @@ func main() {
 		api.PUT("/class/:id", apiClassUpdate)
 		api.DELETE("/class/:id", apiClassDelete)
 
+		api.GET("/presets/usage", apiPresetUsage)
+
 		api.GET("/categories", apiCategoryList)
 		api.POST("/categories", apiCategoryCreate)
 		api.GET("/category/:id", apiCategoryGet)
@@ -277,6 +279,7 @@ func main() {
 
 		api.GET("/server/entry_list.ini", apiEntryList)
 		api.GET("/server/server_cfg.ini", apiServerCfg)
+		api.POST("/server/render-preview", apiRenderPreview)
 
 		api.POST("/queue/moveup/:id", apiQueueMoveUp)
 		api.POST("/queue/movedown/:id", apiQueueMoveDown)

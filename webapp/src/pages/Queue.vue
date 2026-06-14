@@ -3,6 +3,8 @@
 // categories. Refetches when an instance starts/stops (SSE-driven).
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
+import { emptyRaceSetup, raceSetupBody, raceSetupValid, type RaceSetupDraft } from "@/lib/useRaceSetupDraft";
 import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
@@ -13,8 +15,10 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Select from "@/components/ui/Select.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Modal from "@/components/ui/Modal.vue";
+import Sheet from "@/components/ui/Sheet.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
+import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 
 interface QueueRow {
   id: number;
@@ -27,6 +31,7 @@ interface QueueRow {
   session: string;
   class: string;
   time: string;
+  duration_min: number;
   started_at: number | null;
   finished: number;
 }
@@ -53,6 +58,29 @@ const pendingRows = computed(() => rows.value.filter((r) => !r.finished));
 const activeRow = computed(
   () => rows.value.find((r) => !r.finished && (r.started_at ?? 0) > 0 && instance.value?.running) ?? null,
 );
+// Rows that haven't started yet (the running one is excluded).
+const upcomingRows = computed(() => rows.value.filter((r) => rowState(r) === "pending"));
+
+function fmtDuration(min: number): string {
+  if (min <= 0) return "0m";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return `${h}h ${m}m`;
+  return h ? `${h}h` : `${m}m`;
+}
+
+// Best-effort ETA: cumulative timed-session minutes of the upcoming rows ahead
+// of this one. The first upcoming row runs after whatever is on track now (its
+// remaining time is unknown), so it is simply "next". A lap race upstream has
+// no fixed duration, so everything past it is reported relative to it.
+function etaLabel(r: QueueRow): string {
+  const idx = upcomingRows.value.indexOf(r);
+  if (idx < 0) return "";
+  if (idx === 0) return activeRow.value ? "After current" : "Next up";
+  const upstream = upcomingRows.value.slice(0, idx);
+  if (upstream.some((u) => !u.duration_min)) return "After a lap race";
+  return `~${fmtDuration(upstream.reduce((s, u) => s + u.duration_min, 0))} in`;
+}
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
@@ -200,6 +228,45 @@ function rowState(r: QueueRow): "done" | "active" | "pending" {
   if ((r.started_at ?? 0) > 0 && instance.value?.running) return "active";
   return "pending";
 }
+
+// --- Inline "New race setup" → save into a group, then queue it on this instance ---
+const newSetupOpen = ref(false);
+const newSetup = ref<RaceSetupDraft>(emptyRaceSetup());
+
+let newSetupBaseline = "";
+const markNewSetupClean = () => (newSetupBaseline = JSON.stringify(newSetup.value));
+useUnsavedGuard(() => newSetupOpen.value && JSON.stringify(newSetup.value) !== newSetupBaseline);
+
+function openNewSetup() {
+  newSetup.value = emptyRaceSetup();
+  markNewSetupClean();
+  newSetupOpen.value = true;
+}
+
+// A new setup needs a home group: the chosen "add" group, else the first group,
+// else a freshly created default one.
+async function ensureGroup(): Promise<number> {
+  if (addCategory.value) return addCategory.value;
+  if (categories.value.length) return categories.value[0].id!;
+  const { id } = await api.post<{ id: number }>("/api/categories", { name: "Race setups" });
+  categories.value = (await api.get<{ items: DropDownList[] }>("/api/categories")).items;
+  return id;
+}
+
+const saveAndQueueSetup = () =>
+  act(async () => {
+    if (instanceId.value === null) return;
+    if (!raceSetupValid(newSetup.value)) {
+      toast.error("Track and all four presets are required.");
+      return;
+    }
+    const groupId = await ensureGroup();
+    const { id } = await api.post<{ id: number }>("/api/events", raceSetupBody(newSetup.value, groupId));
+    await api.post(`/api/queue/event/${id}?instance=${instanceId.value}`);
+    newSetupOpen.value = false;
+    allEvents.value = (await api.get<{ items: UserEventList[] }>("/api/events")).items;
+    toast.success("Race setup created and queued.");
+  });
 
 onMounted(() =>
   guard(async () => {
@@ -380,6 +447,10 @@ watch(
             <td class="py-2 pr-2">
               <div class="font-medium">{{ r.name || r.track }}</div>
               <div class="text-xs text-dim">{{ r.name ? `${r.track} · ${r.category}` : r.category }}</div>
+              <div v-if="rowState(r) === 'pending'" class="mt-0.5 flex items-center gap-1 text-[11px] text-accent/80">
+                <Icon name="clock" :size="11" />
+                {{ etaLabel(r) }}
+              </div>
             </td>
             <td class="py-2 pr-2 max-md:hidden">{{ r.class }}</td>
             <td class="py-2 pr-2 text-xs text-muted max-lg:hidden">
@@ -419,6 +490,16 @@ watch(
     </Card>
 
     <Card title="Add to queue">
+      <Button class="mb-4 w-full" @click="openNewSetup">
+        <Icon name="plus" :size="15" />
+        New race setup
+      </Button>
+      <div class="mb-4 flex items-center gap-2 text-xs text-dim">
+        <span class="h-px flex-1 bg-line" />
+        or add an existing one
+        <span class="h-px flex-1 bg-line" />
+      </div>
+
       <FormRow label="Event group" for-id="qcat">
         <Select
           id="qcat"
@@ -438,12 +519,32 @@ watch(
           :options="eventsInCategory.map((e) => ({ value: e.id ?? 0, label: e.name || e.track_name || '' }))"
         />
       </FormRow>
-      <Button class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">
+      <Button variant="dark" class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">
         <Icon name="plus" :size="15" />
         Add event
       </Button>
     </Card>
   </div>
+
+  <!-- New race setup → create + queue in one step -->
+  <Sheet :open="newSetupOpen" title="New race setup" @close="newSetupOpen = false">
+    <p class="mb-3 text-sm text-muted">
+      Build a race setup and queue it on
+      <span class="font-medium text-text">{{ instance?.name ?? "this instance" }}</span>
+      in one step. It is also saved to your library{{ addCategory ? " in the selected group" : "" }}.
+    </p>
+    <RaceSetupEditor v-model="newSetup" :instance-id="instanceId" />
+    <template #footer>
+      <span v-if="!raceSetupValid(newSetup)" class="mr-auto self-center text-xs text-muted">
+        Track and all four presets are required.
+      </span>
+      <Button variant="ghost" @click="newSetupOpen = false">Cancel</Button>
+      <Button :disabled="busy || !raceSetupValid(newSetup)" @click="saveAndQueueSetup">
+        <Icon name="queue" :size="15" />
+        Create &amp; queue
+      </Button>
+    </template>
+  </Sheet>
 
   <!-- Schedule start -->
   <Modal :open="scheduleOpen" title="Schedule start" @close="scheduleOpen = false">

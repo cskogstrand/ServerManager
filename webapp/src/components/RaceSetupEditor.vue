@@ -9,7 +9,8 @@ import { onMounted, ref } from "vue";
 import { api } from "@/lib/api";
 import { useContentStore } from "@/stores/content";
 import type { DropDownList } from "@/types/generated";
-import type { RaceSetupDraft } from "@/lib/useRaceSetupDraft";
+import { raceSetupValid, type RaceSetupDraft } from "@/lib/useRaceSetupDraft";
+import { previewRaceSetup, type PreviewResult } from "@/lib/useRaceSetupPreview";
 import type { PresetKind } from "@/lib/presetForms";
 import TrackPicker from "@/components/TrackPicker.vue";
 import InlinePresetSheet from "@/components/presets/InlinePresetSheet.vue";
@@ -21,6 +22,7 @@ import Combobox from "@/components/ui/Combobox.vue";
 import Icon from "@/components/ui/Icon.vue";
 
 const draft = defineModel<RaceSetupDraft>({ required: true });
+const props = defineProps<{ instanceId?: number | null }>();
 
 const content = useContentStore();
 const difficulties = ref<DropDownList[]>([]);
@@ -70,6 +72,26 @@ function openInline(kind: PresetKind) {
 async function onPresetCreated(id: number) {
   await loadPresetLists();
   (draft.value[presetFieldByKind[inlineKind.value]] as number | null) = id;
+}
+
+// --- Review: render the draft and surface grid/pitbox/max-client warnings ---
+const review = ref<PreviewResult | null>(null);
+const reviewing = ref(false);
+const reviewError = ref("");
+const showIni = ref(false);
+
+async function runReview() {
+  if (!raceSetupValid(draft.value)) return;
+  reviewing.value = true;
+  reviewError.value = "";
+  try {
+    review.value = await previewRaceSetup(draft.value, props.instanceId);
+  } catch (e) {
+    reviewError.value = e instanceof Error ? e.message : String(e);
+    review.value = null;
+  } finally {
+    reviewing.value = false;
+  }
 }
 </script>
 
@@ -173,6 +195,71 @@ async function onPresetCreated(id: number) {
           ]"
         />
       </FormRow>
+    </div>
+
+    <!-- Review: grid vs pitboxes, max clients, warnings, rendered INI -->
+    <div class="mt-4 border-t border-line pt-3">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Review</h3>
+        <Button variant="dark" size="sm" :disabled="reviewing || !raceSetupValid(draft)" @click="runReview">
+          <Icon name="activity" :size="14" />
+          {{ reviewing ? "Checking…" : "Check setup" }}
+        </Button>
+      </div>
+
+      <p v-if="reviewError" class="mt-2 text-xs text-danger">{{ reviewError }}</p>
+
+      <template v-if="review">
+        <dl class="mt-2 grid grid-cols-3 gap-2">
+          <div class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5 text-center">
+            <dt class="text-xs text-dim">Grid</dt>
+            <dd class="font-mono text-sm" :class="review.pitboxes && review.requested_grid > review.pitboxes ? 'text-warn' : 'text-text'">
+              {{ review.grid_count }}<span class="text-dim">/{{ review.pitboxes || "?" }}</span>
+            </dd>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5 text-center">
+            <dt class="text-xs text-dim">Requested</dt>
+            <dd class="font-mono text-sm text-text">{{ review.requested_grid }}</dd>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5 text-center">
+            <dt class="text-xs text-dim">Max clients</dt>
+            <dd class="font-mono text-sm text-text">{{ review.max_clients }}</dd>
+          </div>
+        </dl>
+
+        <ul v-if="review.render_errors.length" class="mt-2 space-y-1">
+          <li v-for="(e, i) in review.render_errors" :key="`e${i}`" class="flex items-start gap-1.5 text-xs text-danger">
+            <Icon name="alert" :size="13" class="mt-0.5 shrink-0" />
+            {{ e }}
+          </li>
+        </ul>
+        <ul v-if="review.warnings.length" class="mt-2 space-y-1">
+          <li v-for="(w, i) in review.warnings" :key="`w${i}`" class="flex items-start gap-1.5 text-xs text-warn">
+            <Icon name="alert" :size="13" class="mt-0.5 shrink-0" />
+            {{ w }}
+          </li>
+        </ul>
+        <p
+          v-if="!review.warnings.length && !review.render_errors.length"
+          class="mt-2 flex items-center gap-1.5 text-xs text-ok"
+        >
+          <Icon name="check" :size="13" />
+          Renders cleanly — {{ review.grid_count }} car{{ review.grid_count === 1 ? "" : "s" }} on the grid.
+        </p>
+
+        <button
+          type="button"
+          class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-text"
+          @click="showIni = !showIni"
+        >
+          <Icon name="content" :size="13" />
+          {{ showIni ? "Hide" : "Show" }} rendered config
+        </button>
+        <div v-if="showIni" class="mt-2 space-y-2">
+          <pre class="max-h-48 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-xs whitespace-pre-wrap text-muted">{{ review.server_cfg }}</pre>
+          <pre class="max-h-48 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-xs whitespace-pre-wrap text-muted">{{ review.entry_list }}</pre>
+        </div>
+      </template>
     </div>
 
     <TrackPicker

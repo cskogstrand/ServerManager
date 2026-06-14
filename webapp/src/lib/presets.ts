@@ -9,6 +9,8 @@ import type { DropDownList } from "@/types/generated";
 //   DELETE /api/<singular>/:id  → {id}
 export function presetResource<T>(plural: string, singular: string) {
   return {
+    plural,
+    singular,
     list: async () => (await api.get<{ items: DropDownList[] }>(`/api/${plural}`)).items,
     create: async (name: string) => (await api.post<{ id: number }>(`/api/${plural}`, { name })).id,
     get: async (id: number) => (await api.get<{ data: T }>(`/api/${singular}/${id}`)).data,

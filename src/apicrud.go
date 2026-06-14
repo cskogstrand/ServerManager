@@ -483,11 +483,12 @@ func apiEventCreate(c *gin.Context) {
 		apiBadRequest(c, problem)
 		return
 	}
-	if _, err := Dba.insertEvent(evt); err != nil {
+	id, err := Dba.insertEvent(evt)
+	if err != nil {
 		apiDbError(c, err)
 		return
 	}
-	c.PureJSON(http.StatusOK, gin.H{"success": true})
+	c.PureJSON(http.StatusOK, gin.H{"success": true, "id": id})
 }
 
 func apiEventUpdate(c *gin.Context) {
@@ -523,6 +524,29 @@ func apiEventDelete(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"id": id})
+}
+
+// apiPresetUsage reports how many events reference each preset, keyed by the
+// list resource name (classes/sessions/times/difficulties) → {presetId: count}.
+// The preset pages use it to show "used by N events" and to warn before editing
+// a shared preset. Column names come from a fixed whitelist, never user input.
+func apiPresetUsage(c *gin.Context) {
+	cols := map[string]string{
+		"classes":      "class_id",
+		"sessions":     "session_id",
+		"times":        "time_id",
+		"difficulties": "difficulty_id",
+	}
+	out := gin.H{}
+	for key, col := range cols {
+		counts, err := Dba.presetUsageCounts(col)
+		if err != nil {
+			apiDbError(c, err)
+			return
+		}
+		out[key] = counts
+	}
+	c.PureJSON(http.StatusOK, out)
 }
 
 // --- Config ---
@@ -592,6 +616,31 @@ func apiAssettoServerInstall(c *gin.Context) {
 
 // --- Queue (SPA) ---
 
+// eventDurationMinutes estimates how long a queued event occupies the server:
+// the sum of its enabled timed sessions. A lap-based race has no fixed minute
+// count, so it contributes 0 (ETA is best-effort, hence "where possible").
+func eventDurationMinutes(ue UserEvent) int {
+	mins := 0
+	add := func(enabled, t *int) {
+		if enabled != nil && *enabled == 1 && t != nil {
+			mins += *t
+		}
+	}
+	add(ue.BookingEnabled, ue.BookingTime)
+	add(ue.PracticeEnabled, ue.PracticeTime)
+	add(ue.QualifyEnabled, ue.QualifyTime)
+	if ue.RaceEnabled != nil && *ue.RaceEnabled == 1 {
+		laps := 0
+		if ue.RaceLaps != nil {
+			laps = *ue.RaceLaps
+		}
+		if laps == 0 && ue.RaceTime != nil {
+			mins += *ue.RaceTime
+		}
+	}
+	return mins
+}
+
 // apiQueueList returns the queue with display names; ?instance=N filters.
 func apiQueueList(c *gin.Context) {
 	instanceId, _ := strconv.Atoi(c.Query("instance"))
@@ -616,6 +665,7 @@ func apiQueueList(c *gin.Context) {
 			"session":      se.UserEvent.SessionName,
 			"class":        se.UserEvent.ClassName,
 			"time":         se.UserEvent.TimeName,
+			"duration_min": eventDurationMinutes(se.UserEvent),
 			"started_at":   se.StartedAt,
 			"finished":     se.Finished,
 		})

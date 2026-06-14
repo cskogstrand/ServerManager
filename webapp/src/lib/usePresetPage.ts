@@ -1,7 +1,9 @@
 import { onMounted, ref, type Ref } from "vue";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { presetResource } from "@/lib/presets";
 import type { DropDownList } from "@/types/generated";
+
+type UsageMap = Record<string, Record<string, number>>;
 
 // Common controller for the four preset pages: list + select + create +
 // delete + save, with notice/error handling.
@@ -15,6 +17,19 @@ export function usePresetPage<T extends { id?: number }>(
   const busy = ref(false);
   const notice = ref("");
   const error = ref("");
+
+  // How many events use each preset of this kind: { presetId: count }.
+  const usage = ref<Record<string, number>>({});
+  const usedBy = (id: number | null) => (id == null ? 0 : (usage.value[String(id)] ?? 0));
+
+  async function reloadUsage() {
+    try {
+      const all = await api.get<UsageMap>("/api/presets/usage");
+      usage.value = all[resource.plural] ?? {};
+    } catch {
+      usage.value = {};
+    }
+  }
 
   // Snapshot of the form as last loaded/saved, for unsaved-changes detection.
   let baseline = "";
@@ -62,7 +77,7 @@ export function usePresetPage<T extends { id?: number }>(
         selectedId.value = null;
         form.value = null;
       }
-      await reloadList();
+      await Promise.all([reloadList(), reloadUsage()]);
     });
 
   const save = () =>
@@ -74,7 +89,25 @@ export function usePresetPage<T extends { id?: number }>(
       notice.value = "Saved.";
     });
 
-  onMounted(() => guard(reloadList));
+  // Clone-before-edit: copy a preset and switch to the new one so a shared
+  // preset can be changed without affecting the events already using the source.
+  const duplicate = (id: number) =>
+    guard(async () => {
+      const src = await resource.get(id);
+      const baseName = items.value.find((i) => i.id === id)?.name ?? "Preset";
+      const copyName = `${baseName} copy`;
+      const newId = await resource.create(copyName);
+      await resource.update(newId, { ...src, id: newId, name: copyName } as T);
+      await Promise.all([reloadList(), reloadUsage()]);
+      await select(newId);
+      notice.value = "Duplicated — you're editing the copy.";
+    });
 
-  return { items, selectedId, form, busy, notice, error, select, create, remove, save, isDirty };
+  onMounted(() =>
+    guard(async () => {
+      await Promise.all([reloadList(), reloadUsage()]);
+    }),
+  );
+
+  return { items, selectedId, form, busy, notice, error, usage, usedBy, select, create, remove, duplicate, save, isDirty };
 }

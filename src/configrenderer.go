@@ -159,25 +159,40 @@ func entryListData(class UserClass, instance ServerInstance) (EntryListTemplateD
 }
 
 func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
-	cr.renderErr = nil
-	r := regexp.MustCompile(`\d{1,3}`)
-
 	event, err := Dba.selectEvent(eventId)
 	if err != nil {
 		log.Print("Database error: ", err)
 		return
 	}
+	cr.renderEvent(event, instance, nil, "")
+}
 
-	eventcat, err := Dba.selectEventCategory(*event.EventCategoryId)
-	if err != nil {
-		log.Print("Database error: ", err)
-		return
+// renderEvent renders an in-memory event so callers can preview a draft that is
+// not yet saved. classOverride replaces the class entries (per-event grid
+// customization without saving a new class); weatherKey overrides the first
+// weather panel's graphics. Both are optional (nil / "").
+func (cr *ConfigRenderer) renderEvent(event UserEvent, instance ServerInstance, classOverride *UserClass, weatherKey string) {
+	cr.renderErr = nil
+	r := regexp.MustCompile(`\d{1,3}`)
+
+	// Category only supplies the lobby-name fallback; a draft may not have one,
+	// so a missing/zero category is non-fatal.
+	eventcat := UserEventCategory{}
+	if event.EventCategoryId != nil {
+		if c, e := Dba.selectEventCategory(*event.EventCategoryId); e == nil {
+			eventcat = c
+		}
 	}
 
 	tm, err := Dba.selectTimeWeather(*event.TimeId)
 	if err != nil {
 		log.Print("Database error: ", err)
 		return
+	}
+
+	if weatherKey != "" && len(tm.Weathers) > 0 {
+		wk := weatherKey
+		tm.Weathers[0].Graphics = &wk
 	}
 
 	diff, err := Dba.selectDifficulty(*event.DifficultyId)
@@ -198,10 +213,15 @@ func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
 		return
 	}
 
-	class, err := Dba.selectClassEntries(*event.ClassId)
-	if err != nil {
-		log.Print("Database error: ", err)
-		return
+	var class UserClass
+	if classOverride != nil {
+		class = *classOverride
+	} else {
+		class, err = Dba.selectClassEntries(*event.ClassId)
+		if err != nil {
+			log.Print("Database error: ", err)
+			return
+		}
 	}
 
 	// Expand each entry by its car count so one list row can yield N grid slots

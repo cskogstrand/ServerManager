@@ -1,14 +1,17 @@
 <script setup lang="ts">
-// Shared layout for the four preset pages: list of presets on the left,
-// editor (slot) on the right. Create inline, delete with confirm.
-import { ref } from "vue";
+// Shared layout for the four preset pages: searchable list of presets on the
+// left (each with a "used by N" count), editor (slot) on the right. Create
+// inline, duplicate, delete with confirm. When the selected preset is used by
+// existing events, a clone-before-edit banner offers to duplicate first so
+// changes don't silently rewrite every event that shares it.
+import { computed, ref } from "vue";
 import type { DropDownList } from "@/types/generated";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 
-defineProps<{
+const props = defineProps<{
   title: string;
   subtitle?: string;
   icon?: string;
@@ -16,6 +19,8 @@ defineProps<{
   selectedId: number | null;
   busy?: boolean;
   duplicatable?: boolean;
+  // { presetId: eventCount } — how many events use each preset.
+  usage?: Record<string, number>;
 }>();
 
 const emit = defineEmits<{
@@ -26,6 +31,7 @@ const emit = defineEmits<{
 }>();
 
 const newName = ref("");
+const search = ref("");
 
 function submitCreate() {
   const name = newName.value.trim();
@@ -33,6 +39,19 @@ function submitCreate() {
   emit("create", name);
   newName.value = "";
 }
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return props.items;
+  return props.items.filter((i) => (i.name ?? "").toLowerCase().includes(q));
+});
+
+function uses(id: number | null | undefined): number {
+  if (id == null) return 0;
+  return props.usage?.[String(id)] ?? 0;
+}
+
+const selectedUses = computed(() => uses(props.selectedId));
 </script>
 
 <template>
@@ -44,18 +63,23 @@ function submitCreate() {
 
   <div class="flex flex-col gap-5 lg:flex-row">
     <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
-      <form class="mb-3 flex gap-2" @submit.prevent="submitCreate">
+      <form class="mb-2 flex gap-2" @submit.prevent="submitCreate">
         <Input v-model="newName" :placeholder="`New ${title.toLowerCase()}…`" />
         <Button type="submit" variant="dark" :disabled="busy" aria-label="Add">
           <Icon name="plus" :size="15" />
         </Button>
       </form>
 
+      <div v-if="items.length > 6" class="relative mb-2">
+        <Icon name="search" :size="14" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
+        <Input v-model="search" :placeholder="`Search ${title.toLowerCase()}…`" class="!pl-8" />
+      </div>
+
       <ul class="space-y-1">
-        <li v-for="item in items" :key="item.id ?? 0" class="group flex items-center">
+        <li v-for="item in filtered" :key="item.id ?? 0" class="group flex items-center">
           <button
             type="button"
-            class="min-h-9 min-w-0 flex-1 cursor-pointer truncate rounded-md px-3 text-left text-sm font-medium transition-colors"
+            class="flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors"
             :class="
               item.id === selectedId
                 ? 'bg-accent-dim text-accent'
@@ -63,7 +87,14 @@ function submitCreate() {
             "
             @click="emit('select', item.id!)"
           >
-            {{ item.name }}
+            <span class="min-w-0 flex-1 truncate">{{ item.name }}</span>
+            <span
+              v-if="uses(item.id)"
+              class="shrink-0 rounded-full bg-surface-3 px-1.5 text-xs text-dim"
+              :title="`Used by ${uses(item.id)} event${uses(item.id) === 1 ? '' : 's'}`"
+            >
+              {{ uses(item.id) }}
+            </span>
           </button>
           <button
             v-if="duplicatable"
@@ -85,9 +116,26 @@ function submitCreate() {
         </li>
       </ul>
       <p v-if="items.length === 0" class="px-1 text-sm text-dim">Nothing here yet — add one above.</p>
+      <p v-else-if="filtered.length === 0" class="px-1 text-sm text-dim">No matches for “{{ search }}”.</p>
     </aside>
 
     <div class="min-w-0 flex-1">
+      <!-- Clone-before-edit: editing a shared preset rewrites it for every event -->
+      <div
+        v-if="duplicatable && selectedId !== null && selectedUses > 0"
+        class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2 text-sm"
+      >
+        <Icon name="alert" :size="16" class="shrink-0 text-warn" />
+        <span class="text-muted">
+          Used by <span class="font-semibold text-text">{{ selectedUses }}</span>
+          event{{ selectedUses === 1 ? "" : "s" }} — saving changes them all.
+        </span>
+        <Button variant="dark" size="sm" class="ml-auto" :disabled="busy" @click="emit('duplicate', selectedId)">
+          <Icon name="copy" :size="14" />
+          Duplicate first
+        </Button>
+      </div>
+
       <slot />
     </div>
   </div>

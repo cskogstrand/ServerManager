@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// Race setup library: groups on the left, race setups as cards, the shared
-// RaceSetupEditor in a side sheet. Presets are accelerators picked (or created
-// inline) from the editor, not a required page visit.
+// Race Setup library: every runnable race setup across all groups in one
+// searchable, filterable grid. Groups are an organisation filter, not a gate —
+// you can create a setup from anywhere. The shared RaceSetupEditor drives
+// create/edit; presets are accelerators chosen or created inline.
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
@@ -16,7 +17,7 @@ import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import type { DropDownList } from "@/types/generated";
-import PresetShell from "@/components/presets/PresetShell.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -29,18 +30,39 @@ import Icon from "@/components/ui/Icon.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 
+type LibrarySetup = RaceSetupDraft & { group_id: number; group_name: string };
+
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
 
-const categories = ref<DropDownList[]>([]);
-const selectedId = ref<number | null>(null);
-const categoryName = ref("");
-const events = ref<RaceSetupDraft[]>([]);
-const busy = ref(false);
+const groups = ref<DropDownList[]>([]);
+const setups = ref<LibrarySetup[]>([]);
 const loading = ref(true);
+const busy = ref(false);
 
-const canSave = computed(() => raceSetupValid(editing.value));
+// --- Filters ---
+const search = ref("");
+const groupFilter = ref<number | "all">("all");
+const runFilter = ref<"all" | "repeating">("all");
+
+// Events pinned as an instance's repeat event (from the live store).
+const repeatingIds = computed(
+  () => new Set(server.instanceList.map((i) => i.repeat_event_id).filter((id): id is number => id != null)),
+);
+function isRepeating(s: LibrarySetup): boolean {
+  return s.id != null && repeatingIds.value.has(s.id);
+}
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  return setups.value.filter((s) => {
+    if (groupFilter.value !== "all" && s.group_id !== groupFilter.value) return false;
+    if (runFilter.value === "repeating" && !isRepeating(s)) return false;
+    if (q && !`${s.name} ${s.track_name} ${s.class_name} ${s.group_name}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+});
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
@@ -53,360 +75,364 @@ async function guard(fn: () => Promise<void>) {
   }
 }
 
-const loadCategories = async () => {
-  categories.value = (await api.get<{ items: DropDownList[] }>("/api/categories")).items;
-};
+// Load every group and flatten its events into one library array.
+async function loadAll() {
+  groups.value = (await api.get<{ items: DropDownList[] }>("/api/categories")).items;
+  const cats = await Promise.all(
+    groups.value.map((g) =>
+      api.get<{ name?: string; events?: Record<string, unknown>[] }>(`/api/category/${g.id}`).then((c) => ({ g, c })),
+    ),
+  );
+  setups.value = cats.flatMap(({ g, c }) =>
+    (c.events ?? [])
+      .filter((e) => e.Id != null)
+      .map((e) => ({ ...normalizeRaceSetup(e), group_id: g.id ?? 0, group_name: g.name ?? "" })),
+  );
+}
 
-const select = (id: number) =>
-  guard(async () => {
-    const cat = await api.get<{ name?: string; events?: Record<string, unknown>[] }>(`/api/category/${id}`);
-    selectedId.value = id;
-    categoryName.value = cat.name ?? "";
-    events.value = (cat.events ?? []).filter((e) => e.Id != null).map(normalizeRaceSetup);
-  });
-
-const create = (name: string) =>
-  guard(async () => {
-    const { id } = await api.post<{ id: number }>("/api/categories", { name });
-    await loadCategories();
-    await select(id);
-  });
-
-const remove = (id: number) =>
-  guard(async () => {
-    const grp = categories.value.find((c) => c.id === id);
-    const ok = await confirm.ask({
-      title: "Delete event group",
-      message: `Delete "${grp?.name ?? "this group"}" and all its events?`,
-      detail: "Any queue entries for those events are removed too. This cannot be undone.",
-      confirmLabel: "Delete group",
-      tone: "danger",
-    });
-    if (!ok) return;
-    await api.delete(`/api/category/${id}`);
-    if (selectedId.value === id) {
-      selectedId.value = null;
-      events.value = [];
-    }
-    await loadCategories();
-    toast.success("Event group deleted.");
-  });
-
-const rename = () =>
-  guard(async () => {
-    if (!selectedId.value) return;
-    await api.patch(`/api/category/${selectedId.value}`, { name: categoryName.value });
-    await loadCategories();
-    toast.success("Event group renamed.");
-  });
-
-const duplicateGroup = (id: number) =>
-  guard(async () => {
-    const { id: newId } = await api.post<{ id: number }>(`/api/category/${id}/duplicate`);
-    await loadCategories();
-    await select(newId);
-    toast.success("Event group duplicated.");
-  });
-
-// --- Builder sheet ---
+// --- Builder ---
 const builderOpen = ref(false);
 const editing = ref<RaceSetupDraft | null>(null);
+const editingGroupId = ref<number | null>(null);
 
-// Warn before navigating away while the builder holds unsaved edits.
 let builderBaseline = "";
 const markBuilderClean = () => (builderBaseline = editing.value ? JSON.stringify(editing.value) : "");
 useUnsavedGuard(() => builderOpen.value && editing.value !== null && JSON.stringify(editing.value) !== builderBaseline);
 
-function openBuilder(event?: RaceSetupDraft) {
-  editing.value = event ? { ...event } : emptyRaceSetup();
+async function ensureGroup(): Promise<number> {
+  if (groupFilter.value !== "all") return groupFilter.value;
+  if (groups.value.length) return groups.value[0].id!;
+  const { id } = await api.post<{ id: number }>("/api/categories", { name: "Race setups" });
+  await loadAll();
+  return id;
+}
+
+const openCreate = () =>
+  guard(async () => {
+    editingGroupId.value = await ensureGroup();
+    editing.value = emptyRaceSetup();
+    markBuilderClean();
+    builderOpen.value = true;
+  });
+
+function openEdit(s: LibrarySetup) {
+  editingGroupId.value = s.group_id;
+  editing.value = { ...s };
   markBuilderClean();
   builderOpen.value = true;
 }
 
-// Start a race setup without first picking a group: reuse the selected group,
-// else the first existing one, else create a default group on the fly.
-const newRaceSetupQuick = () =>
-  guard(async () => {
-    if (selectedId.value === null) {
-      if (categories.value.length) {
-        await select(categories.value[0].id!);
-      } else {
-        const { id } = await api.post<{ id: number }>("/api/categories", { name: "Race setups" });
-        await loadCategories();
-        selectedId.value = id;
-        categoryName.value = "Race setups";
-        events.value = [];
-      }
-    }
-    openBuilder();
-  });
-
-const saveEvent = () =>
+const saveSetup = () =>
   guard(async () => {
     const e = editing.value;
-    if (!e || !selectedId.value) return;
+    if (!e || editingGroupId.value === null) return;
     if (!raceSetupValid(e)) {
       toast.error("Track and all four presets are required.");
       return;
     }
-    const body = raceSetupBody(e, selectedId.value);
-    if (e.id) {
-      await api.put(`/api/event/${e.id}`, body);
-    } else {
-      await api.post("/api/events", body);
-    }
+    const body = raceSetupBody(e, editingGroupId.value);
+    if (e.id) await api.put(`/api/event/${e.id}`, body);
+    else await api.post("/api/events", body);
     builderOpen.value = false;
-    await select(selectedId.value);
+    await loadAll();
     toast.success(e.id ? "Race setup saved." : "Race setup added.");
   });
 
-const deleteEvent = (e: RaceSetupDraft) =>
+const deleteSetup = (s: LibrarySetup) =>
   guard(async () => {
-    if (!e.id || !selectedId.value) return;
+    if (!s.id) return;
     const ok = await confirm.ask({
       title: "Delete race setup",
-      message: `Delete the ${e.name || e.track_name} setup?`,
+      message: `Delete the ${s.name || s.track_name} setup?`,
       detail: "Its queue entries are removed too. This cannot be undone.",
       confirmLabel: "Delete race setup",
       tone: "danger",
     });
     if (!ok) return;
-    await api.delete(`/api/event/${e.id}`);
-    await select(selectedId.value);
+    await api.delete(`/api/event/${s.id}`);
+    await loadAll();
     toast.success("Race setup deleted.");
   });
 
-// Duplicate: clone the row into the same group, then re-select so the new card
-// appears. Saves rebuilding near-identical setups by hand.
-const duplicateEvent = (e: RaceSetupDraft) =>
+const duplicateSetup = (s: LibrarySetup) =>
   guard(async () => {
-    if (!e.id || !selectedId.value) return;
-    const body = raceSetupBody({ ...e, name: e.name ? `${e.name} (copy)` : "" }, selectedId.value);
-    await api.post("/api/events", body);
-    await select(selectedId.value);
+    if (!s.id) return;
+    await api.post("/api/events", raceSetupBody({ ...s, name: s.name ? `${s.name} (copy)` : "" }, s.group_id));
+    await loadAll();
     toast.success("Race setup duplicated.");
   });
 
-const queueEvent = (e: RaceSetupDraft) =>
-  guard(async () => {
-    if (!e.id) return;
-    const inst = server.instanceList[0];
-    await api.post(`/api/queue/event/${e.id}${inst ? `?instance=${inst.id}` : ""}`);
-    toast.success(`Queued ${e.name || e.track_name} on ${inst?.name ?? "the default instance"}.`);
-  });
+// --- Instance action picker (queue / start / repeat) ---
+const actionOpen = ref(false);
+const actionTarget = ref<LibrarySetup | null>(null);
+const actionInstanceId = ref<number | null>(null);
+const actionKind = ref<"queue" | "start" | "repeat">("queue");
 
-// --- Repeat-on-instance picker ---
-const repeatPickerOpen = ref(false);
-const repeatTarget = ref<RaceSetupDraft | null>(null);
-const repeatInstanceId = ref<number | null>(null);
-
-function openRepeat(e: RaceSetupDraft) {
-  repeatTarget.value = e;
-  repeatInstanceId.value = server.instanceList[0]?.id ?? null;
-  repeatPickerOpen.value = true;
+function openAction(s: LibrarySetup, kind: "queue" | "start" | "repeat") {
+  actionTarget.value = s;
+  actionKind.value = kind;
+  actionInstanceId.value = server.instanceList[0]?.id ?? null;
+  actionOpen.value = true;
 }
 
-const confirmRepeat = () =>
+const confirmAction = () =>
   guard(async () => {
-    if (!repeatTarget.value?.id || repeatInstanceId.value === null) return;
-    await server.setRunMode(repeatInstanceId.value, "repeat_event", repeatTarget.value.id);
-    const inst = server.instanceList.find((i) => i.id === repeatInstanceId.value);
-    repeatPickerOpen.value = false;
-    toast.success(`${inst?.name ?? "Instance"} will repeat ${repeatTarget.value.track_name}. Start it from the dashboard.`);
+    const s = actionTarget.value;
+    const iid = actionInstanceId.value;
+    if (!s?.id || iid === null) return;
+    const inst = server.instanceList.find((i) => i.id === iid);
+    if (actionKind.value === "repeat") {
+      await server.setRunMode(iid, "repeat_event", s.id);
+      toast.success(`${inst?.name ?? "Instance"} will repeat ${s.name || s.track_name}.`);
+    } else {
+      await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+      if (actionKind.value === "start") {
+        await api.post(`/api/server/start?instance=${iid}`);
+        toast.success(`Queued and starting on ${inst?.name ?? "instance"}.`);
+      } else {
+        toast.success(`Queued on ${inst?.name ?? "instance"}.`);
+      }
+    }
+    actionOpen.value = false;
+    await loadAll();
   });
 
-// --- Config preview (rendered server_cfg.ini / entry_list.ini) ---
-const previewOpen = ref(false);
-const previewCfg = ref("");
-const previewEntry = ref("");
-const previewBusy = ref(false);
+// --- Group management ---
+const groupModalOpen = ref(false);
+const newGroupName = ref("");
 
-async function openPreview() {
-  const e = editing.value;
-  if (!e?.id) return;
-  previewOpen.value = true;
-  previewBusy.value = true;
-  previewCfg.value = "";
-  previewEntry.value = "";
-  try {
-    const inst = server.instanceList[0];
-    const q = `id=${e.id}${inst ? `&instance=${inst.id}` : ""}`;
-    const [cfg, entry] = await Promise.all([
-      fetch(`/api/server/server_cfg.ini?${q}`).then((r) => r.text()),
-      fetch(`/api/server/entry_list.ini?${q}`).then((r) => r.text()),
-    ]);
-    previewCfg.value = cfg;
-    previewEntry.value = entry;
-  } catch (e) {
-    toast.error(String(e));
-  } finally {
-    previewBusy.value = false;
-  }
+const createGroup = () =>
+  guard(async () => {
+    const name = newGroupName.value.trim();
+    if (!name) return;
+    const { id } = await api.post<{ id: number }>("/api/categories", { name });
+    newGroupName.value = "";
+    groupModalOpen.value = false;
+    await loadAll();
+    groupFilter.value = id;
+    toast.success("Group created.");
+  });
+
+const renameGroup = () =>
+  guard(async () => {
+    if (groupFilter.value === "all") return;
+    const g = groups.value.find((x) => x.id === groupFilter.value);
+    const name = window.prompt("Rename group", g?.name ?? "");
+    if (!name?.trim()) return;
+    await api.patch(`/api/category/${groupFilter.value}`, { name: name.trim() });
+    await loadAll();
+    toast.success("Group renamed.");
+  });
+
+const deleteGroup = () =>
+  guard(async () => {
+    if (groupFilter.value === "all") return;
+    const g = groups.value.find((x) => x.id === groupFilter.value);
+    const ok = await confirm.ask({
+      title: "Delete group",
+      message: `Delete "${g?.name ?? "this group"}" and all its race setups?`,
+      detail: "Queue entries for those setups are removed too. This cannot be undone.",
+      confirmLabel: "Delete group",
+      tone: "danger",
+    });
+    if (!ok) return;
+    await api.delete(`/api/category/${groupFilter.value}`);
+    groupFilter.value = "all";
+    await loadAll();
+    toast.success("Group deleted.");
+  });
+
+function trackPreview(s: LibrarySetup): string {
+  return `/api/track/preview/${s.track_key}${s.track_config ? "/" + s.track_config : ""}`;
 }
 
 onMounted(() =>
   guard(async () => {
-    await Promise.all([loadCategories(), server.load()]);
+    await Promise.all([loadAll(), server.load()]);
     loading.value = false;
   }),
 );
 </script>
 
 <template>
-  <PresetShell
-    title="Event Groups"
-    subtitle="Group your runnable race events. An event sets track, cars, sessions, time/weather and difficulty — everything needed to run."
+  <PageHeader
+    title="Race Setups"
+    subtitle="Every runnable race setup — a track plus presets — in one library. Queue, start, or repeat any of them."
     icon="events"
-    :items="categories"
-    :selected-id="selectedId"
-    :busy="busy"
-    duplicatable
-    @select="select"
-    @create="create"
-    @remove="remove"
-    @duplicate="duplicateGroup"
   >
-    <div v-if="loading" class="grid gap-4 md:grid-cols-2">
-      <Skeleton v-for="n in 4" :key="n" class="h-56" />
-    </div>
-
-    <template v-else-if="selectedId">
-      <Card title="Event group" class="mb-4">
-        <form class="flex max-w-md items-end gap-2" @submit.prevent="rename">
-          <div class="flex-1">
-            <FormRow label="Name" for-id="catname" class="!mb-0">
-              <Input id="catname" v-model="categoryName" />
-            </FormRow>
-          </div>
-          <Button type="submit" variant="dark" :disabled="busy">Rename</Button>
-        </form>
-      </Card>
-
-      <div v-if="events.length" class="mb-4 grid gap-4 md:grid-cols-2">
-        <Card v-for="e in events" :key="e.id ?? 0">
-          <template #header>
-            <Icon name="events" :size="16" class="text-accent" />
-            <h2 class="min-w-0 truncate text-sm font-bold">{{ e.name || e.track_name }}</h2>
-            <span v-if="e.name" class="min-w-0 truncate text-xs text-muted">{{ e.track_name }}</span>
-            <span v-if="e.track_config" class="text-xs text-dim">{{ e.track_config }}</span>
-          </template>
-          <template #actions>
-            <Button variant="success" size="sm" @click="queueEvent(e)">
-              <Icon name="queue" :size="14" />
-              Queue
-            </Button>
-            <Button variant="dark" size="sm" aria-label="Run repeatedly" title="Run repeatedly on an instance" @click="openRepeat(e)">
-              <Icon name="repeat" :size="14" />
-            </Button>
-            <Button variant="dark" size="sm" @click="openBuilder(e)">Edit</Button>
-            <Button variant="ghost" size="sm" aria-label="Duplicate event" @click="duplicateEvent(e)">
-              <Icon name="copy" :size="14" />
-            </Button>
-            <Button variant="ghost" size="sm" aria-label="Delete event" @click="deleteEvent(e)">
-              <Icon name="trash" :size="14" />
-            </Button>
-          </template>
-
-          <img
-            :src="`/api/track/preview/${e.track_key}${e.track_config ? '/' + e.track_config : ''}`"
-            alt=""
-            loading="lazy"
-            class="mb-3 aspect-video w-full rounded-sm border border-line object-cover"
-          />
-          <div class="flex flex-wrap gap-1.5 text-xs">
-            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.class_name }} ({{ e.entries }})</span>
-            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.session_name }}</span>
-            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.time_name }}</span>
-            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ e.difficulty_name }}</span>
-            <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">
-              {{ e.race_laps ? `${e.race_laps} laps` : "timed race" }}
-            </span>
-          </div>
-        </Card>
-      </div>
-
-      <EmptyState
-        v-if="!events.length"
-        icon="events"
-        title="No race setups in this group yet"
-        message="A race setup picks a track and the presets to run it. Add your first one."
-      >
-        <Button @click="openBuilder()">
-          <Icon name="plus" :size="15" />
-          New race setup
-        </Button>
-      </EmptyState>
-      <Button v-else @click="openBuilder()">
+    <template #actions>
+      <Button :disabled="busy" @click="openCreate">
         <Icon name="plus" :size="15" />
         New race setup
       </Button>
     </template>
+  </PageHeader>
 
-    <EmptyState
-      v-else
-      icon="events"
-      title="Build a race setup"
-      message="Race setups bundle a track and presets into one runnable race. Start one now — it lands in a group you can rename later — or pick a group on the left."
-    >
-      <Button :disabled="busy" @click="newRaceSetupQuick">
-        <Icon name="plus" :size="15" />
-        New race setup
+  <!-- Toolbar -->
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="relative min-w-48 flex-1">
+      <Icon name="search" :size="15" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
+      <Input v-model="search" placeholder="Search setups…" class="!pl-8" />
+    </div>
+    <Select
+      v-model="groupFilter"
+      class="w-44"
+      :options="[{ value: 'all', label: 'All groups' }, ...groups.map((g) => ({ value: g.id ?? 0, label: g.name ?? '' }))]"
+    />
+    <div class="inline-flex overflow-hidden rounded-md border border-line">
+      <button
+        type="button"
+        class="min-h-9 px-3 text-xs font-semibold transition-colors"
+        :class="runFilter === 'all' ? 'bg-accent-dim text-accent' : 'bg-surface text-muted hover:text-text'"
+        @click="runFilter = 'all'"
+      >
+        All
+      </button>
+      <button
+        type="button"
+        class="min-h-9 border-l border-line px-3 text-xs font-semibold transition-colors"
+        :class="runFilter === 'repeating' ? 'bg-accent-dim text-accent' : 'bg-surface text-muted hover:text-text'"
+        @click="runFilter = 'repeating'"
+      >
+        Repeating
+      </button>
+    </div>
+    <Button variant="dark" size="sm" @click="groupModalOpen = true">
+      <Icon name="folder" :size="14" />
+      New group
+    </Button>
+    <template v-if="groupFilter !== 'all'">
+      <Button variant="ghost" size="sm" aria-label="Rename group" @click="renameGroup">
+        <Icon name="edit" :size="14" />
       </Button>
-    </EmptyState>
-  </PresetShell>
+      <Button variant="ghost" size="sm" aria-label="Delete group" @click="deleteGroup">
+        <Icon name="trash" :size="14" />
+      </Button>
+    </template>
+  </div>
+
+  <div v-if="loading" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <Skeleton v-for="n in 6" :key="n" class="h-64" />
+  </div>
+
+  <div v-else-if="filtered.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <Card v-for="s in filtered" :key="s.id ?? 0">
+      <template #header>
+        <Icon name="events" :size="16" class="text-accent" />
+        <h2 class="min-w-0 truncate text-sm font-bold">{{ s.name || s.track_name }}</h2>
+        <span
+          v-if="isRepeating(s)"
+          class="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent"
+        >
+          <Icon name="repeat" :size="11" />
+          Repeating
+        </span>
+      </template>
+
+      <img :src="trackPreview(s)" alt="" loading="lazy" class="mb-2 aspect-video w-full rounded-sm border border-line object-cover" />
+      <div class="mb-2 flex items-center justify-between gap-2 text-xs">
+        <span class="min-w-0 truncate text-dim">{{ s.name ? s.track_name + " · " : "" }}{{ s.group_name }}</span>
+        <span
+          class="shrink-0 font-mono"
+          :class="s.entries != null && s.pitboxes != null && s.entries > s.pitboxes ? 'text-warn' : 'text-muted'"
+        >
+          {{ s.entries ?? "?" }}/{{ s.pitboxes ?? "?" }} grid
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-1.5 text-xs">
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ s.class_name }}</span>
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ s.session_name }}</span>
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ s.time_name }}</span>
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ s.difficulty_name }}</span>
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">
+          {{ s.race_laps ? `${s.race_laps} laps` : "timed" }}
+        </span>
+      </div>
+
+      <div class="mt-3 flex flex-wrap gap-1.5">
+        <Button variant="success" size="sm" @click="openAction(s, 'start')">
+          <Icon name="power" :size="14" />
+          Start
+        </Button>
+        <Button variant="dark" size="sm" @click="openAction(s, 'queue')">
+          <Icon name="queue" :size="14" />
+          Queue
+        </Button>
+        <Button variant="dark" size="sm" aria-label="Repeat on instance" title="Run repeatedly" @click="openAction(s, 'repeat')">
+          <Icon name="repeat" :size="14" />
+        </Button>
+        <Button variant="ghost" size="sm" @click="openEdit(s)">Edit</Button>
+        <Button variant="ghost" size="sm" aria-label="Duplicate" @click="duplicateSetup(s)">
+          <Icon name="copy" :size="14" />
+        </Button>
+        <Button variant="ghost" size="sm" aria-label="Delete" @click="deleteSetup(s)">
+          <Icon name="trash" :size="14" />
+        </Button>
+      </div>
+    </Card>
+  </div>
+
+  <EmptyState
+    v-else
+    icon="events"
+    :title="search || groupFilter !== 'all' || runFilter !== 'all' ? 'No setups match' : 'No race setups yet'"
+    :message="
+      search || groupFilter !== 'all' || runFilter !== 'all'
+        ? 'Try clearing the search or filters.'
+        : 'A race setup bundles a track and presets into one runnable race. Add your first one.'
+    "
+  >
+    <Button :disabled="busy" @click="openCreate">
+      <Icon name="plus" :size="15" />
+      New race setup
+    </Button>
+  </EmptyState>
 
   <!-- Builder -->
   <Sheet :open="builderOpen" :title="editing?.id ? 'Edit race setup' : 'New race setup'" @close="builderOpen = false">
-    <RaceSetupEditor v-if="editing" v-model="editing" />
-
+    <RaceSetupEditor v-if="editing" v-model="editing" :instance-id="server.instanceList[0]?.id ?? null" />
     <template #footer>
-      <span v-if="!canSave" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>
-      <Button v-if="editing?.id" variant="ghost" :disabled="busy" @click="openPreview">
-        <Icon name="content" :size="15" />
-        Preview
-      </Button>
+      <span v-if="!raceSetupValid(editing)" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>
       <Button variant="ghost" @click="builderOpen = false">Cancel</Button>
-      <Button :disabled="busy || !canSave" @click="saveEvent">{{ editing?.id ? "Save race setup" : "Add race setup" }}</Button>
+      <Button :disabled="busy || !raceSetupValid(editing)" @click="saveSetup">{{ editing?.id ? "Save race setup" : "Add race setup" }}</Button>
     </template>
   </Sheet>
 
-  <!-- Rendered config preview -->
-  <Modal :open="previewOpen" title="Rendered config" @close="previewOpen = false">
-    <p v-if="previewBusy" class="text-sm text-muted">Rendering…</p>
-    <template v-else>
-      <p class="mb-3 text-xs text-muted">
-        Preview only — entry order may differ at runtime when a random overflow strategy trims the grid.
-      </p>
-      <h3 class="mb-1 text-xs font-bold tracking-wide text-muted uppercase">server_cfg.ini</h3>
-      <pre class="mb-4 max-h-64 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre-wrap text-muted">{{ previewCfg }}</pre>
-      <h3 class="mb-1 text-xs font-bold tracking-wide text-muted uppercase">entry_list.ini</h3>
-      <pre class="max-h-64 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre-wrap text-muted">{{ previewEntry }}</pre>
-    </template>
-  </Modal>
-
-  <!-- Run repeatedly: pin this event to an instance's repeat mode -->
-  <Modal :open="repeatPickerOpen" title="Run repeatedly" @close="repeatPickerOpen = false">
+  <!-- Instance action picker -->
+  <Modal
+    :open="actionOpen"
+    :title="actionKind === 'repeat' ? 'Run repeatedly' : actionKind === 'start' ? 'Start on instance' : 'Queue on instance'"
+    @close="actionOpen = false"
+  >
     <p class="mb-3 text-sm text-muted">
-      The chosen instance re-runs <span class="font-medium text-text">{{ repeatTarget?.track_name }}</span>
-      every time the race finishes. Its manual queue is paused until you switch back.
+      <span class="font-medium text-text">{{ actionTarget?.name || actionTarget?.track_name }}</span>
+      <template v-if="actionKind === 'repeat'"> will re-run every time the race finishes (manual queue paused).</template>
+      <template v-else-if="actionKind === 'start'"> will be queued and the server started.</template>
+      <template v-else> will be added to the instance's queue.</template>
     </p>
-    <FormRow label="Instance" for-id="repeatinst">
+    <FormRow label="Instance" for-id="actinst">
       <Select
-        id="repeatinst"
-        v-model="repeatInstanceId"
+        id="actinst"
+        v-model="actionInstanceId"
         :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
       />
     </FormRow>
-    <p class="text-xs text-muted">
-      If the instance is already running, the new event applies on the next restart.
-    </p>
     <template #footer>
-      <Button variant="ghost" @click="repeatPickerOpen = false">Cancel</Button>
-      <Button :disabled="busy || repeatInstanceId === null" @click="confirmRepeat">
-        <Icon name="repeat" :size="15" />
-        Set repeat
+      <Button variant="ghost" @click="actionOpen = false">Cancel</Button>
+      <Button :disabled="busy || actionInstanceId === null" @click="confirmAction">
+        {{ actionKind === "repeat" ? "Set repeat" : actionKind === "start" ? "Start" : "Queue" }}
       </Button>
     </template>
   </Modal>
 
+  <!-- New group -->
+  <Modal :open="groupModalOpen" title="New group" @close="groupModalOpen = false">
+    <FormRow label="Group name" for-id="grpname" hint="Organise setups — e.g. a championship or a casual rotation.">
+      <Input id="grpname" v-model="newGroupName" @keyup.enter="createGroup" />
+    </FormRow>
+    <template #footer>
+      <Button variant="ghost" @click="groupModalOpen = false">Cancel</Button>
+      <Button :disabled="busy || !newGroupName.trim()" @click="createGroup">Create group</Button>
+    </template>
+  </Modal>
 </template>

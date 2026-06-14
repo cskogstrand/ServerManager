@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Server instances: each one is an independent acServer process with its
 // own ports and queue.
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useServerStore, type InstanceState } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
+import { useSetupSummary } from "@/lib/useSetupSummary";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -19,10 +20,18 @@ import Select from "@/components/ui/Select.vue";
 
 const server = useServerStore();
 const content = useContentStore();
+const { summary, reload: reloadSummary } = useSetupSummary();
+
+// Setup health: instances aren't a first-run gate, but if global setup blocks
+// running we surface it here with a link back to the guided /setup flow.
+const setupHealthy = computed(() => summary.value?.can_start ?? true);
+const setupBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "");
+
 onMounted(() => {
   void server.load();
   void content.load();
   void loadDriverStreams();
+  void reloadSummary();
 });
 
 const notice = ref("");
@@ -276,12 +285,31 @@ const removeDriverStream = (stream: DriverStream) =>
     icon="instances"
   >
     <template #actions>
+      <RouterLink v-if="!setupHealthy" to="/setup">
+        <Button variant="dark" size="sm">
+          <Icon name="alert" :size="14" class="text-warn" />
+          Setup needed
+        </Button>
+      </RouterLink>
       <Button @click="openCreate">
         <Icon name="plus" :size="15" />
         Add instance
       </Button>
     </template>
   </PageHeader>
+
+  <RouterLink
+    v-if="!setupHealthy"
+    to="/setup"
+    class="mb-4 flex items-start gap-2.5 rounded-md border border-warn/40 bg-warn-glow px-3 py-2.5 transition-colors hover:border-warn/60"
+  >
+    <Icon name="alert" :size="16" class="mt-0.5 shrink-0 text-warn" />
+    <span class="text-sm">
+      <span class="font-semibold text-warn">Configuration blocks running.</span>
+      <span class="text-muted"> {{ setupBlocker }}</span>
+      <span class="ml-1 font-semibold text-accent">Open setup →</span>
+    </span>
+  </RouterLink>
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">{{ notice }}</p>
   <p v-if="error" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger">

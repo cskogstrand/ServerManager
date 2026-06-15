@@ -73,7 +73,7 @@ function healthDot(h: StreamHealthStatus): string {
         <!-- Player -->
         <div class="flex min-h-0 flex-1 items-center justify-center px-4">
           <iframe
-            v-if="active"
+            v-if="active && active.online"
             :key="active.key"
             :src="active.url"
             :title="active.title"
@@ -81,6 +81,19 @@ function healthDot(h: StreamHealthStatus): string {
             allow="autoplay; fullscreen; picture-in-picture"
             sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
           />
+          <!-- Offline placeholder: stream configured but driver not connected -->
+          <div
+            v-else-if="active"
+            class="grid aspect-video max-h-full w-full max-w-6xl place-items-center rounded-lg border border-line bg-bg shadow-2xl"
+          >
+            <div class="flex flex-col items-center gap-3 text-center">
+              <div class="grid size-20 place-items-center rounded-full border border-line bg-surface/70 text-dim">
+                <Icon name="user" :size="40" />
+              </div>
+              <div class="text-sm font-bold text-muted">{{ active.title }}</div>
+              <div class="font-mono text-[11px] uppercase tracking-wide text-dim">Driver offline</div>
+            </div>
+          </div>
           <p v-else class="font-mono text-sm text-dim">No stream available.</p>
         </div>
 

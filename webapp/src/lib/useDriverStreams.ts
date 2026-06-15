@@ -25,6 +25,9 @@ export interface StreamChannel {
   subtitle?: string;
   url: string;
   health: StreamHealthStatus;
+  // Whether the driver is currently connected to the server. The theater plays
+  // the embed for online channels and shows an "offline" placeholder otherwise.
+  online: boolean;
 }
 
 export function useDriverStreams() {
@@ -86,21 +89,27 @@ export function useDriverStreams() {
     return health.value[guid]?.status ?? (byGuid.value[guid] ? "unknown" : "not_configured");
   }
 
-  // Watchable channels for the connected drivers that have a stream configured.
-  function channelsFor(drivers: DriverState[]): StreamChannel[] {
-    return drivers
-      .filter((d) => d.connected && streamForGuid(d.guid))
-      .map((d) => {
-        const s = streamForGuid(d.guid)!;
-        const name = s.display_name || d.name || `Car ${d.car_id}`;
+  // Watchable channels for every configured stream, online or not. The driver
+  // list only supplies live name/connection state; a stream stays visible even
+  // when its driver isn't connected (the theater then shows a placeholder).
+  // Online channels sort first, then alphabetically by title.
+  function allChannelsFor(drivers: DriverState[]): StreamChannel[] {
+    return Object.values(byGuid.value)
+      .map((s) => {
+        const guid = s.driver_guid!;
+        const d = drivers.find((dr) => dr.guid === guid);
+        const online = !!d?.connected;
+        const name = s.display_name || d?.name || guid;
         return {
-          key: `driver:${d.guid}`,
+          key: `driver:${guid}`,
           title: name,
-          subtitle: d.name && s.display_name && d.name !== s.display_name ? d.name : undefined,
+          subtitle: d?.name && s.display_name && d.name !== s.display_name ? d.name : undefined,
           url: s.stream_embed_url!,
-          health: healthForGuid(d.guid),
-        };
-      });
+          health: online ? healthForGuid(guid) : "offline",
+          online,
+        } satisfies StreamChannel;
+      })
+      .sort((a, b) => Number(b.online) - Number(a.online) || a.title.localeCompare(b.title));
   }
 
   return {
@@ -113,6 +122,6 @@ export function useDriverStreams() {
     stopHealthPoll,
     streamForGuid,
     healthForGuid,
-    channelsFor,
+    allChannelsFor,
   };
 }

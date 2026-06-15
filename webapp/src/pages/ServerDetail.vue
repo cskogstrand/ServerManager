@@ -193,7 +193,8 @@ function hasStreamForCar(carId: number): boolean {
 }
 
 // Channels offered by the theater: the fixed spectator cam (if enabled) plus
-// one per connected driver that has a stream configured.
+// one per configured driver stream — offline drivers included, shown with a
+// placeholder in the theater.
 const streamChannels = computed<StreamChannel[]>(() => {
   const channels: StreamChannel[] = [];
   if (inst.value?.stream_enabled === 1 && inst.value.stream_embed_url) {
@@ -203,9 +204,10 @@ const streamChannels = computed<StreamChannel[]>(() => {
       subtitle: "Fixed spectator cam",
       url: inst.value.stream_embed_url,
       health: "unknown",
+      online: true,
     });
   }
-  channels.push(...driverStreams.channelsFor(connected.value));
+  channels.push(...driverStreams.allChannelsFor(drivers.value));
   return channels;
 });
 

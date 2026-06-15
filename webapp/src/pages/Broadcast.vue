@@ -180,7 +180,7 @@ function timingFor(carId: number): TimingRow | undefined {
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
-const streamChannels = computed<StreamChannel[]>(() => driverStreams.channelsFor(drivers.value));
+const streamChannels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(drivers.value));
 
 function guidForCar(carId: number): string | undefined {
   return drivers.value.find((d) => d.car_id === carId)?.guid;

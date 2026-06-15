@@ -72,7 +72,7 @@ const theaterChannels = ref<StreamChannel[]>([]);
 
 // Connected drivers come from the SSE-fed store (App keeps it live app-wide).
 function streamChannelsFor(id: number): StreamChannel[] {
-  return driverStreams.channelsFor(server.instances[id]?.drivers ?? []);
+  return driverStreams.allChannelsFor(server.instances[id]?.drivers ?? []);
 }
 function openStreams(id: number) {
   theaterChannels.value = streamChannelsFor(id);
@@ -307,7 +307,7 @@ onMounted(async () => {
       </template>
       <template #actions>
         <Button
-          v-if="inst.running && streamChannelsFor(inst.id).length"
+          v-if="streamChannelsFor(inst.id).length"
           variant="ghost"
           size="sm"
           @click="openStreams(inst.id)"

@@ -10,7 +10,7 @@ import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
-import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
+import { useDriverStreams, type StreamChannel, type StreamHealthStatus } from "@/lib/useDriverStreams";
 import {
   normalizeRaceSetup,
   raceSetupBody,
@@ -66,17 +66,24 @@ const busy = ref<Record<number, boolean>>({});
 const loading = ref(true);
 
 // --- Watchable driver streams (overview-level, no live health poll) ---
+// Streams are configured globally by driver guid, so the dashboard section
+// shows one tile per configured stream. Online state is the union across every
+// instance's connected drivers (a driver may be on any running server).
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
-const theaterChannels = ref<StreamChannel[]>([]);
+const theaterKey = ref<string | null>(null);
 
-// Connected drivers come from the SSE-fed store (App keeps it live app-wide).
-function streamChannelsFor(id: number): StreamChannel[] {
-  return driverStreams.allChannelsFor(server.instances[id]?.drivers ?? []);
+const allStreamChannels = computed<StreamChannel[]>(() =>
+  driverStreams.allChannelsFor(server.instanceList.flatMap((i) => server.instances[i.id]?.drivers ?? [])),
+);
+const onlineStreamCount = computed(() => allStreamChannels.value.filter((c) => c.online).length);
+
+function openTheater(key?: string) {
+  theaterKey.value = key ?? null;
+  if (allStreamChannels.value.length) theaterOpen.value = true;
 }
-function openStreams(id: number) {
-  theaterChannels.value = streamChannelsFor(id);
-  if (theaterChannels.value.length) theaterOpen.value = true;
+function healthDot(h: StreamHealthStatus): string {
+  return h === "live" ? "bg-ok" : h === "offline" ? "bg-danger" : "bg-dim";
 }
 
 async function fetchDetail(id: number) {
@@ -307,16 +314,6 @@ onMounted(async () => {
       </template>
       <template #actions>
         <Button
-          v-if="streamChannelsFor(inst.id).length"
-          variant="ghost"
-          size="sm"
-          @click="openStreams(inst.id)"
-        >
-          <Icon name="play" :size="14" />
-          Watch
-          <span class="font-mono text-dim">{{ streamChannelsFor(inst.id).length }}</span>
-        </Button>
-        <Button
           v-if="inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
           variant="ghost"
           size="sm"
@@ -463,6 +460,59 @@ onMounted(async () => {
     </Card>
   </div>
 
+  <!-- Driver streams: live tiles on the dashboard, watch any full screen -->
+  <section v-if="!loading && allStreamChannels.length" class="mt-6 space-y-3">
+    <div class="flex items-center gap-2">
+      <Icon name="broadcast" :size="16" class="text-accent" />
+      <h2 class="text-sm font-bold">Driver streams</h2>
+      <span class="font-mono text-xs text-dim">{{ onlineStreamCount }}/{{ allStreamChannels.length }} live</span>
+      <Button class="ml-auto" variant="ghost" size="sm" @click="openTheater()">
+        <Icon name="maximize" :size="14" />
+        Theater
+      </Button>
+    </div>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div
+        v-for="ch in allStreamChannels"
+        :key="ch.key"
+        class="overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
+      >
+        <div class="relative aspect-video bg-bg">
+          <iframe
+            v-if="ch.online"
+            :src="ch.url"
+            :title="ch.title"
+            class="size-full border-0"
+            allow="autoplay; fullscreen; picture-in-picture"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+          />
+          <div v-else class="grid size-full place-items-center">
+            <div class="flex flex-col items-center gap-2 text-dim">
+              <div class="grid size-12 place-items-center rounded-full border border-line bg-surface/70">
+                <Icon name="user" :size="24" />
+              </div>
+              <span class="font-mono text-[11px] uppercase tracking-wide">Driver offline</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="absolute right-2 top-2 grid size-8 place-items-center rounded-md border border-line bg-bg/70 text-muted backdrop-blur transition-colors hover:border-accent/60 hover:text-accent"
+            :aria-label="`Watch ${ch.title} full screen`"
+            :title="`Watch ${ch.title} full screen`"
+            @click="openTheater(ch.key)"
+          >
+            <Icon name="maximize" :size="14" />
+          </button>
+        </div>
+        <div class="flex items-center gap-2 px-3 py-2">
+          <span class="size-1.5 shrink-0 rounded-full" :class="healthDot(ch.health)" />
+          <span class="min-w-0 flex-1 truncate text-sm font-semibold">{{ ch.title }}</span>
+          <span v-if="ch.subtitle" class="shrink-0 truncate font-mono text-[11px] text-dim">{{ ch.subtitle }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Edit run setup: shared editor on the current event -->
   <Sheet :open="editOpen" title="Edit run setup" @close="editOpen = false">
     <RaceSetupEditor v-if="editDraft" v-model="editDraft" :instance-id="editInstanceId" />
@@ -477,5 +527,10 @@ onMounted(async () => {
     </template>
   </Sheet>
 
-  <StreamTheater :open="theaterOpen" :channels="theaterChannels" @close="theaterOpen = false" />
+  <StreamTheater
+    :open="theaterOpen"
+    :channels="allStreamChannels"
+    :initial-key="theaterKey"
+    @close="theaterOpen = false"
+  />
 </template>

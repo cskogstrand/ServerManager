@@ -29,6 +29,7 @@ import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import CarMarker from "@/components/CarMarker.vue";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
+import StreamWall from "@/components/StreamWall.vue";
 
 interface CurrentEvent {
   name: string;
@@ -180,7 +181,9 @@ function timingFor(carId: number): TimingRow | undefined {
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
+const streamsOpen = ref(false);
 const streamChannels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(drivers.value));
+const onlineStreamCount = computed(() => streamChannels.value.filter((c) => c.online).length);
 
 function guidForCar(carId: number): string | undefined {
   return drivers.value.find((d) => d.car_id === carId)?.guid;
@@ -188,9 +191,12 @@ function guidForCar(carId: number): string | undefined {
 function hasStreamForCar(carId: number): boolean {
   return !!driverStreams.streamForGuid(guidForCar(carId));
 }
-function openStream(carId: number) {
-  theaterKey.value = `driver:${guidForCar(carId)}`;
+function openTheater(key: string | null) {
+  theaterKey.value = key;
   theaterOpen.value = true;
+}
+function openStream(carId: number) {
+  openTheater(`driver:${guidForCar(carId)}`);
 }
 
 async function fetchStatus() {
@@ -305,6 +311,21 @@ onBeforeUnmount(() => {
           @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex items-center gap-1.5">
+          <button
+            v-if="streamChannels.length"
+            type="button"
+            class="inline-flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors"
+            :class="
+              streamsOpen
+                ? 'border-accent/60 bg-accent-dim text-accent'
+                : 'border-line bg-surface/70 text-muted hover:border-line-hi hover:text-text'
+            "
+            title="Toggle driver streams"
+            @click="streamsOpen = !streamsOpen"
+          >
+            <Icon name="broadcast" :size="16" />
+            <span class="font-mono">{{ onlineStreamCount }}/{{ streamChannels.length }}</span>
+          </button>
           <button
             type="button"
             class="grid size-9 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
@@ -440,6 +461,29 @@ onBeforeUnmount(() => {
           <div class="text-[10px] tracking-wide text-dim">BEST</div>
           <div :class="focusRow.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(focusRow.best_lap_ms) }}</div>
         </div>
+      </div>
+    </section>
+
+    <!-- ░░ Driver streams (toggled docked panel) ░░ -->
+    <section
+      v-if="streamsOpen && streamChannels.length"
+      class="absolute top-20 right-5 z-20 flex max-h-[calc(100vh-12rem)] w-80 flex-col rounded-lg border border-line bg-surface/85 backdrop-blur-md"
+    >
+      <div class="flex items-center gap-2 border-b border-line px-3 py-2">
+        <Icon name="broadcast" :size="14" class="text-accent" />
+        <h2 class="text-xs font-bold tracking-wide uppercase">Driver streams</h2>
+        <span class="font-mono text-[11px] text-dim">{{ onlineStreamCount }}/{{ streamChannels.length }} live</span>
+        <button
+          type="button"
+          class="ml-auto grid size-7 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
+          aria-label="Close driver streams"
+          @click="streamsOpen = false"
+        >
+          <Icon name="x" :size="14" />
+        </button>
+      </div>
+      <div class="overflow-y-auto p-3">
+        <StreamWall :channels="streamChannels" grid-class="grid-cols-1" @watch="openTheater" />
       </div>
     </section>
 

@@ -28,6 +28,7 @@ import Sheet from "@/components/ui/Sheet.vue";
 import Modal from "@/components/ui/Modal.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
+import StreamWall from "@/components/StreamWall.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import LineChart from "@/components/ui/LineChart.vue";
@@ -207,9 +208,14 @@ const streamChannels = computed<StreamChannel[]>(() => {
       online: true,
     });
   }
-  channels.push(...driverStreams.allChannelsFor(drivers.value));
+  channels.push(...driverStreamChannels.value);
   return channels;
 });
+
+// Driver streams only (the spectator cam has its own card) — for the inline
+// stream wall. Includes offline drivers, shown as placeholders.
+const driverStreamChannels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(drivers.value));
+const onlineStreamCount = computed(() => driverStreamChannels.value.filter((c) => c.online).length);
 
 // Telemetry health: the server can be "running" yet send nothing over the AC
 // UDP plugin (misconfigured AssettoServer, crashed process, wrong ports). Flag
@@ -1467,6 +1473,16 @@ onBeforeUnmount(() => {
         sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
       />
     </Card>
+
+    <!-- Driver streams: live tiles for every configured stream, watch full screen -->
+    <section v-if="driverStreamChannels.length" class="page-enter mt-4" style="animation-delay: 350ms">
+      <div class="mb-3 flex items-center gap-2">
+        <Icon name="broadcast" :size="15" class="text-dim" />
+        <h2 class="text-sm font-bold">Driver streams</h2>
+        <span class="font-mono text-xs text-dim">{{ onlineStreamCount }}/{{ driverStreamChannels.length }} live</span>
+      </div>
+      <StreamWall :channels="driverStreamChannels" @watch="openStream" />
+    </section>
 
     <!-- Console -->
     <div class="page-enter mt-4" style="animation-delay: 400ms">

@@ -10,7 +10,7 @@ import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
-import { useDriverStreams, type StreamChannel, type StreamHealthStatus } from "@/lib/useDriverStreams";
+import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import {
   normalizeRaceSetup,
   raceSetupBody,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/useRaceSetupDraft";
 import Card from "@/components/ui/Card.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
+import StreamWall from "@/components/StreamWall.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Sheet from "@/components/ui/Sheet.vue";
@@ -81,9 +82,6 @@ const onlineStreamCount = computed(() => allStreamChannels.value.filter((c) => c
 function openTheater(key?: string) {
   theaterKey.value = key ?? null;
   if (allStreamChannels.value.length) theaterOpen.value = true;
-}
-function healthDot(h: StreamHealthStatus): string {
-  return h === "live" ? "bg-ok" : h === "offline" ? "bg-danger" : "bg-dim";
 }
 
 async function fetchDetail(id: number) {
@@ -471,46 +469,7 @@ onMounted(async () => {
         Theater
       </Button>
     </div>
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      <div
-        v-for="ch in allStreamChannels"
-        :key="ch.key"
-        class="overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
-      >
-        <div class="relative aspect-video bg-bg">
-          <iframe
-            v-if="ch.online"
-            :src="ch.url"
-            :title="ch.title"
-            class="size-full border-0"
-            allow="autoplay; fullscreen; picture-in-picture"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-          />
-          <div v-else class="grid size-full place-items-center">
-            <div class="flex flex-col items-center gap-2 text-dim">
-              <div class="grid size-12 place-items-center rounded-full border border-line bg-surface/70">
-                <Icon name="user" :size="24" />
-              </div>
-              <span class="font-mono text-[11px] uppercase tracking-wide">Driver offline</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            class="absolute right-2 top-2 grid size-8 place-items-center rounded-md border border-line bg-bg/70 text-muted backdrop-blur transition-colors hover:border-accent/60 hover:text-accent"
-            :aria-label="`Watch ${ch.title} full screen`"
-            :title="`Watch ${ch.title} full screen`"
-            @click="openTheater(ch.key)"
-          >
-            <Icon name="maximize" :size="14" />
-          </button>
-        </div>
-        <div class="flex items-center gap-2 px-3 py-2">
-          <span class="size-1.5 shrink-0 rounded-full" :class="healthDot(ch.health)" />
-          <span class="min-w-0 flex-1 truncate text-sm font-semibold">{{ ch.title }}</span>
-          <span v-if="ch.subtitle" class="shrink-0 truncate font-mono text-[11px] text-dim">{{ ch.subtitle }}</span>
-        </div>
-      </div>
-    </div>
+    <StreamWall :channels="allStreamChannels" @watch="openTheater" />
   </section>
 
   <!-- Edit run setup: shared editor on the current event -->

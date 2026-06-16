@@ -441,14 +441,16 @@ onBeforeUnmount(() => {
             class="bcast-map relative"
             :style="mapWrapStyle(effectiveMapMeta)"
         >
-          <img
-              :src="mapImageUrl"
-              alt="Track Map"
-              class="absolute inset-0 size-full object-fill opacity-60 blend-luminosity"
-              @error="mapImageOk = false"
-          />
+          <!-- Padded inner stage so the track layout keeps some air around it -->
+          <div class="absolute inset-[6%]">
+            <img
+                :src="mapImageUrl"
+                alt="Track Map"
+                class="absolute inset-0 size-full object-contain opacity-60 blend-luminosity"
+                @error="mapImageOk = false"
+            />
 
-          <template v-for="d in drivers" :key="d.car_id">
+            <template v-for="d in drivers" :key="d.car_id">
             <button
                 v-if="positionFor(d.car_id)"
                 type="button"
@@ -481,6 +483,7 @@ onBeforeUnmount(() => {
           </span>
             </button>
           </template>
+          </div>
         </div>
 
         <div v-else class="flex flex-col items-center p-6 text-center">
@@ -570,7 +573,7 @@ onBeforeUnmount(() => {
                 <img
                     :src="carImageUrl(card.row.carModel, card.row.skin)"
                     alt=""
-                    class="h-14 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
+                    class="h-28 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
                     @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
                 />
               </div>

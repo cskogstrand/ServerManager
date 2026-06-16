@@ -368,7 +368,7 @@ onBeforeUnmount(() => {
               class="puck-ring absolute inset-0 -m-1 rounded-full"
             />
             <span
-              class="relative grid size-8 place-items-center rounded-full border-2 text-sm leading-none font-semibold"
+              class="relative grid size-7 place-items-center rounded-full border-2 text-xs leading-none font-semibold"
               :class="
                 timingFor(d.car_id)?.isLeader
                   ? 'border-bg bg-accent text-bg shadow-[0_0_22px_rgba(98,179,232,0.85)]'
@@ -650,11 +650,11 @@ onBeforeUnmount(() => {
     inset 0 0 60px rgba(98, 179, 232, 0.05);
 }
 
-/* Car pucks glide between SSE position frames. */
+/* Car pucks glide between SSE position frames (≈200ms publish cadence). */
 .puck {
   transition:
-    left 0.3s linear,
-    top 0.3s linear;
+    left 0.2s linear,
+    top 0.2s linear;
   z-index: 1;
 }
 .puck:hover,

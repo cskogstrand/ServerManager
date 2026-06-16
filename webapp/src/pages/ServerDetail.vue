@@ -1116,7 +1116,7 @@ onBeforeUnmount(() => {
                 <button
                   v-if="positionFor(d.car_id)"
                   type="button"
-                  class="map-puck absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[10px] font-black transition-[left,top] duration-300 ease-linear hover:z-20 hover:scale-110"
+                  class="map-puck absolute grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[9px] font-black transition-[left,top] duration-200 ease-linear hover:z-20 hover:scale-110"
                   :class="
                     timingFor(d.car_id)?.isLeader
                       ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'

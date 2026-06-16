@@ -27,6 +27,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
+import TrackImage from "@/components/TrackImage.vue";
 
 interface CurrentEvent {
   id: number;
@@ -134,12 +135,6 @@ function elapsed(id: number): string {
 // AC numeric session type → display label (mirrors the backend mapping).
 function sessionTypeLabel(t: number): string {
   return ["Booking", "Practice", "Qualify", "Race"][t] ?? "—";
-}
-
-function previewUrl(id: number): string {
-  const ev = details.value[id]?.current_event;
-  if (!ev?.track_key) return "";
-  return `/api/track/preview/${ev.track_key}${ev.track_config ? "/" + ev.track_config : ""}`;
 }
 
 async function toggle(id: number, running: boolean) {
@@ -371,11 +366,10 @@ onMounted(async () => {
         :to="`/server/${inst.id}`"
         class="flex items-center gap-3 rounded-md p-1 transition-colors hover:bg-surface-2/50"
       >
-        <img
-          v-if="previewUrl(inst.id)"
-          :src="previewUrl(inst.id)"
-          alt=""
-          class="h-14 w-24 shrink-0 rounded-sm border border-line object-cover"
+        <TrackImage
+          :track-key="details[inst.id].current_event.track_key"
+          :config="details[inst.id].current_event.track_config"
+          class="h-14 w-24 shrink-0 rounded-sm border border-line"
         />
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-semibold">{{ eventTitle(inst.id) }}</div>

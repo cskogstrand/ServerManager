@@ -13,6 +13,7 @@ import { raceSetupValid, type RaceSetupDraft } from "@/lib/useRaceSetupDraft";
 import { previewRaceSetup, type PreviewResult } from "@/lib/useRaceSetupPreview";
 import type { PresetKind } from "@/lib/presetForms";
 import TrackPicker from "@/components/TrackPicker.vue";
+import TrackImage from "@/components/TrackImage.vue";
 import InlinePresetSheet from "@/components/presets/InlinePresetSheet.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -107,11 +108,11 @@ async function runReview() {
         class="w-full cursor-pointer overflow-hidden rounded-md border border-line bg-surface-2 text-left transition-colors hover:border-line-hi focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         @click="trackPickerOpen = true"
       >
-        <img
+        <TrackImage
           v-if="draft.track_key"
-          :src="`/api/track/preview/${draft.track_key}${draft.track_config ? '/' + draft.track_config : ''}`"
-          alt=""
-          class="aspect-video w-full object-cover"
+          :track-key="draft.track_key"
+          :config="draft.track_config"
+          class="aspect-video w-full"
         />
         <div class="p-2 text-sm">
           <template v-if="draft.track_key">

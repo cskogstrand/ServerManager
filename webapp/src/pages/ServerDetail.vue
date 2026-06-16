@@ -27,6 +27,7 @@ import Sheet from "@/components/ui/Sheet.vue";
 import Modal from "@/components/ui/Modal.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
+import TrackImage from "@/components/TrackImage.vue";
 import StreamWall from "@/components/StreamWall.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
@@ -1350,13 +1351,11 @@ onBeforeUnmount(() => {
         <ul v-if="upcoming.length" class="divide-y divide-line/60">
           <li v-for="(q, i) in upcoming" :key="q.id" class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
             <span class="w-5 shrink-0 text-right font-mono text-xs text-dim">{{ i + 1 }}</span>
-            <img
+            <TrackImage
               v-if="q.track_key"
-              :src="trackUrl('outline', q.track_key, q.track_config ?? '')"
-              alt=""
-              loading="lazy"
-              class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50 object-contain p-0.5"
-              @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+              :track-key="q.track_key"
+              :config="q.track_config ?? ''"
+              class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50"
             />
             <div class="min-w-0">
               <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>

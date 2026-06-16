@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from "vue";
 import { useContentStore } from "@/stores/content";
 import Sheet from "@/components/ui/Sheet.vue";
 import Input from "@/components/ui/Input.vue";
+import TrackImage from "@/components/TrackImage.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -52,11 +53,10 @@ function isSelected(t: { key?: string; config?: string }) {
           })
         "
       >
-        <img
-          :src="`/api/track/preview/${t.key}${t.config ? '/' + t.config : ''}`"
-          alt=""
-          loading="lazy"
-          class="aspect-video w-full object-cover"
+        <TrackImage
+          :track-key="t.key"
+          :config="t.config"
+          class="aspect-video w-full"
         />
         <div class="p-2">
           <div class="truncate text-sm font-medium">{{ t.name }}</div>

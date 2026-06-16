@@ -20,6 +20,7 @@ import { useConfirmStore } from "@/stores/confirm";
 import type { DropDownList } from "@/types/generated";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
+import TrackImage from "@/components/TrackImage.vue";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -249,10 +250,6 @@ const deleteGroup = () =>
     toast.success("Group deleted.");
   });
 
-function trackPreview(s: LibrarySetup): string {
-  return `/api/track/preview/${s.track_key}${s.track_config ? "/" + s.track_config : ""}`;
-}
-
 onMounted(() =>
   guard(async () => {
     await Promise.all([loadAll(), server.load()]);
@@ -336,7 +333,7 @@ onMounted(() =>
         </span>
       </template>
 
-      <img :src="trackPreview(s)" alt="" loading="lazy" class="mb-2 aspect-video w-full rounded-sm border border-line object-cover" />
+      <TrackImage :track-key="s.track_key" :config="s.track_config" class="mb-2 aspect-video w-full rounded-sm border border-line" />
       <div class="mb-2 flex items-center justify-between gap-2 text-xs">
         <span class="min-w-0 truncate text-dim">{{ s.name ? s.track_name + " · " : "" }}{{ s.group_name }}</span>
         <span

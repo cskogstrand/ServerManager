@@ -17,6 +17,7 @@ import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
+import TrackImage from "@/components/TrackImage.vue";
 
 const content = useContentStore();
 const toast = useToastStore();
@@ -222,11 +223,10 @@ function jobTone(status: string) {
       <template v-else>
       <div v-if="tab === 'tracks'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="group relative overflow-hidden rounded-md border border-line">
-          <img
-            :src="`/api/track/preview/${t.key}${t.config ? '/' + t.config : ''}`"
-            alt=""
-            loading="lazy"
-            class="aspect-video w-full object-cover"
+          <TrackImage
+            :track-key="t.key"
+            :config="t.config"
+            class="aspect-video w-full"
           />
           <button
             type="button"

@@ -512,7 +512,7 @@ onBeforeUnmount(() => {
             @click="focusCar(card.row.car_id)"
           >
             <!-- Metrics side -->
-            <div class="flex min-w-0 shrink-0 flex-col gap-2 p-2.5 xl:w-64">
+            <div class="flex min-w-0 shrink-0 flex-col gap-2 p-2.5 xl:w-64 xl:gap-3">
               <!-- head: position · livery · driver/car -->
               <div class="flex items-center gap-2.5">
                 <span
@@ -534,7 +534,7 @@ onBeforeUnmount(() => {
               </div>
 
               <!-- gap + lap -->
-              <div class="flex items-baseline justify-between border-t border-line pt-2">
+              <div class="flex items-baseline justify-between border-t border-line pt-2 xl:pt-3">
                 <span
                   class="numerals text-lg tabular-nums"
                   :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
@@ -544,21 +544,26 @@ onBeforeUnmount(() => {
                 <span class="font-mono text-[10px] text-dim">LAP {{ card.row.laps }}</span>
               </div>
 
-              <!-- speed/gear + laptimes, pinned to the bottom on tall cards -->
-              <div class="mt-auto flex items-end gap-3 pt-1">
-                <div class="leading-none">
-                  <span class="numerals text-3xl font-medium tabular-nums">{{ speedKmh(card.row.pos) }}</span>
-                  <span class="ml-1 font-mono text-[10px] text-dim">km/h</span>
+              <!-- Telemetry: tight on narrow, spread down the column on wide -->
+              <div class="flex flex-1 flex-col justify-between gap-2 pt-1">
+                <!-- speed + gear -->
+                <div class="flex items-end justify-between">
+                  <div class="leading-none">
+                    <span class="numerals text-4xl font-medium tabular-nums xl:text-5xl">{{ speedKmh(card.row.pos) }}</span>
+                    <span class="ml-1 font-mono text-[10px] text-dim">km/h</span>
+                  </div>
+                  <div class="text-center leading-none">
+                    <div class="numerals text-3xl font-semibold text-accent tabular-nums xl:text-4xl">{{ gearLabel(card.row.pos) }}</div>
+                    <div class="font-mono text-[9px] tracking-widest text-dim uppercase">gear</div>
+                  </div>
                 </div>
-                <div class="text-center leading-none">
-                  <div class="numerals text-2xl font-semibold text-accent tabular-nums">{{ gearLabel(card.row.pos) }}</div>
-                  <div class="font-mono text-[9px] tracking-widest text-dim uppercase">gear</div>
-                </div>
-                <div class="ml-auto grid grid-cols-2 gap-x-3 text-right font-mono text-[11px]">
-                  <span class="text-dim">LAST</span>
-                  <span :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(card.row.last_lap_ms) }}</span>
-                  <span class="text-dim">BEST</span>
-                  <span :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(card.row.best_lap_ms) }}</span>
+
+                <!-- lap times, each on its own row -->
+                <div class="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5 border-t border-line pt-2 font-mono xl:text-sm">
+                  <span class="text-[10px] tracking-wide text-dim uppercase">Last</span>
+                  <span class="numerals text-right tabular-nums" :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(card.row.last_lap_ms) }}</span>
+                  <span class="text-[10px] tracking-wide text-dim uppercase">Best</span>
+                  <span class="numerals text-right tabular-nums" :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(card.row.best_lap_ms) }}</span>
                 </div>
               </div>
 

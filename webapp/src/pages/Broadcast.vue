@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // Full-screen broadcast overlay for one instance — a trackside TV graphics
-// surface meant for a second screen. The live track map is the stage; car
-// pucks glide over it, a reordering timing tower runs along the lower third,
-// and a shift-light telemetry block reads out the focused car. All live data
-// comes from the SSE-fed server store; this page only paints it.
+// surface meant for a second screen. Two columns: the live track map fills the
+// left third (car pucks glide over it), and the right two-thirds holds one card
+// per driver, in running order, each pairing that driver's video stream with
+// their telemetry and car/livery preview. All live data comes from the SSE-fed
+// server store; this page only paints it.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api } from "@/lib/api";
@@ -27,7 +28,6 @@ import {
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
-import StreamWall from "@/components/StreamWall.vue";
 
 interface CurrentEvent {
   name: string;
@@ -112,17 +112,6 @@ function rpmPct(pos?: CarPositionState | null): number {
   return Math.max(0, Math.min(100, (pos.engine_rpm / rpmMax.value) * 100));
 }
 
-// Shift-light strip: 16 segments lit proportional to RPM, greens → ambers → reds.
-const SHIFT_SEGMENTS = 16;
-const shiftLights = computed(() => {
-  const lit = Math.round((rpmPct(focusRow.value?.pos) / 100) * SHIFT_SEGMENTS);
-  return Array.from({ length: SHIFT_SEGMENTS }, (_, i) => {
-    const frac = i / SHIFT_SEGMENTS;
-    const tone = frac < 0.6 ? "ok" : frac < 0.85 ? "warn" : "danger";
-    return { on: i < lit, tone };
-  });
-});
-
 // --- Session clock ---
 const clock = computed(() => {
   const s = session.value;
@@ -148,11 +137,18 @@ function carName(model: string): string {
 function weatherImageUrl(key: string): string {
   return `/api/weather/preview/${encodeURIComponent(key)}`;
 }
+// Car + livery preview for a driver's card. The backend falls back through
+// preview.jpg/png/livery.png; we just hide the <img> if nothing resolves.
+function carImageUrl(model: string, skin: string): string {
+  return `/api/car/image/${encodeURIComponent(model)}/${encodeURIComponent(skin || "")}`;
+}
 
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
-  return { aspectRatio: String(ratio), width: `min(100%, calc(72vh * ${ratio}))`, margin: "auto" };
+  // Fit the left column: cap width so the derived height never exceeds the
+  // available stage height (viewport minus the top strap + padding).
+  return { aspectRatio: String(ratio), width: `min(100%, calc((100vh - 6rem) * ${ratio}))`, margin: "auto" };
 }
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
   // AC map.ini projection — same maths the in-game minimap uses.
@@ -177,15 +173,23 @@ function timingFor(carId: number): TimingRow | undefined {
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
-const streamsOpen = ref(false);
 const streamChannels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(drivers.value));
 const onlineStreamCount = computed(() => streamChannels.value.filter((c) => c.online).length);
+// guid → resolved channel, so each driver card can look up its stream in O(1).
+const channelByGuid = computed(() => {
+  const m = new Map<string, StreamChannel>();
+  for (const c of streamChannels.value) {
+    if (c.key.startsWith("driver:")) m.set(c.key.slice("driver:".length), c);
+  }
+  return m;
+});
 
 function guidForCar(carId: number): string | undefined {
   return drivers.value.find((d) => d.car_id === carId)?.guid;
 }
-function hasStreamForCar(carId: number): boolean {
-  return !!driverStreams.streamForGuid(guidForCar(carId));
+function channelForCar(carId: number): StreamChannel | null {
+  const guid = guidForCar(carId);
+  return guid ? (channelByGuid.value.get(guid) ?? null) : null;
 }
 function openTheater(key: string | null) {
   theaterKey.value = key;
@@ -194,6 +198,15 @@ function openTheater(key: string | null) {
 function openStream(carId: number) {
   openTheater(`driver:${guidForCar(carId)}`);
 }
+
+// One card per driver, in running order, joined to its stream channel.
+interface DriverCard {
+  row: TimingRow;
+  channel: StreamChannel | null;
+}
+const driverCards = computed<DriverCard[]>(() =>
+  timingRows.value.map((row) => ({ row, channel: channelForCar(row.car_id) })),
+);
 
 async function fetchStatus() {
   try {
@@ -307,21 +320,14 @@ onBeforeUnmount(() => {
           @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex items-center gap-1.5">
-          <button
+          <span
             v-if="streamChannels.length"
-            type="button"
-            class="inline-flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors"
-            :class="
-              streamsOpen
-                ? 'border-accent/60 bg-accent-dim text-accent'
-                : 'border-line bg-surface/70 text-muted hover:border-line-hi hover:text-text'
-            "
-            title="Toggle driver streams"
-            @click="streamsOpen = !streamsOpen"
+            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-line bg-surface/70 px-2.5 text-xs font-semibold text-muted"
+            title="Driver streams online / total"
           >
             <Icon name="broadcast" :size="16" />
             <span class="font-mono">{{ onlineStreamCount }}/{{ streamChannels.length }}</span>
-          </button>
+          </span>
           <button
             type="button"
             class="grid size-9 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
@@ -341,242 +347,199 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- ░░ Map stage ░░ -->
-    <main class="absolute inset-x-0 top-16 bottom-44 z-10 grid place-items-center px-6">
-      <div
-        v-if="activeTrack && mapMeta && mapImageOk"
-        class="bcast-map relative"
-        :style="mapWrapStyle(mapMeta)"
-      >
-        <img
-          :src="trackUrl('map', activeTrack.key, activeTrack.config)"
-          alt=""
-          class="absolute inset-0 size-full object-fill opacity-70"
-          @error="mapImageOk = false"
-        />
-        <template v-for="d in drivers" :key="d.car_id">
-          <button
-            v-if="positionFor(d.car_id)"
-            type="button"
-            class="puck absolute -translate-x-1/2 -translate-y-1/2"
-            :class="{ 'puck-focus': focusRow?.car_id === d.car_id }"
-            :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
-            @click="focusCar(d.car_id)"
-          >
-            <span
-              v-if="timingFor(d.car_id)?.isLeader"
-              class="puck-ring absolute inset-0 -m-1 rounded-full"
-            />
-            <span
-              class="relative grid size-7 place-items-center rounded-full border-2 text-xs leading-none font-semibold"
-              :class="
-                timingFor(d.car_id)?.isLeader
-                  ? 'border-bg bg-accent text-bg shadow-[0_0_22px_rgba(98,179,232,0.85)]'
-                  : 'border-bg bg-surface-4 text-text shadow-[0_0_14px_rgba(0,0,0,0.7)]'
-              "
-            >
-              {{ (d.name || "Car " + d.car_id).slice(0, 1).toUpperCase() }}
-            </span>
-            <span
-              class="pointer-events-none absolute top-9 left-1/2 -translate-x-1/2 rounded-sm bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap backdrop-blur-sm"
-            >
-              {{ d.name || "Car " + d.car_id }}
-            </span>
-          </button>
-        </template>
-      </div>
-
-      <!-- Map unavailable / offline states -->
-      <div v-else class="text-center">
-        <Icon name="broadcast" :size="40" class="mx-auto text-dim" />
-        <p class="numerals mt-3 text-2xl tracking-tight text-muted">
-          {{ !running ? "SERVER OFFLINE" : !activeTrack ? "NO TRACK LOADED" : "NO LIVE MAP FOR THIS LAYOUT" }}
-        </p>
-        <RouterLink
-          v-if="!running"
-          :to="exitTo"
-          class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface/70 px-3 py-1.5 text-sm text-muted hover:text-text"
+    <!-- ░░ Two-column stage: map (1/3) + driver cards (2/3) ░░ -->
+    <div class="absolute inset-x-0 top-16 bottom-0 z-10 flex gap-4 px-4 pb-4">
+      <!-- Left column: live track map -->
+      <section class="relative flex w-1/3 shrink-0 items-center justify-center overflow-hidden">
+        <div
+          v-if="activeTrack && mapMeta && mapImageOk"
+          class="bcast-map relative"
+          :style="mapWrapStyle(mapMeta)"
         >
-          <Icon name="arrowUp" :size="14" class="-rotate-90" />
-          Back to control
-        </RouterLink>
-      </div>
-
-      <!-- Telemetry-offline notice -->
-      <div
-        v-if="running && !telemetryOnline"
-        class="absolute top-3 left-1/2 -translate-x-1/2 rounded-md border border-warn/40 bg-warn-glow px-3 py-1.5 text-xs font-semibold text-warn backdrop-blur-sm"
-      >
-        Waiting for the AC telemetry plugin — map and timing stay empty until it connects.
-      </div>
-    </main>
-
-    <!-- ░░ Focus telemetry (shift lights + speed) ░░ -->
-    <section
-      v-if="focusRow"
-      class="absolute top-20 left-5 z-20 w-64 rounded-lg border border-line bg-surface/80 p-3.5 backdrop-blur-md"
-    >
-      <div class="flex items-center gap-2">
-        <span
-          class="grid size-7 place-items-center rounded-md numerals text-base font-semibold tabular-nums"
-          :class="focusRow.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
-        >
-          {{ focusRow.position }}
-        </span>
-        <div class="min-w-0">
-          <div class="truncate text-sm font-bold">{{ focusRow.name }}</div>
-          <div class="truncate font-mono text-[11px] text-dim">{{ carName(focusRow.carModel) }}</div>
-        </div>
-      </div>
-
-      <!-- Shift lights -->
-      <div class="mt-3 flex gap-[3px]">
-        <span
-          v-for="(seg, i) in shiftLights"
-          :key="i"
-          class="h-2 flex-1 rounded-[1px] transition-colors duration-100"
-          :class="
-            seg.on
-              ? seg.tone === 'danger'
-                ? 'bg-danger shadow-[0_0_8px_rgba(239,113,104,0.8)]'
-                : seg.tone === 'warn'
-                  ? 'bg-warn shadow-[0_0_8px_rgba(240,185,90,0.7)]'
-                  : 'bg-ok shadow-[0_0_8px_rgba(79,216,132,0.7)]'
-              : 'bg-surface-3'
-          "
-        />
-      </div>
-
-      <!-- Speed + gear -->
-      <div class="mt-3 flex items-end justify-between">
-        <div class="leading-none">
-          <span class="numerals text-6xl font-medium tabular-nums">{{ speedKmh(focusRow.pos) }}</span>
-          <span class="ml-1 font-mono text-xs text-dim">km/h</span>
-        </div>
-        <div class="text-center leading-none">
-          <div class="numerals text-5xl font-semibold text-accent tabular-nums">{{ gearLabel(focusRow.pos) }}</div>
-          <div class="font-mono text-[10px] tracking-widest text-dim uppercase">gear</div>
-        </div>
-      </div>
-
-      <div class="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-2.5 font-mono text-xs">
-        <div>
-          <div class="text-[10px] tracking-wide text-dim">LAST</div>
-          <div :class="focusRow.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(focusRow.last_lap_ms) }}</div>
-        </div>
-        <div>
-          <div class="text-[10px] tracking-wide text-dim">BEST</div>
-          <div :class="focusRow.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(focusRow.best_lap_ms) }}</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ░░ Driver streams (toggled docked panel) ░░ -->
-    <section
-      v-if="streamsOpen && streamChannels.length"
-      class="absolute top-20 right-5 z-20 flex max-h-[calc(100vh-12rem)] w-80 flex-col rounded-lg border border-line bg-surface/85 backdrop-blur-md"
-    >
-      <div class="flex items-center gap-2 border-b border-line px-3 py-2">
-        <Icon name="broadcast" :size="14" class="text-accent" />
-        <h2 class="text-xs font-bold tracking-wide uppercase">Driver streams</h2>
-        <span class="font-mono text-[11px] text-dim">{{ onlineStreamCount }}/{{ streamChannels.length }} live</span>
-        <button
-          type="button"
-          class="ml-auto grid size-7 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
-          aria-label="Close driver streams"
-          @click="streamsOpen = false"
-        >
-          <Icon name="x" :size="14" />
-        </button>
-      </div>
-      <div class="overflow-y-auto p-3">
-        <StreamWall :channels="streamChannels" grid-class="grid-cols-1" @watch="openTheater" />
-      </div>
-    </section>
-
-    <!-- ░░ Timing tower (lower third) ░░ -->
-    <footer class="absolute inset-x-0 bottom-0 z-20 px-5 pb-5">
-      <div class="mb-2 flex items-center gap-2 px-1">
-        <span class="numerals text-sm tracking-[0.2em] text-dim uppercase">Running order</span>
-        <span class="h-px flex-1 bg-line" />
-        <span class="font-mono text-[11px] text-dim">tap a car to follow it</span>
-      </div>
-
-      <TransitionGroup
-        v-if="timingRows.length"
-        tag="ol"
-        name="tower"
-        class="flex flex-wrap gap-2.5"
-      >
-        <li
-          v-for="row in timingRows"
-          :key="row.car_id"
-          class="tower-card min-w-60 flex-1 cursor-pointer rounded-md border bg-surface/85 p-2.5 backdrop-blur-md transition-colors"
-          :class="
-            focusRow?.car_id === row.car_id
-              ? 'border-accent/70 ring-1 ring-accent/40'
-              : row.isLeader
-                ? 'border-accent/40'
-                : 'border-line hover:border-line-hi'
-          "
-          @click="focusCar(row.car_id)"
-        >
-          <div class="flex items-center gap-2.5">
-            <span
-              class="grid size-9 shrink-0 place-items-center rounded-md numerals text-xl font-semibold tabular-nums"
-              :class="row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
-            >
-              {{ row.position }}
-            </span>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-bold">{{ row.name }}</div>
-              <div class="truncate font-mono text-[11px] text-dim">{{ carName(row.carModel) }}</div>
-            </div>
-            <div class="shrink-0 text-right">
-              <div
-                class="numerals text-lg tabular-nums"
-                :class="row.gapTone === 'leader' ? 'text-accent' : row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
-              >
-                {{ row.gapLabel }}
-              </div>
-              <div class="font-mono text-[10px] text-dim">LAP {{ row.laps }}</div>
-            </div>
+          <img
+            :src="trackUrl('map', activeTrack.key, activeTrack.config)"
+            alt=""
+            class="absolute inset-0 size-full object-fill opacity-70"
+            @error="mapImageOk = false"
+          />
+          <template v-for="d in drivers" :key="d.car_id">
             <button
-              v-if="hasStreamForCar(row.car_id)"
+              v-if="positionFor(d.car_id)"
               type="button"
-              class="grid size-8 shrink-0 place-items-center rounded-md border border-accent/40 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
-              :aria-label="`Watch ${row.name}'s stream`"
-              :title="`Watch ${row.name}'s stream`"
-              @click.stop="openStream(row.car_id)"
+              class="puck absolute -translate-x-1/2 -translate-y-1/2"
+              :class="{ 'puck-focus': focusRow?.car_id === d.car_id }"
+              :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
+              @click="focusCar(d.car_id)"
             >
-              <Icon name="play" :size="14" />
+              <span
+                v-if="timingFor(d.car_id)?.isLeader"
+                class="puck-ring absolute inset-0 -m-1 rounded-full"
+              />
+              <span
+                class="relative grid size-7 place-items-center rounded-full border-2 text-xs leading-none font-semibold"
+                :class="
+                  timingFor(d.car_id)?.isLeader
+                    ? 'border-bg bg-accent text-bg shadow-[0_0_22px_rgba(98,179,232,0.85)]'
+                    : 'border-bg bg-surface-4 text-text shadow-[0_0_14px_rgba(0,0,0,0.7)]'
+                "
+              >
+                {{ (d.name || "Car " + d.car_id).slice(0, 1).toUpperCase() }}
+              </span>
+              <span
+                class="pointer-events-none absolute top-9 left-1/2 -translate-x-1/2 rounded-sm bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap backdrop-blur-sm"
+              >
+                {{ d.name || "Car " + d.car_id }}
+              </span>
             </button>
-          </div>
+          </template>
+        </div>
 
-          <div class="mt-2 flex items-center gap-3 font-mono text-[11px]">
-            <span class="text-dim">L <span class="text-text">{{ lapTime(row.last_lap_ms) }}</span></span>
-            <span class="text-dim">B <span class="text-ok">{{ lapTime(row.best_lap_ms) }}</span></span>
-            <span class="ml-auto numerals text-sm tabular-nums">{{ speedKmh(row.pos) }}<span class="text-[10px] text-dim"> km/h</span></span>
-          </div>
+        <!-- Map unavailable / offline states -->
+        <div v-else class="text-center">
+          <Icon name="broadcast" :size="40" class="mx-auto text-dim" />
+          <p class="numerals mt-3 text-2xl tracking-tight text-muted">
+            {{ !running ? "SERVER OFFLINE" : !activeTrack ? "NO TRACK LOADED" : "NO LIVE MAP FOR THIS LAYOUT" }}
+          </p>
+          <RouterLink
+            v-if="!running"
+            :to="exitTo"
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface/70 px-3 py-1.5 text-sm text-muted hover:text-text"
+          >
+            <Icon name="arrowUp" :size="14" class="-rotate-90" />
+            Back to control
+          </RouterLink>
+        </div>
 
-          <!-- RPM under-bar -->
-          <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-3">
-            <div
-              class="h-full rounded-full transition-[width] duration-200"
-              :class="rpmPct(row.pos) > 88 ? 'bg-danger' : rpmPct(row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
-              :style="{ width: `${rpmPct(row.pos)}%` }"
-            />
-          </div>
-        </li>
-      </TransitionGroup>
+        <!-- Telemetry-offline notice -->
+        <div
+          v-if="running && !telemetryOnline"
+          class="absolute top-3 left-1/2 -translate-x-1/2 rounded-md border border-warn/40 bg-warn-glow px-3 py-1.5 text-xs font-semibold text-warn backdrop-blur-sm"
+        >
+          Waiting for the AC telemetry plugin — map and timing stay empty until it connects.
+        </div>
+      </section>
 
-      <div
-        v-else
-        class="rounded-md border border-line bg-surface/70 px-4 py-3 text-center font-mono text-xs text-dim backdrop-blur-md"
-      >
-        {{ running ? "Waiting for cars to join the session…" : "Server is stopped." }}
-      </div>
-    </footer>
+      <!-- Right column: one card per driver (stream + telemetry + livery) -->
+      <section class="min-w-0 flex-1 overflow-y-auto pr-1">
+        <TransitionGroup
+          v-if="driverCards.length"
+          tag="div"
+          name="tower"
+          class="grid grid-cols-1 gap-3 xl:grid-cols-2"
+        >
+          <article
+            v-for="card in driverCards"
+            :key="card.row.car_id"
+            class="tower-card flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface/80 backdrop-blur-md transition-colors"
+            :class="
+              focusRow?.car_id === card.row.car_id
+                ? 'border-accent/70 ring-1 ring-accent/40'
+                : card.row.isLeader
+                  ? 'border-accent/40'
+                  : 'border-line hover:border-line-hi'
+            "
+            @click="focusCar(card.row.car_id)"
+          >
+            <!-- Card head: position · livery · driver/car · gap -->
+            <header class="flex items-center gap-2.5 p-2.5">
+              <span
+                class="grid size-9 shrink-0 place-items-center rounded-md numerals text-xl font-semibold tabular-nums"
+                :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+              >
+                {{ card.row.position }}
+              </span>
+              <img
+                :src="carImageUrl(card.row.carModel, card.row.skin)"
+                alt=""
+                class="h-9 w-14 shrink-0 rounded border border-line bg-surface-3 object-cover"
+                @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-bold">{{ card.row.name }}</div>
+                <div class="truncate font-mono text-[11px] text-dim">{{ carName(card.row.carModel) }}</div>
+              </div>
+              <div class="shrink-0 text-right">
+                <div
+                  class="numerals text-lg tabular-nums"
+                  :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
+                >
+                  {{ card.row.gapLabel }}
+                </div>
+                <div class="font-mono text-[10px] text-dim">LAP {{ card.row.laps }}</div>
+              </div>
+            </header>
+
+            <!-- Video broadcast -->
+            <div class="relative aspect-video border-y border-line bg-bg">
+              <iframe
+                v-if="card.channel?.online"
+                :src="card.channel.url"
+                :title="card.row.name"
+                class="size-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+              />
+              <div v-else class="grid size-full place-items-center">
+                <div class="flex flex-col items-center gap-2 text-dim">
+                  <div class="grid size-12 place-items-center rounded-full border border-line bg-surface/70">
+                    <Icon name="user" :size="22" />
+                  </div>
+                  <span class="font-mono text-[11px] tracking-wide uppercase">
+                    {{ card.channel ? "Stream offline" : "No stream" }}
+                  </span>
+                </div>
+              </div>
+              <button
+                v-if="card.channel"
+                type="button"
+                class="absolute top-2 right-2 grid size-8 place-items-center rounded-md border border-line bg-bg/70 text-muted backdrop-blur transition-colors hover:border-accent/60 hover:text-accent"
+                :aria-label="`Watch ${card.row.name} full screen`"
+                :title="`Watch ${card.row.name} full screen`"
+                @click.stop="openStream(card.row.car_id)"
+              >
+                <Icon name="maximize" :size="14" />
+              </button>
+            </div>
+
+            <!-- Telemetry, right under the video it belongs to -->
+            <div class="flex items-end gap-3 p-2.5">
+              <div class="leading-none">
+                <span class="numerals text-3xl font-medium tabular-nums">{{ speedKmh(card.row.pos) }}</span>
+                <span class="ml-1 font-mono text-[10px] text-dim">km/h</span>
+              </div>
+              <div class="text-center leading-none">
+                <div class="numerals text-2xl font-semibold text-accent tabular-nums">{{ gearLabel(card.row.pos) }}</div>
+                <div class="font-mono text-[9px] tracking-widest text-dim uppercase">gear</div>
+              </div>
+              <div class="ml-auto grid grid-cols-2 gap-x-3 text-right font-mono text-[11px]">
+                <span class="text-dim">LAST</span>
+                <span :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(card.row.last_lap_ms) }}</span>
+                <span class="text-dim">BEST</span>
+                <span :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(card.row.best_lap_ms) }}</span>
+              </div>
+            </div>
+
+            <!-- RPM under-bar -->
+            <div class="mx-2.5 mb-2.5 h-1 overflow-hidden rounded-full bg-surface-3">
+              <div
+                class="h-full rounded-full transition-[width] duration-200"
+                :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
+                :style="{ width: `${rpmPct(card.row.pos)}%` }"
+              />
+            </div>
+          </article>
+        </TransitionGroup>
+
+        <div v-else class="grid h-full place-items-center">
+          <div class="text-center">
+            <Icon name="broadcast" :size="40" class="mx-auto text-dim" />
+            <p class="numerals mt-3 text-2xl tracking-tight text-muted">
+              {{ running ? "Waiting for cars to join the session…" : "Server is stopped." }}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <StreamTheater
       :open="theaterOpen"

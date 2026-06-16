@@ -546,17 +546,6 @@ onBeforeUnmount(() => {
                 </div>
               </header>
 
-              <!-- Gap to leader + lap count -->
-              <div class="flex items-baseline justify-between  border-line/60 py-2">
-                <span
-                    class="numerals text-lg font-semibold tracking-tight tabular-nums"
-                    :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
-                >
-                  {{ card.row.gapLabel }}
-                </span>
-                <span class="font-mono text-xs font-medium tracking-wider text-dim">LAP {{ card.row.laps }}</span>
-              </div>
-
               <!-- Speed / gear + RPM bar -->
               <div class="flex flex-1 flex-col justify-center gap-3">
                 <div class="flex items-end justify-between leading-none">
@@ -585,8 +574,21 @@ onBeforeUnmount(() => {
                 />
               </div>
 
-              <!-- Lap times -->
+              <!-- Standings + lap times -->
               <footer class="flex flex-col gap-1.5 border-t border-line/60 pt-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Gap</span>
+                  <span
+                      class="numerals text-lg font-semibold tracking-tight tabular-nums"
+                      :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
+                  >
+                    {{ card.row.gapLabel }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Lap</span>
+                  <span class="numerals text-lg tabular-nums text-text">{{ card.row.laps }}</span>
+                </div>
                 <div class="flex items-center justify-between">
                   <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
                   <span

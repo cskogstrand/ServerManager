@@ -28,6 +28,7 @@ import {
   type TimingRow,
 } from "@/lib/raceTelemetry";
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
+import { useBroadcastDemo } from "@/lib/broadcastDemo";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
 
@@ -63,14 +64,20 @@ const detail = ref<StatusPayload | null>(null);
 const mapMeta = ref<TrackMapMeta | null>(null);
 const mapImageOk = ref(true);
 
-// --- Live state straight from the store (SSE-updated) ---
-const drivers = computed(() => inst.value?.drivers ?? []);
-const positions = computed(() => inst.value?.positions ?? []);
-const session = computed(() => inst.value?.session ?? null);
-const telemetry = computed(() => inst.value?.telemetry ?? null);
-const running = computed(() => inst.value?.running ?? false);
+// --- Client-only demo mode: fabricate a fake running session so the broadcast
+// layout can be exercised without a live server. Nothing here hits the backend;
+// every data source below simply switches to the demo feed while `debug` is on.
+const debug = ref(false);
+const demo = useBroadcastDemo();
 
-const telemetryOnline = computed(() => !!telemetry.value?.udp_online);
+// --- Live state straight from the store (SSE-updated), or the demo feed ---
+const drivers = computed(() => (debug.value ? demo.drivers.value : (inst.value?.drivers ?? [])));
+const positions = computed(() => (debug.value ? demo.positions.value : (inst.value?.positions ?? [])));
+const session = computed(() => (debug.value ? demo.session.value : (inst.value?.session ?? null)));
+const telemetry = computed(() => inst.value?.telemetry ?? null);
+const running = computed(() => (debug.value ? true : (inst.value?.running ?? false)));
+
+const telemetryOnline = computed(() => (debug.value ? true : !!telemetry.value?.udp_online));
 
 // Track on stage: the live session wins; the status payload's current event is
 // the fallback before the first session frame lands.
@@ -142,8 +149,22 @@ function weatherImageUrl(key: string): string {
 // Car + livery preview for a driver's card. The backend falls back through
 // preview.jpg/png/livery.png; we just hide the <img> if nothing resolves.
 function carImageUrl(model: string, skin: string): string {
+  if (debug.value) return demo.carImageUrl(model, skin);
   return `/api/car/image/${encodeURIComponent(model)}/${encodeURIComponent(skin || "")}`;
 }
+
+// Map plumbing resolves to the demo feed in debug mode, otherwise the real
+// track image + meta (fetched below).
+const effectiveMapMeta = computed<TrackMapMeta | null>(() =>
+  debug.value ? demo.mapMeta : mapMeta.value,
+);
+const mapImageUrl = computed(() =>
+  debug.value
+    ? demo.mapImageUrl.value
+    : activeTrack.value
+      ? trackUrl("map", activeTrack.value.key, activeTrack.value.config)
+      : "",
+);
 
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
@@ -175,7 +196,9 @@ function timingFor(carId: number): TimingRow | undefined {
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
-const streamChannels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(drivers.value));
+const streamChannels = computed<StreamChannel[]>(() =>
+  debug.value ? demo.channels.value : driverStreams.allChannelsFor(drivers.value),
+);
 const onlineStreamCount = computed(() => streamChannels.value.filter((c) => c.online).length);
 // guid → resolved channel, so each driver card can look up its stream in O(1).
 const channelByGuid = computed(() => {
@@ -211,6 +234,7 @@ const driverCards = computed<DriverCard[]>(() =>
 );
 
 async function fetchStatus() {
+  if (debug.value) return;
   try {
     const payload = await api.get<StatusPayload & StatusResponse>(
       `/api/server/status?instance=${instanceId.value}`,
@@ -223,6 +247,7 @@ async function fetchStatus() {
 }
 
 async function fetchMapMeta() {
+  if (debug.value) return;
   const t = activeTrack.value;
   if (!t) {
     mapMeta.value = null;
@@ -246,6 +271,23 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen().catch(() => {});
 }
 
+// Demo mode toggle + a "reshuffle" while it is on. Swapping `debug` flips every
+// data source above; here we just spin the fake feed up and down.
+function toggleDebug() {
+  debug.value = !debug.value;
+}
+watch(debug, (on) => {
+  pinnedCarId.value = null;
+  if (on) {
+    mapImageOk.value = true;
+    demo.regenerate();
+    demo.start();
+  } else {
+    demo.stop();
+    void fetchMapMeta();
+  }
+});
+
 onMounted(async () => {
   if (!server.loaded) await server.load();
   void content.load();
@@ -263,6 +305,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   driverStreams.stopHealthPoll();
+  demo.stop();
 });
 </script>
 
@@ -278,14 +321,16 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-2.5">
         <span
           class="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-black tracking-[0.2em]"
-          :class="running ? 'bg-danger text-bg' : 'bg-surface-3 text-dim'"
+          :class="debug ? 'bg-accent text-bg' : running ? 'bg-danger text-bg' : 'bg-surface-3 text-dim'"
         >
           <span v-if="running" class="live-dot size-1.5 rounded-full bg-bg" />
-          {{ running ? "LIVE" : "OFFLINE" }}
+          {{ debug ? "DEMO" : running ? "LIVE" : "OFFLINE" }}
         </span>
         <div class="leading-tight">
-          <div class="text-sm font-extrabold tracking-tight">{{ inst?.name ?? "Server" }}</div>
-          <div class="font-mono text-[11px] text-dim">:{{ inst?.tcp_port }} · {{ drivers.length }} cars</div>
+          <div class="text-sm font-extrabold tracking-tight">{{ debug ? "Demo Server" : (inst?.name ?? "Server") }}</div>
+          <div class="font-mono text-[11px] text-dim">
+            {{ debug ? "demo feed" : `:${inst?.tcp_port ?? ""}` }} · {{ drivers.length }} cars
+          </div>
         </div>
       </div>
 
@@ -331,6 +376,28 @@ onBeforeUnmount(() => {
             <span class="font-mono">{{ onlineStreamCount }}/{{ streamChannels.length }}</span>
           </span>
           <button
+            v-if="debug"
+            type="button"
+            class="grid size-9 place-items-center rounded-md border border-accent/60 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
+            title="Reshuffle demo grid"
+            @click="demo.regenerate()"
+          >
+            <Icon name="repeat" :size="16" />
+          </button>
+          <button
+            type="button"
+            class="grid size-9 place-items-center rounded-md border transition-colors"
+            :class="
+              debug
+                ? 'border-accent/60 bg-accent-dim text-accent'
+                : 'border-line bg-surface/70 text-muted hover:border-line-hi hover:text-text'
+            "
+            title="Toggle demo mode (client-side fake data)"
+            @click="toggleDebug"
+          >
+            <Icon name="shuffle" :size="16" />
+          </button>
+          <button
             type="button"
             class="grid size-9 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
             title="Toggle fullscreen"
@@ -354,12 +421,12 @@ onBeforeUnmount(() => {
       <!-- Left column: live track map -->
       <section class="relative flex w-1/2 shrink-0 items-center justify-center overflow-hidden">
         <div
-          v-if="activeTrack && mapMeta && mapImageOk"
+          v-if="activeTrack && effectiveMapMeta && mapImageOk"
           class="bcast-map relative"
-          :style="mapWrapStyle(mapMeta)"
+          :style="mapWrapStyle(effectiveMapMeta)"
         >
           <img
-            :src="trackUrl('map', activeTrack.key, activeTrack.config)"
+            :src="mapImageUrl"
             alt=""
             class="absolute inset-0 size-full object-fill opacity-70"
             @error="mapImageOk = false"
@@ -370,7 +437,7 @@ onBeforeUnmount(() => {
               type="button"
               class="puck absolute -translate-x-1/2 -translate-y-1/2"
               :class="{ 'puck-focus': focusRow?.car_id === d.car_id }"
-              :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
+              :style="mapPoint(positionFor(d.car_id)!, effectiveMapMeta)"
               @click="focusCar(d.car_id)"
             >
               <span

@@ -65,7 +65,7 @@ const mapImageOk = ref(true);
 // layout can be exercised without a live server. Nothing here hits the backend;
 // every data source below simply switches to the demo feed while `debug` is on.
 const debug = ref(false);
-const demo = useBroadcastDemo();
+const demo = useBroadcastDemo(content);
 
 // --- Live state straight from the store (SSE-updated), or the demo feed ---
 const drivers = computed(() => (debug.value ? demo.drivers.value : (inst.value?.drivers ?? [])));
@@ -149,15 +149,15 @@ function weatherImageUrl(key: string): string {
 
 // Car + livery preview for a driver's card. The backend falls back through
 // preview.jpg/png/livery.png; we just hide the <img> if nothing resolves.
+// Demo drivers carry real car/skin keys, so this serves real previews there too.
 function carImageUrl(model: string, skin: string): string {
-  if (debug.value) return demo.carImageUrl(model, skin);
   return `/api/car/image/${encodeURIComponent(model)}/${encodeURIComponent(skin || "")}`;
 }
 
 // Map plumbing resolves to the demo feed in debug mode, otherwise the real
 // track image + meta (fetched below).
 const effectiveMapMeta = computed<TrackMapMeta | null>(() =>
-    debug.value ? demo.mapMeta : mapMeta.value,
+    debug.value ? demo.mapMeta.value : mapMeta.value,
 );
 const mapImageUrl = computed(() =>
     debug.value
@@ -286,10 +286,11 @@ function toggleDebug() {
   debug.value = !debug.value;
 }
 
-watch(debug, (on) => {
+watch(debug, async (on) => {
   pinnedCarId.value = null;
   if (on) {
     mapImageOk.value = true;
+    if (!content.loaded) await content.load();
     demo.regenerate();
     demo.start();
   } else {

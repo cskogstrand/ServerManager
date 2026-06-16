@@ -1,12 +1,17 @@
 // Client-only demo feed for the broadcast screen. When toggled on it fabricates
-// a fake running session — a random track image plus a random grid of drivers,
-// each with a random car, livery and video stream — and animates their
-// telemetry so the two-column layout can be exercised without a live Assetto
-// Corsa server. Nothing here touches the backend; it only produces the same
-// shapes the SSE store would feed, so the page paints it identically.
+// a fake running session — a random real track from the content library plus a
+// random grid of drivers, each on a random real car + livery and a random video
+// stream — and animates their telemetry so the two-column layout can be
+// exercised without a live Assetto Corsa server. Track maps and car/livery
+// previews come from the real backend endpoints (the same images the app serves
+// from assetocorsa/content); only the session/telemetry are fabricated.
 import { computed, ref } from "vue";
+import { api } from "@/lib/api";
+import type { useContentStore } from "@/stores/content";
 import type { CarPositionState, DriverState, SessionState } from "@/stores/server";
 import type { StreamChannel } from "@/lib/useDriverStreams";
+
+type ContentStore = ReturnType<typeof useContentStore>;
 
 export interface DemoMapMeta {
   width: number;
@@ -19,18 +24,6 @@ export interface DemoMapMeta {
 
 const FIRST = ["Max", "Lewis", "Ana", "Kenji", "Sofia", "Diego", "Noa", "Petra", "Olivier", "Ingrid", "Mateo", "Yuki"];
 const LAST = ["Halvorsen", "Tanaka", "Rossi", "Müller", "Costa", "Andersen", "Dubois", "Novak", "Berg", "Okafor", "Reyes", "Lindqvist"];
-const CARS = [
-  "Ferrari 488 GT3 Evo",
-  "Porsche 911 GT3 R",
-  "Mercedes-AMG GT3",
-  "Audi R8 LMS Evo II",
-  "BMW M4 GT3",
-  "Lamborghini Huracán GT3",
-  "McLaren 720S GT3",
-  "Aston Martin Vantage GT3",
-  "Nissan GT-R Nismo GT3",
-  "Honda NSX GT3 Evo",
-];
 // Public, embeddable clips — purely to populate the video tiles in demo mode.
 const STREAMS = [
   "https://www.youtube.com/embed/aqz-KE-bpKQ",
@@ -39,6 +32,9 @@ const STREAMS = [
   "https://www.youtube.com/embed/Bey4XXJAqS8",
   "https://www.youtube.com/embed/5qap5aO4i9A",
 ];
+
+// Used until the real track meta resolves (and if a track has no map.ini).
+const FALLBACK_META: DemoMapMeta = { width: 1200, height: 800, x_offset: 0, z_offset: 0, scale_factor: 1, margin: 0 };
 
 const TICK_MS = 250;
 
@@ -51,32 +47,46 @@ function randInt(min: number, max: number): number {
 function randGuid(): string {
   return Array.from({ length: 17 }, () => randInt(0, 9)).join("");
 }
+function trackPath(kind: "map" | "mapmeta", key: string, config: string): string {
+  const cfg = config ? `/${encodeURIComponent(config)}` : "";
+  return `/api/track/${kind}/${encodeURIComponent(key)}${cfg}`;
+}
 
-export function useBroadcastDemo() {
+export function useBroadcastDemo(content: ContentStore) {
   const drivers = ref<DriverState[]>([]);
   const positions = ref<CarPositionState[]>([]);
   const elapsed = ref(0);
-  const seed = ref(1);
+  const track = ref<{ key: string; config: string; name: string } | null>(null);
+  const mapMeta = ref<DemoMapMeta | null>(null);
 
   // Per-car lap phase: a fixed offset plus a per-car advance rate. tick() walks
-  // each car around an elliptical "track" and rolls the lap counter on wrap.
+  // each car around an ellipse mapped onto the real track and rolls the lap
+  // counter on wrap.
   let anim: Array<{ phase: number; rate: number }> = [];
   // guid → its assigned stream (some drivers are deliberately left "offline").
   let streamFor: Record<string, { url: string; online: boolean }> = {};
   let timer: ReturnType<typeof setInterval> | null = null;
 
-  const mapMeta: DemoMapMeta = {
-    width: 1200,
-    height: 800,
-    x_offset: 0,
-    z_offset: 0,
-    scale_factor: 1,
-    margin: 0,
-  };
-  const mapImageUrl = computed(() => `https://picsum.photos/seed/track-${seed.value}/1200/800`);
+  const mapImageUrl = computed(() =>
+    track.value ? trackPath("map", track.value.key, track.value.config) : "",
+  );
+
+  async function loadTrackMeta() {
+    const t = track.value;
+    if (!t) {
+      mapMeta.value = null;
+      return;
+    }
+    try {
+      mapMeta.value = await api.get<DemoMapMeta>(trackPath("mapmeta", t.key, t.config));
+    } catch {
+      mapMeta.value = FALLBACK_META;
+    }
+  }
 
   function tick() {
     elapsed.value += TICK_MS;
+    const m = mapMeta.value ?? FALLBACK_META;
     positions.value = drivers.value.map((d, i) => {
       const a = anim[i];
       const prev = a.phase;
@@ -86,10 +96,14 @@ export function useBroadcastDemo() {
         d.laps += 1;
         d.last_lap_ms = d.best_lap_ms + randInt(0, 3500);
       }
-      const ang = a.phase * Math.PI * 2;
-      const x = 600 + Math.cos(ang) * 470 + Math.sin(ang * 2) * 60;
-      const z = 400 + Math.sin(ang) * 320;
-      const speed = 32 + Math.abs(Math.sin(ang * 2)) * 76; // ~m/s
+      // Ellipse in image-fraction space, inverted through the AC projection so
+      // mapPoint() lands each puck back on that fraction of the real map.
+      const th = a.phase * Math.PI * 2;
+      const fx = 0.5 + 0.4 * Math.cos(th) + 0.05 * Math.cos(th * 2);
+      const fy = 0.5 + 0.38 * Math.sin(th);
+      const x = (fx * m.width - m.margin) * m.scale_factor - m.x_offset;
+      const z = (fy * m.height - m.margin) * m.scale_factor - m.z_offset;
+      const speed = 32 + Math.abs(Math.sin(th * 2)) * 76; // ~m/s
       return {
         car_id: d.car_id,
         x,
@@ -99,16 +113,24 @@ export function useBroadcastDemo() {
         velocity_y: 0,
         velocity_z: 0,
         gear: Math.min(6, 2 + Math.floor(speed / 16)),
-        engine_rpm: 5500 + Math.round(Math.abs(Math.sin(ang * 3)) * 3200),
+        engine_rpm: 5500 + Math.round(Math.abs(Math.sin(th * 3)) * 3200),
         normalized_spline_pos: a.phase,
         updated_at: elapsed.value,
       } satisfies CarPositionState;
     });
   }
 
-  // Build a brand-new random grid. Safe to call while running.
+  // Build a brand-new random grid from the current content library. Safe to
+  // call while running.
   function regenerate() {
-    seed.value = randInt(1, 99999);
+    const tracks = (content.tracks ?? []).filter((t) => t.key);
+    const cars = (content.cars ?? []).filter((c) => c.key && c.skins?.length);
+
+    const t = tracks.length ? pick(tracks) : null;
+    track.value = t ? { key: t.key!, config: t.config ?? "", name: t.name || t.key! } : null;
+    mapMeta.value = t ? FALLBACK_META : null; // show the map at once; refine below
+    void loadTrackMeta();
+
     const count = randInt(4, 8);
     const usedNames = new Set<string>();
     const next: DriverState[] = [];
@@ -119,13 +141,15 @@ export function useBroadcastDemo() {
       while (usedNames.has(name)) name = `${pick(FIRST)} ${pick(LAST)}`;
       usedNames.add(name);
 
+      const car = cars.length ? pick(cars) : null;
+      const skin = car ? pick(car.skins) : null;
       const guid = randGuid();
       const best = randInt(83000, 92000);
       next.push({
         car_id: i,
         name,
-        car: pick(CARS),
-        skin: `livery-${randInt(1, 9999)}`,
+        car: car?.key ?? `demo_car_${i}`,
+        skin: skin?.key ?? "",
         guid,
         laps: randInt(1, 18),
         last_lap_ms: best + randInt(0, 4000),
@@ -162,8 +186,8 @@ export function useBroadcastDemo() {
     index: 0,
     current_session_index: 0,
     session_count: 1,
-    track: "Demo Speedway",
-    track_config: "",
+    track: track.value?.name ?? "Demo Speedway",
+    track_config: track.value?.config ?? "",
     server_name: "Demo Server",
     time: 0,
     laps: 20,
@@ -189,10 +213,5 @@ export function useBroadcastDemo() {
       .sort((a, b) => Number(b.online) - Number(a.online) || a.title.localeCompare(b.title)),
   );
 
-  // Deterministic random livery preview, keyed by the driver's unique skin.
-  function carImageUrl(_model: string, skin: string): string {
-    return `https://picsum.photos/seed/livery-${encodeURIComponent(skin || "x")}/320/180`;
-  }
-
-  return { drivers, positions, session, mapMeta, mapImageUrl, channels, carImageUrl, regenerate, start, stop };
+  return { drivers, positions, session, mapMeta, mapImageUrl, channels, regenerate, start, stop };
 }

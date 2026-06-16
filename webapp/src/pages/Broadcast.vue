@@ -530,83 +530,80 @@ onBeforeUnmount(() => {
         "
               @click="focusCar(card.row.car_id)"
           >
-            <div class="flex min-w-0 shrink-0 flex-col justify-between p-4 xl:w-72">
-
-            <header class="flex items-center gap-3">
-              <span
-                  class="numerals grid size-9 shrink-0 place-items-center rounded-lg text-lg font-bold tabular-nums"
-                  :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
-              >
-                {{ card.row.position }}
-              </span>
-
-            <div class="flex items-baseline justify-between border-b border-line/60 pb-3 pt-2">
-            <span
-                class="numerals text-lg font-semibold tabular-nums tracking-tight"
-                :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
-            >
-              {{ card.row.gapLabel }}
-            </span>
-                <span class="font-mono text-s font-medium tracking-wider text-dim">LAP {{ card.row.laps }}</span>
-              </div>
+            <!-- Metrics side -->
+            <div class="flex min-w-0 shrink-0 flex-col gap-3 p-4 xl:w-72">
+              <!-- Identity: position · driver + car -->
+              <header class="flex items-center gap-3">
+                <span
+                    class="numerals grid size-9 shrink-0 place-items-center rounded-lg text-lg font-bold tabular-nums"
+                    :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+                >
+                  {{ card.row.position }}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <h4 class="truncate text-sm font-bold text-text">{{ card.row.name }}</h4>
+                  <p class="truncate font-mono text-[11px] tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
+                </div>
               </header>
 
-              <div class="relative shrink-0">
+              <!-- Gap to leader + lap count -->
+              <div class="flex items-baseline justify-between  border-line/60 py-2">
+                <span
+                    class="numerals text-lg font-semibold tracking-tight tabular-nums"
+                    :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
+                >
+                  {{ card.row.gapLabel }}
+                </span>
+                <span class="font-mono text-xs font-medium tracking-wider text-dim">LAP {{ card.row.laps }}</span>
+              </div>
+
+              <!-- Speed / gear + RPM bar -->
+              <div class="flex flex-1 flex-col justify-center gap-3">
+                <div class="flex items-end justify-between leading-none">
+                  <div class="flex items-baseline">
+                    <span class="numerals text-5xl font-light tabular-nums xl:text-6xl">{{ speedKmh(card.row.pos) }}</span>
+                    <span class="ml-1 font-mono text-xs text-dim">km/h</span>
+                  </div>
+                  <div class="flex flex-col items-center">
+                    <span class="numerals text-4xl font-bold text-accent tabular-nums xl:text-5xl">{{ gearLabel(card.row.pos) }}</span>
+                    <span class="mt-0.5 font-mono text-[9px] tracking-widest text-dim uppercase">Gear</span>
+                  </div>
+                </div>
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                  <div
+                      class="h-full rounded-full transition-all duration-100 ease-out"
+                      :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
+                      :style="{ width: `${rpmPct(card.row.pos)}%` }"
+                  />
+                </div>
+                <!-- Car + livery, below the RPM bar where there is room -->
                 <img
                     :src="carImageUrl(card.row.carModel, card.row.skin)"
                     alt=""
-                    class="h-9 w-16 rounded border border-line bg-surface-4 object-cover shadow-sm"
+                    class="h-14 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
                     @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
                 />
               </div>
 
-              <div class="min-w-0 flex-1">
-                <h4 class="truncate text-sm font-bold text-text">{{ card.row.name }}</h4>
-                <p class="truncate font-mono text-[11px] tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
-              </div>
-
-              <main class="flex flex-1 flex-col justify-center py-2">
-                <div class="flex items-end justify-between">
-                  <div class="flex items-baseline leading-none">
-                <span class="numerals text-5xl font-light tabular-nums xl:text-6xl">
-                  {{ speedKmh(card.row.pos) }}
-                </span>
-                    <span class="ml-1 font-mono text-xs text-dim">km/h</span>
-                  </div>
-
-                  <div class="flex flex-col items-center leading-none">
-                <span class="numerals text-4xl font-bold text-accent tabular-nums xl:text-5xl">
-                  {{ gearLabel(card.row.pos) }}
-                </span>
-                    <span class="mt-0.5 font-mono text-[9px] tracking-widest text-dim uppercase">Gear</span>
-                  </div>
+              <!-- Lap times -->
+              <footer class="flex flex-col gap-1.5 border-t border-line/60 pt-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
+                  <span
+                      class="numerals text-lg font-medium tabular-nums"
+                      :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'"
+                  >
+                    {{ lapTime(card.row.last_lap_ms) }}
+                  </span>
                 </div>
-
-                <div class="mt-3">
-                  <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
-                    <div
-                        class="h-full rounded-full transition-all duration-100 ease-out"
-                        :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
-                        :style="{ width: `${rpmPct(card.row.pos)}%` }"
-                    />
-                  </div>
-                </div>
-              </main>
-
-              <footer class="flex flex-col gap-1.5 border-t border-line/60 pt-3 font-mono text-xs">
-                <div class="flex justify-between items-center">
-                  <span class="text-[14px] tracking-wider text-dim uppercase">Last Lap</span>
-                  <span class="text-[18px] numerals tabular-nums font-medium"
-                        :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">
-                {{ lapTime(card.row.last_lap_ms) }}
-              </span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-[14px] tracking-wider text-dim uppercase">Best Lap</span>
-                  <span class="text-[18px] numerals tabular-nums font-semibold"
-                        :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">
-                {{ lapTime(card.row.best_lap_ms) }}
-              </span>
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Best Lap</span>
+                  <span
+                      class="numerals text-lg font-semibold tabular-nums"
+                      :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'"
+                  >
+                    {{ lapTime(card.row.best_lap_ms) }}
+                  </span>
                 </div>
               </footer>
             </div>

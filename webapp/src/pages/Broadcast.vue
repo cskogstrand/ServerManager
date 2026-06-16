@@ -545,8 +545,7 @@ onBeforeUnmount(() => {
                   {{ card.row.position }}
                 </span>
                 <div class="min-w-0 flex-1">
-                  <h4 class="truncate text-sm font-bold text-text">{{ card.row.name }}</h4>
-                  <p class="truncate font-mono text-[11px] tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
+                  <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
                 </div>
               </header>
 
@@ -569,13 +568,16 @@ onBeforeUnmount(() => {
                       :style="{ width: `${rpmPct(card.row.pos)}%` }"
                   />
                 </div>
-                <!-- Car + livery, below the RPM bar where there is room -->
-                <img
-                    :src="carImageUrl(card.row.carModel, card.row.skin)"
-                    alt=""
-                    class="h-28 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
-                    @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
-                />
+                <!-- Car name + livery, below the RPM bar where there is room -->
+                <div class="mt-3 flex flex-col gap-1.5">
+                  <p class="truncate text-center font-mono text-xs tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
+                  <img
+                      :src="carImageUrl(card.row.carModel, card.row.skin)"
+                      alt=""
+                      class="h-28 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
+                      @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+                  />
+                </div>
               </div>
 
               <!-- Standings + lap times -->

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // Full-screen broadcast overlay for one instance — a trackside TV graphics
-// surface meant for a second screen. Two columns: the live track map fills the
-// left third (car pucks glide over it), and the right two-thirds holds one card
-// per driver, in running order, each pairing that driver's video stream with
-// their telemetry and car/livery preview. All live data comes from the SSE-fed
-// server store; this page only paints it.
+// surface meant for a second screen. Two equal columns: the live track map
+// fills the left half (car pucks glide over it), and the right half holds one
+// card per driver, in running order, each pairing that driver's telemetry and
+// car/livery preview with their video stream (stream to the right of the
+// metrics on wide screens, below them on narrow). Cards are capped at half the
+// stage height so at least two drivers are always on screen. All live data
+// comes from the SSE-fed server store; this page only paints it.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api } from "@/lib/api";
@@ -347,10 +349,10 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- ░░ Two-column stage: map (1/3) + driver cards (2/3) ░░ -->
+    <!-- ░░ Two-column stage: map (1/2) + driver cards (1/2) ░░ -->
     <div class="absolute inset-x-0 top-16 bottom-0 z-10 flex gap-4 px-4 pb-4">
       <!-- Left column: live track map -->
-      <section class="relative flex w-1/3 shrink-0 items-center justify-center overflow-hidden">
+      <section class="relative flex w-1/2 shrink-0 items-center justify-center overflow-hidden">
         <div
           v-if="activeTrack && mapMeta && mapImageOk"
           class="bcast-map relative"
@@ -419,18 +421,20 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <!-- Right column: one card per driver (stream + telemetry + livery) -->
-      <section class="min-w-0 flex-1 overflow-y-auto pr-1">
+      <!-- Right column: one card per driver (telemetry + stream + livery) -->
+      <section class="min-w-0 flex-1 overflow-hidden">
         <TransitionGroup
           v-if="driverCards.length"
           tag="div"
           name="tower"
-          class="grid grid-cols-1 gap-3 xl:grid-cols-2"
+          class="flex h-full flex-col gap-3 overflow-y-auto pr-1"
         >
+          <!-- Capped at half the stage height (minus half the gap) so two cards
+               always fit; on wide cards the stream sits right of the metrics. -->
           <article
             v-for="card in driverCards"
             :key="card.row.car_id"
-            class="tower-card flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface/80 backdrop-blur-md transition-colors"
+            class="tower-card flex h-[calc(50%-0.375rem)] shrink-0 cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface/80 backdrop-blur-md transition-colors xl:flex-row"
             :class="
               focusRow?.car_id === card.row.car_id
                 ? 'border-accent/70 ring-1 ring-accent/40'
@@ -440,42 +444,74 @@ onBeforeUnmount(() => {
             "
             @click="focusCar(card.row.car_id)"
           >
-            <!-- Card head: position · livery · driver/car · gap -->
-            <header class="flex items-center gap-2.5 p-2.5">
-              <span
-                class="grid size-9 shrink-0 place-items-center rounded-md numerals text-xl font-semibold tabular-nums"
-                :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
-              >
-                {{ card.row.position }}
-              </span>
-              <img
-                :src="carImageUrl(card.row.carModel, card.row.skin)"
-                alt=""
-                class="h-9 w-14 shrink-0 rounded border border-line bg-surface-3 object-cover"
-                @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
-              />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-bold">{{ card.row.name }}</div>
-                <div class="truncate font-mono text-[11px] text-dim">{{ carName(card.row.carModel) }}</div>
+            <!-- Metrics side -->
+            <div class="flex min-w-0 shrink-0 flex-col gap-2 p-2.5 xl:w-64">
+              <!-- head: position · livery · driver/car -->
+              <div class="flex items-center gap-2.5">
+                <span
+                  class="grid size-9 shrink-0 place-items-center rounded-md numerals text-xl font-semibold tabular-nums"
+                  :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+                >
+                  {{ card.row.position }}
+                </span>
+                <img
+                  :src="carImageUrl(card.row.carModel, card.row.skin)"
+                  alt=""
+                  class="h-9 w-14 shrink-0 rounded border border-line bg-surface-3 object-cover"
+                  @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-bold">{{ card.row.name }}</div>
+                  <div class="truncate font-mono text-[11px] text-dim">{{ carName(card.row.carModel) }}</div>
+                </div>
               </div>
-              <div class="shrink-0 text-right">
-                <div
+
+              <!-- gap + lap -->
+              <div class="flex items-baseline justify-between border-t border-line pt-2">
+                <span
                   class="numerals text-lg tabular-nums"
                   :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
                 >
                   {{ card.row.gapLabel }}
-                </div>
-                <div class="font-mono text-[10px] text-dim">LAP {{ card.row.laps }}</div>
+                </span>
+                <span class="font-mono text-[10px] text-dim">LAP {{ card.row.laps }}</span>
               </div>
-            </header>
 
-            <!-- Video broadcast -->
-            <div class="relative aspect-video border-y border-line bg-bg">
+              <!-- speed/gear + laptimes, pinned to the bottom on tall cards -->
+              <div class="mt-auto flex items-end gap-3 pt-1">
+                <div class="leading-none">
+                  <span class="numerals text-3xl font-medium tabular-nums">{{ speedKmh(card.row.pos) }}</span>
+                  <span class="ml-1 font-mono text-[10px] text-dim">km/h</span>
+                </div>
+                <div class="text-center leading-none">
+                  <div class="numerals text-2xl font-semibold text-accent tabular-nums">{{ gearLabel(card.row.pos) }}</div>
+                  <div class="font-mono text-[9px] tracking-widest text-dim uppercase">gear</div>
+                </div>
+                <div class="ml-auto grid grid-cols-2 gap-x-3 text-right font-mono text-[11px]">
+                  <span class="text-dim">LAST</span>
+                  <span :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(card.row.last_lap_ms) }}</span>
+                  <span class="text-dim">BEST</span>
+                  <span :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(card.row.best_lap_ms) }}</span>
+                </div>
+              </div>
+
+              <!-- RPM under-bar -->
+              <div class="h-1 overflow-hidden rounded-full bg-surface-3">
+                <div
+                  class="h-full rounded-full transition-[width] duration-200"
+                  :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
+                  :style="{ width: `${rpmPct(card.row.pos)}%` }"
+                />
+              </div>
+            </div>
+
+            <!-- Video broadcast: right of the metrics on wide screens, below on narrow -->
+            <div class="relative min-h-0 flex-1 border-t border-line bg-bg xl:border-t-0 xl:border-l">
               <iframe
                 v-if="card.channel?.online"
                 :src="card.channel.url"
                 :title="card.row.name"
-                class="size-full border-0"
+                class="absolute inset-0 size-full border-0"
                 allow="autoplay; fullscreen; picture-in-picture"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
               />
@@ -499,33 +535,6 @@ onBeforeUnmount(() => {
               >
                 <Icon name="maximize" :size="14" />
               </button>
-            </div>
-
-            <!-- Telemetry, right under the video it belongs to -->
-            <div class="flex items-end gap-3 p-2.5">
-              <div class="leading-none">
-                <span class="numerals text-3xl font-medium tabular-nums">{{ speedKmh(card.row.pos) }}</span>
-                <span class="ml-1 font-mono text-[10px] text-dim">km/h</span>
-              </div>
-              <div class="text-center leading-none">
-                <div class="numerals text-2xl font-semibold text-accent tabular-nums">{{ gearLabel(card.row.pos) }}</div>
-                <div class="font-mono text-[9px] tracking-widest text-dim uppercase">gear</div>
-              </div>
-              <div class="ml-auto grid grid-cols-2 gap-x-3 text-right font-mono text-[11px]">
-                <span class="text-dim">LAST</span>
-                <span :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'">{{ lapTime(card.row.last_lap_ms) }}</span>
-                <span class="text-dim">BEST</span>
-                <span :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'">{{ lapTime(card.row.best_lap_ms) }}</span>
-              </div>
-            </div>
-
-            <!-- RPM under-bar -->
-            <div class="mx-2.5 mb-2.5 h-1 overflow-hidden rounded-full bg-surface-3">
-              <div
-                class="h-full rounded-full transition-[width] duration-200"
-                :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
-                :style="{ width: `${rpmPct(card.row.pos)}%` }"
-              />
             </div>
           </article>
         </TransitionGroup>

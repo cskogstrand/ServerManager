@@ -37,6 +37,11 @@ func routeSpa(c *gin.Context) {
 		if st, err := os.Stat(full); err != nil || st.IsDir() {
 			full = filepath.Join(base, "index.html")
 		}
+		// The SPA shell must always revalidate so a new build is picked up;
+		// hashed /assets/* are immutable and keep their default caching.
+		if strings.HasSuffix(full, "index.html") {
+			c.Header("Cache-Control", "no-cache")
+		}
 		c.File(full)
 		return
 	}
@@ -46,6 +51,9 @@ func routeSpa(c *gin.Context) {
 	asset := "/webapp/dist" + p
 	if !assetExists(asset) {
 		asset = "/webapp/dist/index.html"
+	}
+	if strings.HasSuffix(asset, "index.html") {
+		c.Header("Cache-Control", "no-cache")
 	}
 	f, err := OpenAsset(asset)
 	if err != nil {

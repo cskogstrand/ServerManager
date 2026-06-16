@@ -5,12 +5,17 @@
 // drop shadow so it stays legible over any preview photo.
 import { computed, ref, watch } from "vue";
 
-const props = defineProps<{
-  trackKey?: string | null;
-  config?: string | null;
-  // Set false for tiny thumbs where a layout overlay would just be noise.
-  overlay?: boolean;
-}>();
+// `overlay` defaults to true: a bare Boolean prop casts an absent attribute to
+// `false`, which would silently hide the layout everywhere it isn't passed.
+const props = withDefaults(
+  defineProps<{
+    trackKey?: string | null;
+    config?: string | null;
+    // Pass :overlay="false" for tiny thumbs where the layout would be noise.
+    overlay?: boolean;
+  }>(),
+  { overlay: true },
+);
 
 function url(kind: "preview" | "map" | "outline"): string {
   if (!props.trackKey) return "";
@@ -20,21 +25,27 @@ function url(kind: "preview" | "map" | "outline"): string {
 
 const previewUrl = computed(() => url("preview"));
 const previewOk = ref(true);
-const overlaySrc = ref("");
 
-// Reset both layers whenever the track changes; the overlay restarts at map.png.
+// Overlay layout asset: start at map.png, fall back to outline.png on error,
+// then give up. A plain computed (mirroring previewUrl) so it renders on first
+// paint with no reliance on a watch having fired.
+const overlayKind = ref<"map" | "outline" | "none">("map");
+const overlaySrc = computed(() =>
+  props.overlay === false || overlayKind.value === "none" ? "" : url(overlayKind.value),
+);
+
+// New track → restart the overlay at map.png and re-show the preview.
 watch(
   () => [props.trackKey, props.config],
   () => {
     previewOk.value = true;
-    overlaySrc.value = props.overlay === false ? "" : url("map");
+    overlayKind.value = "map";
   },
-  { immediate: true },
 );
 
 function onOverlayError() {
   // map.png missing → try outline.png; if that fails too, drop the overlay.
-  overlaySrc.value = overlaySrc.value.includes("/map/") ? url("outline") : "";
+  overlayKind.value = overlayKind.value === "map" ? "outline" : "none";
 }
 </script>
 
@@ -48,12 +59,17 @@ function onOverlayError() {
       class="size-full object-cover"
       @error="previewOk = false"
     />
+    <!-- Inline styles (not Tailwind arbitrary classes) so the overlay never
+         depends on JIT class generation — those arbitrary utilities weren't
+         landing in the global stylesheet. White silhouette + shadow reads on
+         any preview photo. -->
     <img
       v-if="overlaySrc"
       :src="overlaySrc"
       alt=""
       loading="lazy"
-      class="pointer-events-none absolute inset-[8%] size-[84%] object-contain opacity-90 invert brightness-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
+      class="pointer-events-none absolute object-contain"
+      style="inset: 8%; width: 84%; height: 84%; opacity: 0.9; filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));"
       @error="onOverlayError"
     />
   </div>

@@ -210,7 +210,14 @@ local speedWarning = 0
 -- (and on the centre of a single monitor too). Window is 340 wide, so offset by
 -- half that to centre the window itself. Replaces the upstream fixed
 -- vec2(1700, 100) origin that landed off-screen on single monitors.
-        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - 230, 100), vec2(460, 400))
+        local hudW = 460
+        -- SM helper: draw one line horizontally centred within the HUD width.
+        -- Measures with the current font, so push the font before calling.
+        local function centeredText(text, color)
+            ui.setCursor(vec2((hudW - ui.measureText(text).x) / 2, ui.getCursor().y))
+            if color then ui.textColored(text, color) else ui.text(text) end
+        end
+        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - hudW / 2, 100), vec2(hudW, 400))
         ui.beginOutline()
 
         ui.pushStyleVar(ui.StyleVar.Alpha, 1 - speedWarning)
@@ -221,17 +228,23 @@ local speedWarning = 0
         -- SM tweak: Huge font for the live score + combo so it reads at a glance.
         ui.pushFont(ui.Font.Huge)
         ui.offsetCursorY(20)
-        ui.text(math.floor(totalScore) .. " pts")
-        ui.sameLine(0, 20)
+        -- SM tweak: centre the score + combo together as one line.
+        local scoreText = math.floor(totalScore) .. " pts"
+        local comboText = math.floor(comboMeter) .. "x"
+        local comboGap = 20
+        local scoreLineW = ui.measureText(scoreText).x + comboGap + ui.measureText(comboText).x
+        ui.setCursor(vec2((hudW - scoreLineW) / 2, ui.getCursor().y))
+        ui.text(scoreText)
+        ui.sameLine(0, comboGap)
         ui.beginRotation()
-        ui.textColored(math.floor(comboMeter) .. "x", colorCombo)
+        ui.textColored(comboText, colorCombo)
         if comboMeter > 20 then
             ui.endRotation(math.sin(comboMeter / 180 * 3141.5) * 3 * math.lerpInvSat(comboMeter, 20, 30) + 90)
         end
-        -- SM tweak: Title font (was Main) so the secondary stats stay legible.
+        -- SM tweak: Title font (was Main) so the secondary stats stay legible, centred.
         ui.pushFont(ui.Font.Title)
-        ui.text("HighScore: " .. highestScore .. " pts")
-        ui.text("Last Run: " .. lastScore .. " pts")
+        centeredText("HighScore: " .. highestScore .. " pts")
+        centeredText("Last Run: " .. lastScore .. " pts")
         ui.popFont()
         ui.endOutline(rgbm(0, 0, 0, 0.3))
         
@@ -256,10 +269,11 @@ local speedWarning = 0
         ui.setCursor(startPos + vec2(0, 4 * 30))
         ui.pushStyleVar(ui.StyleVar.Alpha, speedWarning)
         ui.setCursorY(0)
-        -- SM tweak: Title font (was Main) for the speed prompt.
+        -- SM tweak: Title font (was Main) for the speed prompt, centred with the
+        -- 180px meter centred beneath it.
         ui.pushFont(ui.Font.Title)
-        ui.textColored("Keep speed above " .. requiredSpeed .. " km/h:", colorAccent)
-        speedMeter(ui.getCursor() + vec2(-9 * 0.5, 4 * 0.2))
+        centeredText("Keep speed above " .. requiredSpeed .. " km/h:", colorAccent)
+        speedMeter(vec2((hudW - 180) / 2, ui.getCursor().y + 4 * 0.2))
         ui.popFont()
         ui.popStyleVar()
 

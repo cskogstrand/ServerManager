@@ -26,11 +26,11 @@ const FIRST = ["Max", "Lewis", "Ana", "Kenji", "Sofia", "Diego", "Noa", "Petra",
 const LAST = ["Halvorsen", "Tanaka", "Rossi", "Müller", "Costa", "Andersen", "Dubois", "Novak", "Berg", "Okafor", "Reyes", "Lindqvist"];
 // Public, embeddable clips — purely to populate the video tiles in demo mode.
 const STREAMS = [
-  "https://www.youtube.com/embed/aqz-KE-bpKQ",
-  "https://www.youtube.com/embed/jNQXAC9IVRw",
-  "https://www.youtube.com/embed/BHACKCNDMW8",
-  "https://www.youtube.com/embed/Bey4XXJAqS8",
-  "https://www.youtube.com/embed/5qap5aO4i9A",
+  "https://www.youtube.com/embed/4Klfc2z9WEY",
+  "https://www.youtube.com/embed/6SG38HAcOkk",
+  "https://www.youtube.com/embed/vFr2VqolZ34",
+  "https://www.youtube.com/embed/Z8EjHfVZATU",
+  "https://www.youtube.com/embed/__bfWib8iMI",
 ];
 
 // Used until the real track meta resolves (and if a track has no map.ini).

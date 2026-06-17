@@ -349,8 +349,8 @@ func (inst *Instance) udpReceive() bool {
 		log.Print("ACSP_CHAT: " + strconv.Itoa(car) + "; " + msg)
 		// The drift HUD reports run scores over chat; pick them off and attach
 		// to the sending driver so the broadcast can show them.
-		if last, best, ok := parseDriftChat(msg); ok {
-			inst.driverDrift(car, last, best)
+		if live, score, best, ok := parseDriftChat(msg); ok {
+			inst.driverDrift(car, live, score, best)
 		}
 
 	case acspClientLoaded:

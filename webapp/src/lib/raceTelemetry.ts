@@ -68,6 +68,7 @@ export interface TimingRow {
   gapLabel: string;
   gapTone: GapTone;
   splinePct: number;
+  driftLive: number;
   driftLast: number;
   driftBest: number;
 }
@@ -97,6 +98,7 @@ export function computeRunningOrder(
     best_lap_ms: d.best_lap_ms,
     pos: posById.get(d.car_id),
     connected: d.connected,
+    driftLive: d.drift_live ?? 0,
     driftLast: d.drift_last ?? 0,
     driftBest: d.drift_best ?? 0,
   }));

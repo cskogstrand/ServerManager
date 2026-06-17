@@ -40,6 +40,8 @@ local comboProgress = 1
 local comboColor = 0
 local highestScore = 0
 local lastScore = 0
+-- SM: throttles the mid-run live-score chat line (see below).
+local driftSendTimer = 0
 local dangerouslySlowTimer = 0
 local carsState = {}
 local wheelsWarningTimeout = 0
@@ -89,8 +91,17 @@ function script.update(dt)
         if comboMeter > highestCombo then
             highestCombo = comboMeter
         end
+        -- SM: stream the live score to the server ~1x/sec so the broadcast
+        -- updates mid-run instead of only when the run ends. Stays under
+        -- AC/CSP chat flood limits (~1 msg/sec). best is max(completed-best,
+        -- current run) so the broadcast's Drift Best tracks in real time.
+        driftSendTimer = driftSendTimer + dt
+        if driftSendTimer >= 1.0 then
+            driftSendTimer = 0
+            ac.sendChatMessage("[DRIFT] live=" .. math.floor(totalScore) .. " best=" .. math.max(highestScore, math.floor(totalScore)))
+        end
     end
-    
+
     if player.speedKmh < requiredSpeed and slidingMult < 1 then
         if dangerouslySlowTimer > 2 then
             if totalScore > highestScore then
@@ -108,6 +119,7 @@ function script.update(dt)
             totalScore = 0
             comboMeter = 1
             comboProgress = 1
+            driftSendTimer = 0
         else
             if dangerouslySlowTimer == 0 then
                 addMessage("Get Going!", -1)

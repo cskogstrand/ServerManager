@@ -100,6 +100,8 @@ export function useBroadcastDemo(content: ContentStore) {
         d.drift_last = run;
         if (run > (d.drift_best ?? 0)) d.drift_best = run;
       }
+      // Live score ramps 0 → best across the lap, resetting each new run.
+      d.drift_live = Math.round((d.drift_best ?? 0) * a.phase);
       // Ellipse in image-fraction space, inverted through the AC projection so
       // mapPoint() lands each puck back on that fraction of the real map.
       const th = a.phase * Math.PI * 2;
@@ -161,6 +163,7 @@ export function useBroadcastDemo(content: ContentStore) {
         connected: true,
         drift_best: randInt(1500, 9000),
         drift_last: randInt(0, 6000),
+        drift_live: randInt(0, 4000),
       });
       anim.push({ phase: Math.random(), rate: 0.01 + Math.random() * 0.012 });
       // ~70% of the grid is "streaming"; the rest exercise the offline tile.

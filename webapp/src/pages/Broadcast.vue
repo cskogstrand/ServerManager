@@ -583,24 +583,21 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <!-- Standings + lap times -->
+              <!-- Drift servers swap the Gap/Lap racing rows for the live drift
+                   score; everyone else keeps the standings + lap times. -->
               <footer class="flex flex-col gap-1.5 border-t border-line/60 pt-3">
-                <div class="flex items-center justify-between">
-                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Gap</span>
-                  <span
-                      class="numerals text-lg font-semibold tracking-tight tabular-nums"
-                      :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
-                  >
-                    {{ card.row.gapLabel }}
-                  </span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Lap</span>
-                  <span class="numerals text-lg tabular-nums text-text">{{ card.row.laps }}</span>
-                </div>
                 <template v-if="isDrift">
                   <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Drift Best</span>
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Live</span>
+                    <span
+                        class="numerals text-lg font-semibold tabular-nums"
+                        :class="card.row.driftLive ? 'text-accent' : 'text-dim'"
+                    >
+                      {{ card.row.driftLive ? card.row.driftLive.toLocaleString() : "—" }}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Best</span>
                     <span
                         class="numerals text-lg font-semibold tabular-nums"
                         :class="card.row.driftBest ? 'text-accent' : 'text-dim'"
@@ -609,7 +606,7 @@ onBeforeUnmount(() => {
                     </span>
                   </div>
                   <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Drift Run</span>
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Last</span>
                     <span
                         class="numerals text-lg font-medium tabular-nums"
                         :class="card.row.driftLast ? 'text-text' : 'text-dim'"
@@ -619,6 +616,19 @@ onBeforeUnmount(() => {
                   </div>
                 </template>
                 <template v-else>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Gap</span>
+                    <span
+                        class="numerals text-lg font-semibold tracking-tight tabular-nums"
+                        :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
+                    >
+                      {{ card.row.gapLabel }}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Lap</span>
+                    <span class="numerals text-lg tabular-nums text-text">{{ card.row.laps }}</span>
+                  </div>
                   <div class="flex items-center justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
                     <span

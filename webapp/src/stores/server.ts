@@ -31,6 +31,7 @@ export interface DriverState {
   last_lap_ms: number;
   best_lap_ms: number;
   connected: boolean;
+  drift_live?: number;
   drift_last?: number;
   drift_best?: number;
 }

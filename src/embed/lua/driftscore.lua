@@ -1,7 +1,9 @@
 -- Vendored from https://github.com/SquireoH/assettoserver-lua-Driftscore (MIT).
 -- Client-side CSP Lua HUD served to players by Server Manager when "drift
 -- scoring" is enabled on an AssettoServer instance. Upstream is marked
--- in-development; this is a pinned copy. Do not edit by hand.
+-- in-development; this is a pinned copy carrying two local fixes (search
+-- "SM fix"): an orphaned ui.popFont() that aborted the whole HUD draw, and a
+-- fixed window position that landed off-screen on single monitors.
 --
 -- Simple drift script using some of the overtake script UI.
 -- The more you slide the more points you make.
@@ -203,12 +205,18 @@ local speedWarning = 0
                 ui.drawLine(ref + vec2(0, 0), ref + vec2(speed, 0), colorAccent, 4)
             end
         end
--- Changed Window position so that it is closer to the middle when using Triple screens. Need to figure a way to grab current resolution for better universal placement
-        ui.beginTransparentWindow("driftScore", vec2(1700, 100), vec2(1900, 400))
+-- SM fix: centre the HUD on the real screen width. windowSize.x spans all
+-- three displays on a triple setup, so x/2 lands on the middle screen's centre
+-- (and on the centre of a single monitor too). Window is 340 wide, so offset by
+-- half that to centre the window itself. Replaces the upstream fixed
+-- vec2(1700, 100) origin that landed off-screen on single monitors.
+        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - 170, 100), vec2(340, 400))
         ui.beginOutline()
 
         ui.pushStyleVar(ui.StyleVar.Alpha, 1 - speedWarning)
-        ui.popFont()
+        -- SM fix: removed an orphaned ui.popFont() here. No font was pushed yet,
+        -- so it underflowed the font stack and CSP aborted the rest of drawUI —
+        -- the score logic still ran (hence the chat/log line) but nothing drew.
         ui.popStyleVar()
         ui.pushFont(ui.Font.Title)
         ui.offsetCursorY(20)

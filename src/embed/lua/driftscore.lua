@@ -220,7 +220,10 @@ local speedWarning = 0
             ui.setCursor(vec2((hudW - ui.measureText(text).x) / 2, ui.getCursor().y))
             if color then ui.textColored(text, color) else ui.text(text) end
         end
-        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - hudW / 2, 100), vec2(hudW, 400))
+        -- SM tweak: sit on the LEFT of the middle monitor on a triple-screen
+        -- setup. windowSize.x spans all three displays, so the middle screen's
+        -- left edge is x/3; nudge in by 40px. Bump that margin to taste.
+        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 3 + 40, 100), vec2(hudW, 400))
         ui.beginOutline()
 
         ui.pushStyleVar(ui.StyleVar.Alpha, 1 - speedWarning)

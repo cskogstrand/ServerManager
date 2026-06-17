@@ -26,11 +26,11 @@ const FIRST = ["Max", "Lewis", "Ana", "Kenji", "Sofia", "Diego", "Noa", "Petra",
 const LAST = ["Halvorsen", "Tanaka", "Rossi", "Müller", "Costa", "Andersen", "Dubois", "Novak", "Berg", "Okafor", "Reyes", "Lindqvist"];
 // Public, embeddable clips — purely to populate the video tiles in demo mode.
 const STREAMS = [
-  "https://www.youtube.com/embed/4Klfc2z9WEY",
-  "https://www.youtube.com/embed/6SG38HAcOkk",
-  "https://www.youtube.com/embed/vFr2VqolZ34",
-  "https://www.youtube.com/embed/Z8EjHfVZATU",
-  "https://www.youtube.com/embed/__bfWib8iMI",
+  "https://www.youtube.com/embed/4Klfc2z9WEY?autoplay=1&mute=1&loop=1&playlist=4Klfc2z9WEY&controls=0&rel=0&modestbranding=1&playsinline=1",
+  "https://www.youtube.com/embed/6SG38HAcOkk?autoplay=1&mute=1&loop=1&playlist=6SG38HAcOkk&controls=0&rel=0&modestbranding=1&playsinline=1",
+  "https://www.youtube.com/embed/vFr2VqolZ34?autoplay=1&mute=1&loop=1&playlist=vFr2VqolZ34&controls=0&rel=0&modestbranding=1&playsinline=1",
+  "https://www.youtube.com/embed/Z8EjHfVZATU?autoplay=1&mute=1&loop=1&playlist=Z8EjHfVZATU&controls=0&rel=0&modestbranding=1&playsinline=1",
+  "https://www.youtube.com/embed/__bfWib8iMI?autoplay=1&mute=1&loop=1&playlist=__bfWib8iMI&controls=0&rel=0&modestbranding=1&playsinline=1",
 ];
 
 // Used until the real track meta resolves (and if a track has no map.ini).

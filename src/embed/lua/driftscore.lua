@@ -210,7 +210,7 @@ local speedWarning = 0
 -- (and on the centre of a single monitor too). Window is 340 wide, so offset by
 -- half that to centre the window itself. Replaces the upstream fixed
 -- vec2(1700, 100) origin that landed off-screen on single monitors.
-        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - 170, 100), vec2(340, 400))
+        ui.beginTransparentWindow("driftScore", vec2(uiState.windowSize.x / 2 - 230, 100), vec2(460, 400))
         ui.beginOutline()
 
         ui.pushStyleVar(ui.StyleVar.Alpha, 1 - speedWarning)
@@ -218,7 +218,8 @@ local speedWarning = 0
         -- so it underflowed the font stack and CSP aborted the rest of drawUI —
         -- the score logic still ran (hence the chat/log line) but nothing drew.
         ui.popStyleVar()
-        ui.pushFont(ui.Font.Title)
+        -- SM tweak: Huge font for the live score + combo so it reads at a glance.
+        ui.pushFont(ui.Font.Huge)
         ui.offsetCursorY(20)
         ui.text(math.floor(totalScore) .. " pts")
         ui.sameLine(0, 20)
@@ -227,7 +228,8 @@ local speedWarning = 0
         if comboMeter > 20 then
             ui.endRotation(math.sin(comboMeter / 180 * 3141.5) * 3 * math.lerpInvSat(comboMeter, 20, 30) + 90)
         end
-        ui.pushFont(ui.Font.Main)
+        -- SM tweak: Title font (was Main) so the secondary stats stay legible.
+        ui.pushFont(ui.Font.Title)
         ui.text("HighScore: " .. highestScore .. " pts")
         ui.text("Last Run: " .. lastScore .. " pts")
         ui.popFont()
@@ -254,7 +256,8 @@ local speedWarning = 0
         ui.setCursor(startPos + vec2(0, 4 * 30))
         ui.pushStyleVar(ui.StyleVar.Alpha, speedWarning)
         ui.setCursorY(0)
-        ui.pushFont(ui.Font.Main)
+        -- SM tweak: Title font (was Main) for the speed prompt.
+        ui.pushFont(ui.Font.Title)
         ui.textColored("Keep speed above " .. requiredSpeed .. " km/h:", colorAccent)
         speedMeter(ui.getCursor() + vec2(-9 * 0.5, 4 * 0.2))
         ui.popFont()

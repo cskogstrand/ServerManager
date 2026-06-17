@@ -624,6 +624,64 @@ func ensureAssettoServerCspExtraOptions(dir string, enable bool, scriptURL strin
 	}
 }
 
+// Sentinels delimiting the [EXTRA_RULES] block Server Manager owns in
+// csp_extra_options.ini. Independent of the drift-score [SCRIPT_n] block — both
+// can coexist; each function only rewrites/removes its own sentinel range.
+const (
+	rulesCspBlockStart = "; >>> Server Manager: extra rules (managed)"
+	rulesCspBlockEnd   = "; <<< Server Manager: extra rules (managed)"
+)
+
+// stripRulesCspBlock removes any previously-written managed extra-rules block
+// (including a leading blank-line run and trailing newline) so re-runs never
+// duplicate it.
+func stripRulesCspBlock(content string) string {
+	re := regexp.MustCompile(`(?s)\n*` + regexp.QuoteMeta(rulesCspBlockStart) + `.*?` + regexp.QuoteMeta(rulesCspBlockEnd) + `[ \t]*\n?`)
+	return re.ReplaceAllString(content, "")
+}
+
+// ensureAssettoServerExtraRules reconciles the [EXTRA_RULES] block in
+// cfg/csp_extra_options.ini. When allowWrongWay is set, CSP lets drivers go the
+// wrong way without the "back to pits" teleport/penalty (ALLOW_WRONG_WAY=1).
+// AssettoServer encodes this file into the CSP handshake and pushes it to
+// connecting clients; when disabled the managed block is stripped and, if the
+// file is left empty, removed. Only meaningful on the AssettoServer engine —
+// stock acServer ignores it. Coexists with the drift-score block.
+func ensureAssettoServerExtraRules(dir string, allowWrongWay bool) {
+	path := filepath.Join(dir, "cfg", "csp_extra_options.ini")
+	data, _ := os.ReadFile(path)
+	orig := string(data)
+
+	content := stripRulesCspBlock(orig)
+	if allowWrongWay {
+		block := rulesCspBlockStart + "\n" +
+			"[EXTRA_RULES]\nALLOW_WRONG_WAY = 1\n" +
+			rulesCspBlockEnd + "\n"
+		if base := strings.TrimRight(content, "\n"); base != "" {
+			content = base + "\n\n" + block
+		} else {
+			content = block
+		}
+	}
+
+	if strings.TrimSpace(content) == "" {
+		if len(data) > 0 {
+			os.Remove(path)
+		}
+		return
+	}
+	if content == orig {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Print("Could not create cfg dir for csp_extra_options.ini: ", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Print("Could not write csp_extra_options.ini: ", err)
+	}
+}
+
 // unlinkIfSymlink removes path only if it is a symlink, so the Kunos extraction
 // path recreates it as a real directory instead of writing through a leftover
 // AssettoServer symlink into the live install tree.

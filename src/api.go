@@ -612,6 +612,10 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 		// enable=false on a disabled instance removes any block from a prior run.
 		driftEnabled := inst.Conf.DriftScoreEnabled != nil && *inst.Conf.DriftScoreEnabled == 1
 		ensureAssettoServerCspExtraOptions(dir, driftEnabled, driftScriptURL(cfg))
+		// Disable (or restore) the CSP wrong-way "back to pits" teleport per the
+		// instance toggle. Stripped on a disabled instance to undo a prior run.
+		allowWrongWay := inst.Conf.AllowWrongWay != nil && *inst.Conf.AllowWrongWay == 1
+		ensureAssettoServerExtraRules(dir, allowWrongWay)
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
 		return true, nil
@@ -2308,6 +2312,7 @@ func apiInstances(c *gin.Context) {
 			"scheduled_start":    inst.Conf.ScheduledStart,
 			"start_on_boot":      inst.Conf.StartOnBoot,
 			"drift_score_enabled": inst.Conf.DriftScoreEnabled,
+			"allow_wrong_way":    inst.Conf.AllowWrongWay,
 			"stream_enabled":     inst.Conf.StreamEnabled,
 			"stream_embed_url":   inst.Conf.StreamEmbedUrl,
 			"stream_status_url":  inst.Conf.StreamStatusUrl,

@@ -89,6 +89,13 @@ export interface ServerInstance {
    * delivery channel).
    */
   drift_score_enabled?: number /* int */;
+  /**
+   * AllowWrongWay writes [EXTRA_RULES] ALLOW_WRONG_WAY=1 into csp_extra_options.ini,
+   * letting drivers go the wrong way without the CSP "back to pits" teleport.
+   * Only has an effect on the AssettoServer engine (it delivers the extra
+   * options via the CSP handshake; vanilla acServer ignores the file).
+   */
+  allow_wrong_way?: number /* int */;
 }
 export interface DriverStream {
   id?: number /* int */;

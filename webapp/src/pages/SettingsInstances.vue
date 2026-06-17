@@ -48,6 +48,7 @@ interface InstanceForm {
   plugin_listen_port: number | null;
   start_on_boot: boolean;
   drift_score_enabled: boolean;
+  allow_wrong_way: boolean;
   stream_enabled: boolean;
   stream_embed_url: string;
   stream_status_url: string;
@@ -111,6 +112,7 @@ function openCreate() {
       nextFree([...list.map((i) => i.plugin_port), ...list.map((i) => i.plugin_listen_port)], 5000) + 1,
     start_on_boot: false,
     drift_score_enabled: false,
+    allow_wrong_way: false,
     stream_enabled: false,
     stream_embed_url: "",
     stream_status_url: "",
@@ -135,6 +137,7 @@ function openEdit(inst: InstanceState) {
     plugin_listen_port: inst.plugin_listen_port,
     start_on_boot: inst.start_on_boot === 1,
     drift_score_enabled: inst.drift_score_enabled === 1,
+    allow_wrong_way: inst.allow_wrong_way === 1,
     stream_enabled: inst.stream_enabled === 1,
     stream_embed_url: inst.stream_embed_url ?? "",
     stream_status_url: inst.stream_status_url ?? "",
@@ -174,6 +177,7 @@ const save = () =>
       plugin_listen_port: f.plugin_listen_port,
       start_on_boot: f.start_on_boot ? 1 : 0,
       drift_score_enabled: f.drift_score_enabled ? 1 : 0,
+      allow_wrong_way: f.allow_wrong_way ? 1 : 0,
       stream_enabled: f.stream_enabled ? 1 : 0,
       stream_embed_url: f.stream_embed_url,
       stream_status_url: f.stream_status_url,
@@ -425,6 +429,10 @@ const removeDriverStream = (stream: DriverStream) =>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.drift_score_enabled" label="Enable drift scoring HUD" />
         <p class="mt-1 text-xs text-dim">Serves a CSP Lua drift-score overlay to players. Requires the AssettoServer engine and CSP on the client; players without CSP simply won't see it.</p>
+      </div>
+      <div class="mt-2 border-t border-line pt-4">
+        <Toggle v-model="form.allow_wrong_way" label="Allow driving the wrong way" />
+        <p class="mt-1 text-xs text-dim">Writes <code>ALLOW_WRONG_WAY</code> to the CSP extra rules so drivers can go the opposite direction without being teleported back to the pits. Requires the AssettoServer engine and CSP on the client.</p>
       </div>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.stream_enabled" label="Show fixed spectator stream on dashboard" />

@@ -27,6 +27,7 @@ const libraryLoading = ref(true);
 
 onMounted(() => {
   content.load().finally(() => (libraryLoading.value = false));
+  void content.loadImageStats();
 });
 
 // --- Delete content (removes from disk + cache) ---
@@ -152,6 +153,10 @@ function upload() {
       toast.success("Upload accepted — import progress shows below.");
       file.value = null;
       archiveUrl.value = "";
+      // Synchronous (file) imports auto-compress before responding; async (URL)
+      // imports refresh again on job completion. Bust image URLs either way.
+      void content.loadImageStats();
+      content.bumpImageVersion();
     } else {
       toast.error(xhr.response?.message ?? xhr.response?.error?.message ?? "Upload failed.");
     }
@@ -159,13 +164,46 @@ function upload() {
   xhr.send(data);
 }
 
+const recaching = ref(false);
+const compressing = ref(false);
+
 async function recache() {
+  recaching.value = true;
   try {
-    await api.post("/api/content/recache");
+    const r = await api.post<{ cached_images: number }>("/api/content/recache");
     await content.load(true);
+    content.cachedImages = r.cached_images ?? content.cachedImages;
     toast.success("Content cache rebuilt.");
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    recaching.value = false;
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+// Downscale + re-encode all car/track preview images into the DB cache, which
+// the image endpoints then serve in preference to the full-size originals.
+async function compressImages() {
+  compressing.value = true;
+  try {
+    const r = await api.post<{ images: number; cached: number; src_bytes: number; out_bytes: number }>(
+      "/api/content/compress",
+    );
+    content.cachedImages = r.cached;
+    content.bumpImageVersion();
+    const saved = Math.max(0, r.src_bytes - r.out_bytes);
+    toast.success(`Compressed ${r.images} images — saved ${formatBytes(saved)}.`);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    compressing.value = false;
   }
 }
 
@@ -190,7 +228,21 @@ function jobTone(status: string) {
     title="Content"
     subtitle="Browse installed tracks, cars, and weather; upload, delete, or rebuild the content cache."
     icon="content"
-  />
+  >
+    <!-- Global content actions — apply across tracks, cars and weather, so they
+         live here rather than inside the library's tab selector. -->
+    <template #actions>
+      <span class="text-xs text-dim">{{ content.cachedImages }} images cached</span>
+      <Button variant="dark" :disabled="recaching || compressing" @click="recache">
+        <Icon name="repeat" :size="15" />
+        {{ recaching ? "Rebuilding…" : "Rebuild cache" }}
+      </Button>
+      <Button variant="dark" :disabled="recaching || compressing" @click="compressImages">
+        <Icon name="minimize" :size="15" />
+        {{ compressing ? "Compressing…" : "Compress images" }}
+      </Button>
+    </template>
+  </PageHeader>
 
   <div class="grid items-start gap-5 xl:grid-cols-[1fr_360px]">
     <!-- Library -->
@@ -247,7 +299,7 @@ function jobTone(status: string) {
         <div v-for="c in filteredCars" :key="c.key" class="group relative overflow-hidden rounded-md border border-line">
           <img
             v-if="c.skins?.length"
-            :src="`/api/car/image/${c.key}/${c.skins[0].key}`"
+            :src="`/api/car/image/${c.key}/${c.skins[0].key}?v=${content.imageVersion}`"
             alt=""
             loading="lazy"
             class="aspect-video w-full object-cover"
@@ -341,7 +393,6 @@ function jobTone(status: string) {
           <Button :disabled="uploading" @click="upload">
             {{ uploading ? `Uploading ${uploadProgress}%` : "Upload" }}
           </Button>
-          <Button variant="dark" @click="recache">Rebuild cache</Button>
         </div>
       </Card>
 

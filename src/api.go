@@ -325,6 +325,8 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 		return
 	}
 
+	autoCompressImported(kind, result.AssetKeys)
+
 	ContentJobs.Update(jobID, func(job *ContentJob) {
 		job.Status = "completed"
 		job.Phase = "completed"
@@ -684,6 +686,18 @@ func safeSegment(s string) bool {
 	return !strings.ContainsAny(s, `/\`)
 }
 
+// serveCachedImage serves a downscaled image from cache_image (populated by the
+// "Compress images" action) and returns true when it handled the response.
+// Tried before disk/zip so the UI gets the small copy when one exists.
+func serveCachedImage(c *gin.Context, kind, key, config, variant string) bool {
+	contentType, data, ok := Dba.selectCacheImage(kind, key, config, variant)
+	if !ok {
+		return false
+	}
+	c.Data(http.StatusOK, contentType, data)
+	return true
+}
+
 // serveContentDiskFile serves the first existing file from the live install
 // directory; returns true if it handled the response. Lets previews work
 // straight from the AC content tree without rebuilding smcontent.zip.
@@ -832,6 +846,10 @@ func apiCarImage(c *gin.Context) {
 		return
 	}
 
+	if serveCachedImage(c, "car", car, skin, "preview") {
+		return
+	}
+
 	// Disk first: not every skin ships preview.jpg — fall back to png/livery.
 	if serveContentDiskFile(c, [][]string{
 		{"cars", car, "skins", skin, "preview.jpg"},
@@ -897,6 +915,10 @@ func apiTrackPreviewImage(c *gin.Context) {
 		return
 	}
 
+	if serveCachedImage(c, "track", track, config, "preview") {
+		return
+	}
+
 	if config != "" {
 		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "preview.png"}}) {
 			return
@@ -923,6 +945,10 @@ func apiTrackOutlineImage(c *gin.Context) {
 		return
 	}
 
+	if serveCachedImage(c, "track", track, config, "outline") {
+		return
+	}
+
 	if config != "" {
 		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "outline.png"}}) {
 			return
@@ -946,6 +972,10 @@ func apiTrackMapImage(c *gin.Context) {
 	}
 	if !safeSegment(track) || (config != "" && !safeSegment(config)) {
 		noRoute(c)
+		return
+	}
+
+	if serveCachedImage(c, "track", track, config, "map") {
 		return
 	}
 
@@ -1114,12 +1144,44 @@ func apiRecacheContent(c *gin.Context) {
 		})
 		return
 	}
+	cached, _ := Dba.countCacheImages()
 	c.PureJSON(http.StatusOK, gin.H{
 		"result":         "ok",
 		"tracks_total":   counts.Tracks,
 		"cars_total":     counts.Cars,
 		"weathers_total": counts.Weathers,
+		"cached_images":  cached,
 	})
+}
+
+func apiCompressImages(c *gin.Context) {
+	stats, err := compressAllContentImages(Dba)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	cached, _ := Dba.countCacheImages()
+	c.PureJSON(http.StatusOK, gin.H{
+		"result":    "ok",
+		"images":    stats.Images,
+		"cached":    cached,
+		"src_bytes": stats.SrcBytes,
+		"out_bytes": stats.OutBytes,
+	})
+}
+
+// apiContentImageCount reports how many compressed previews are currently
+// cached, so the UI can show the count without triggering a recompress.
+func apiContentImageCount(c *gin.Context) {
+	cached, err := Dba.countCacheImages()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"cached": cached})
 }
 
 // safeContentKey rejects keys that could escape the content directory. Cache
@@ -1165,12 +1227,22 @@ func deleteContentItem(c *gin.Context, kind, key string, dropRows func() error) 
 
 func apiTrackDelete(c *gin.Context) {
 	key := c.Param("key")
-	deleteContentItem(c, "tracks", key, func() error { return Dba.deleteCacheTrack(key) })
+	deleteContentItem(c, "tracks", key, func() error {
+		if err := Dba.deleteCacheImagesForKey("track", key); err != nil {
+			return err
+		}
+		return Dba.deleteCacheTrack(key)
+	})
 }
 
 func apiCarDelete(c *gin.Context) {
 	key := c.Param("key")
-	deleteContentItem(c, "cars", key, func() error { return Dba.deleteCacheCar(key) })
+	deleteContentItem(c, "cars", key, func() error {
+		if err := Dba.deleteCacheImagesForKey("car", key); err != nil {
+			return err
+		}
+		return Dba.deleteCacheCar(key)
+	})
 }
 
 func apiWeatherDelete(c *gin.Context) {
@@ -1314,6 +1386,9 @@ func apiContentUpload(c *gin.Context) {
 		return
 	}
 
+	autoCompressImported(kind, result.AssetKeys)
+	cached, _ := Dba.countCacheImages()
+
 	c.PureJSON(http.StatusOK, gin.H{
 		"success":        true,
 		"async":          false,
@@ -1325,8 +1400,23 @@ func apiContentUpload(c *gin.Context) {
 		"tracks_total":   counts.Tracks,
 		"cars_total":     counts.Cars,
 		"weathers_total": counts.Weathers,
+		"cached_images":  cached,
 		"message":        fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), kind, strings.Join(result.AssetKeys, ", ")),
 	})
+}
+
+// autoCompressImported compresses just the freshly imported assets so their
+// previews load fast immediately, without re-processing the whole library.
+// Best-effort: failures are logged, never surfaced as an import error.
+func autoCompressImported(kind string, keys []string) {
+	stats, err := compressContentImagesForKeys(Dba, kind, keys)
+	if err != nil {
+		log.Print("Could not auto-compress imported images: ", err)
+		return
+	}
+	if stats.Images > 0 {
+		log.Printf("Auto-compressed %d imported images (%d -> %d bytes)", stats.Images, stats.SrcBytes, stats.OutBytes)
+	}
 }
 
 func apiValidateInstallpath(c *gin.Context) {

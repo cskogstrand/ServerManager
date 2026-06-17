@@ -40,6 +40,22 @@ CREATE TABLE IF NOT EXISTS cache_weather (
   name TEXT NOT NULL
 );
 
+-- Downscaled + re-encoded preview images, populated on demand by the
+-- "Compress images" action. Served in preference to the full-size files on
+-- disk/in smcontent.zip so the UI loads fast. Keyed so a row matches one
+-- content item: kind ('car'|'track'), key (car/track folder), config (skin key
+-- for cars, layout config for tracks; '' when none), variant ('preview' for
+-- cars; 'preview'|'outline'|'map' for tracks).
+CREATE TABLE IF NOT EXISTS cache_image (
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  config TEXT NOT NULL DEFAULT '',
+  variant TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  data BLOB NOT NULL,
+  PRIMARY KEY (kind, key, config, variant)
+);
+
 CREATE TABLE IF NOT EXISTS user_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT,

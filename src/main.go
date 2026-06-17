@@ -254,6 +254,8 @@ func main() {
 		api.DELETE("/users/:name", apiUserDelete)
 
 		api.POST("/content/recache", apiRecacheContent)
+		api.POST("/content/compress", apiCompressImages)
+		api.GET("/content/images/count", apiContentImageCount)
 		api.GET("/content/jobs/active", apiContentJobsActive)
 		api.GET("/content/jobs/:id", apiContentJob)
 		api.POST("/content/upload", apiContentUpload)

@@ -4,6 +4,9 @@
 // schematic outline (outline.png); it's rendered as a white silhouette with a
 // drop shadow so it stays legible over any preview photo.
 import { computed, ref, watch } from "vue";
+import { useContentStore } from "@/stores/content";
+
+const content = useContentStore();
 
 // `overlay` defaults to true: a bare Boolean prop casts an absent attribute to
 // `false`, which would silently hide the layout everywhere it isn't passed.
@@ -20,7 +23,7 @@ const props = withDefaults(
 function url(kind: "preview" | "map" | "outline"): string {
   if (!props.trackKey) return "";
   const cfg = props.config ? `/${encodeURIComponent(props.config)}` : "";
-  return `/api/track/${kind}/${encodeURIComponent(props.trackKey)}${cfg}`;
+  return `/api/track/${kind}/${encodeURIComponent(props.trackKey)}${cfg}?v=${content.imageVersion}`;
 }
 
 const previewUrl = computed(() => url("preview"));

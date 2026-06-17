@@ -27,6 +27,11 @@ export const useContentStore = defineStore("content", {
     weathers: [] as CacheWeather[],
     loaded: false,
     jobs: {} as Record<string, ContentJob>,
+    // Bumped after re-compressing images; appended to image URLs as a cache
+    // buster so freshly compressed previews replace the ones the browser cached.
+    imageVersion: 0,
+    // Number of compressed previews currently stored in the DB image cache.
+    cachedImages: 0,
   }),
 
   getters: {
@@ -57,8 +62,22 @@ export const useContentStore = defineStore("content", {
       const job = event.data as ContentJob;
       if (!job?.id) return;
       this.jobs[job.id] = job;
-      // A finished import means new content — refresh the caches
-      if (job.status === "completed") void this.load(true);
+      // A finished import means new content (already auto-compressed on the
+      // server) — refresh the caches, the cached-image count, and bust URLs.
+      if (job.status === "completed") {
+        void this.load(true);
+        void this.loadImageStats();
+        this.imageVersion++;
+      }
+    },
+
+    bumpImageVersion() {
+      this.imageVersion++;
+    },
+
+    async loadImageStats() {
+      const r = await api.get<{ cached: number }>("/api/content/images/count");
+      this.cachedImages = r.cached;
     },
 
     carByKey(key: string | undefined | null): CacheCar | undefined {

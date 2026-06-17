@@ -2011,6 +2011,53 @@ func (dba Dbaccess) selectCacheCar(carkey string) (CacheCar, error) {
 	return car, nil
 }
 
+// upsertCacheImage stores (or replaces) one compressed preview image. The
+// composite primary key means re-running compression overwrites in place.
+func (dba Dbaccess) upsertCacheImage(kind, key, config, variant, contentType string, data []byte) error {
+	_, err := dba.db.Exec(
+		`INSERT INTO cache_image (kind, key, config, variant, content_type, data)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(kind, key, config, variant)
+		 DO UPDATE SET content_type = excluded.content_type, data = excluded.data`,
+		kind, key, config, variant, contentType, data)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
+// selectCacheImage returns the compressed image for one content item, or ok=false
+// when none has been generated yet (callers fall back to disk/zip).
+func (dba Dbaccess) selectCacheImage(kind, key, config, variant string) (string, []byte, bool) {
+	var contentType string
+	var data []byte
+	err := dba.db.QueryRow(
+		"SELECT content_type, data FROM cache_image WHERE kind = ? AND key = ? AND config = ? AND variant = ? LIMIT 1",
+		kind, key, config, variant).Scan(&contentType, &data)
+	if err != nil {
+		return "", nil, false
+	}
+	return contentType, data, true
+}
+
+func (dba Dbaccess) countCacheImages() (int, error) {
+	var n int
+	if err := dba.db.QueryRow("SELECT COUNT(*) FROM cache_image").Scan(&n); err != nil {
+		return 0, tracerr.Wrap(err)
+	}
+	return n, nil
+}
+
+// deleteCacheImagesForKey drops every cached image of a content item, used when
+// the item itself is deleted from disk.
+func (dba Dbaccess) deleteCacheImagesForKey(kind, key string) error {
+	_, err := dba.db.Exec("DELETE FROM cache_image WHERE kind = ? AND key = ?", kind, key)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
 func (dba Dbaccess) updateCacheTracks(tracks []CacheTrack) (int64, error) {
 	for _, track := range tracks {
 

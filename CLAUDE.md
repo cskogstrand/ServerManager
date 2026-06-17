@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Server Manager (SM)** is a web-based control panel for managing Assetto Corsa dedicated racing servers. It is a single Go binary with the Vue SPA, schema, INI templates, and static assets embedded at build time. The web UI runs on `http://localhost:3030`.
 
+## Environment Note (read first)
+
+The **Go toolchain is NOT installed in the Claude Code environment.** Do not search the filesystem for a `go` binary and do not try to run `go`, `make build`, `make run`, or `make test` locally — they will fail. The user builds and runs the app in Docker. To verify Go changes, ask the user to run the build/tests in their Docker environment. Frontend (`npm`/Vite) IS available, so `cd webapp && npm run build` can be used to type-check and build the SPA.
+
 ## Commands
 
 All build and dev commands go through `make`:

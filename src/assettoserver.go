@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -542,6 +543,85 @@ func setIgnoreConfigError(content, key, value string) string {
 		content += "\n"
 	}
 	return content + "IgnoreConfigurationErrors:\n" + line + "\n"
+}
+
+// Sentinels delimiting the csp_extra_options.ini block Server Manager owns.
+// Everything between them is rewritten/removed by the drift-score toggle;
+// operator-authored content outside the block is never touched.
+const (
+	driftCspBlockStart = "; >>> Server Manager: drift score (managed)"
+	driftCspBlockEnd   = "; <<< Server Manager: drift score (managed)"
+)
+
+// driftScriptURL is the public URL CSP clients fetch the vendored drift-score
+// HUD from. It reuses the same public base players already use for mod
+// downloads (admin-configured value, else the detected public IP on the web
+// port), so it carries the same reachability requirement: SM's web port must be
+// reachable by joining clients.
+func driftScriptURL(cfg UserConfig) string {
+	return modDownloadBaseURL(cfg) + "/static/lua/driftscore.lua"
+}
+
+// stripDriftCspBlock removes any previously-written managed block (including a
+// leading blank-line run and trailing newline) so re-runs never duplicate it.
+func stripDriftCspBlock(content string) string {
+	re := regexp.MustCompile(`(?s)\n*` + regexp.QuoteMeta(driftCspBlockStart) + `.*?` + regexp.QuoteMeta(driftCspBlockEnd) + `[ \t]*\n?`)
+	return re.ReplaceAllString(content, "")
+}
+
+// nextCspScriptIndex returns one past the highest [SCRIPT_n] index already in
+// content, so the managed block never collides with operator scripts. Defaults
+// to 1 when there are none.
+func nextCspScriptIndex(content string) int {
+	re := regexp.MustCompile(`(?mi)^\s*\[SCRIPT_(\d+)\]`)
+	max := 0
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > max {
+			max = n
+		}
+	}
+	return max + 1
+}
+
+// ensureAssettoServerCspExtraOptions reconciles cfg/csp_extra_options.ini so the
+// drift-score CSP Lua script is served to clients when enabled. AssettoServer
+// encodes this file into the handshake and pushes it to connecting CSP clients;
+// the [SCRIPT_n] entry tells CSP to load the HUD from scriptURL. When disabled
+// the managed block is stripped; if nothing else remains the file is removed.
+// Only meaningful on the AssettoServer engine — stock acServer ignores it.
+func ensureAssettoServerCspExtraOptions(dir string, enable bool, scriptURL string) {
+	path := filepath.Join(dir, "cfg", "csp_extra_options.ini")
+	data, _ := os.ReadFile(path)
+	orig := string(data)
+
+	content := stripDriftCspBlock(orig)
+	if enable {
+		block := driftCspBlockStart + "\n" +
+			fmt.Sprintf("[SCRIPT_%d]\nSCRIPT = '%s'\n", nextCspScriptIndex(content), scriptURL) +
+			driftCspBlockEnd + "\n"
+		if base := strings.TrimRight(content, "\n"); base != "" {
+			content = base + "\n\n" + block
+		} else {
+			content = block
+		}
+	}
+
+	if strings.TrimSpace(content) == "" {
+		if len(data) > 0 {
+			os.Remove(path)
+		}
+		return
+	}
+	if content == orig {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Print("Could not create cfg dir for csp_extra_options.ini: ", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Print("Could not write csp_extra_options.ini: ", err)
+	}
 }
 
 // unlinkIfSymlink removes path only if it is a symlink, so the Kunos extraction

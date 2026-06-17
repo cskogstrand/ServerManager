@@ -131,6 +131,9 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("server_instance", "start_on_boot", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		log.Fatal("Error applying database migration for server_instance.start_on_boot: ", err)
 	}
+	if err := dba.ensureColumn("server_instance", "drift_score_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		log.Fatal("Error applying database migration for server_instance.drift_score_enabled: ", err)
+	}
 	if err := dba.ensureColumn("user_event", "name", "TEXT"); err != nil {
 		log.Fatal("Error applying database migration for user_event.name: ", err)
 	}
@@ -1603,7 +1606,7 @@ SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port,
        run_mode, repeat_event_id, scheduled_start,
        stream_enabled, stream_embed_url, stream_status_url,
        spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key,
-       start_on_boot
+       start_on_boot, drift_score_enabled
 FROM server_instance
 ORDER BY id ASC`)
 	if err != nil {
@@ -1619,7 +1622,7 @@ ORDER BY id ASC`)
 			&si.RunMode, &si.RepeatEventId, &si.ScheduledStart,
 			&si.StreamEnabled, &si.StreamEmbedUrl, &si.StreamStatusUrl,
 			&si.SpectatorEnabled, &si.SpectatorName, &si.SpectatorGuid, &si.SpectatorCarKey, &si.SpectatorSkinKey,
-			&si.StartOnBoot,
+			&si.StartOnBoot, &si.DriftScoreEnabled,
 		)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
@@ -1639,8 +1642,8 @@ INSERT INTO server_instance (
   name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled,
   stream_enabled, stream_embed_url, stream_status_url,
   spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key,
-  start_on_boot
-) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  start_on_boot, drift_score_enabled
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -1650,7 +1653,7 @@ INSERT INTO server_instance (
 		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
 		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
 		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
-		si.StartOnBoot,
+		si.StartOnBoot, si.DriftScoreEnabled,
 	)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
@@ -1665,7 +1668,7 @@ UPDATE server_instance
 SET name = ?, udp_port = ?, tcp_port = ?, http_port = ?, plugin_port = ?, plugin_listen_port = ?,
     stream_enabled = ?, stream_embed_url = ?, stream_status_url = ?,
     spectator_enabled = ?, spectator_driver_name = ?, spectator_guid = ?, spectator_car_key = ?, spectator_skin_key = ?,
-    start_on_boot = ?
+    start_on_boot = ?, drift_score_enabled = ?
 WHERE id = ?`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
@@ -1676,7 +1679,7 @@ WHERE id = ?`)
 		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
 		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
 		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
-		si.StartOnBoot,
+		si.StartOnBoot, si.DriftScoreEnabled,
 		si.Id,
 	)
 	if err != nil {

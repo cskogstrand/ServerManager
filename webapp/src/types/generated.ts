@@ -83,6 +83,12 @@ export interface ServerInstance {
    * StartOnBoot auto-starts this instance from its queue when SM launches.
    */
   start_on_boot?: number /* int */;
+  /**
+   * DriftScoreEnabled serves the drift-score CSP Lua HUD to clients. Only has
+   * an effect on the AssettoServer engine (vanilla acServer has no CSP-script
+   * delivery channel).
+   */
+  drift_score_enabled?: number /* int */;
 }
 export interface DriverStream {
   id?: number /* int */;

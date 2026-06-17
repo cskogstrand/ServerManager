@@ -266,7 +266,8 @@ CREATE TABLE IF NOT EXISTS server_instance (
   spectator_guid TEXT,
   spectator_car_key TEXT,
   spectator_skin_key TEXT,
-  start_on_boot INTEGER NOT NULL DEFAULT 0
+  start_on_boot INTEGER NOT NULL DEFAULT 0,
+  drift_score_enabled INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS driver_stream (

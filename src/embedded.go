@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-//go:embed embed/schema.sql embed/favicon.ico embed/ini embed/webapp
+//go:embed embed/schema.sql embed/favicon.ico embed/ini embed/lua embed/webapp
 var embeddedAssets embed.FS
 
 func assetPath(filePath string) string {

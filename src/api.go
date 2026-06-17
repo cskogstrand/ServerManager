@@ -608,6 +608,10 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 			trackName = *inst.Cr.track.Name
 		}
 		ensureAssettoServerTrackParams(dir, trackKey, trackName)
+		// Serve (or strip) the drift-score CSP Lua HUD per the instance toggle.
+		// enable=false on a disabled instance removes any block from a prior run.
+		driftEnabled := inst.Conf.DriftScoreEnabled != nil && *inst.Conf.DriftScoreEnabled == 1
+		ensureAssettoServerCspExtraOptions(dir, driftEnabled, driftScriptURL(cfg))
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
 		return true, nil
@@ -2303,6 +2307,7 @@ func apiInstances(c *gin.Context) {
 			"repeat_event":       repeatEvent,
 			"scheduled_start":    inst.Conf.ScheduledStart,
 			"start_on_boot":      inst.Conf.StartOnBoot,
+			"drift_score_enabled": inst.Conf.DriftScoreEnabled,
 			"stream_enabled":     inst.Conf.StreamEnabled,
 			"stream_embed_url":   inst.Conf.StreamEmbedUrl,
 			"stream_status_url":  inst.Conf.StreamStatusUrl,

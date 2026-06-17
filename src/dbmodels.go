@@ -84,6 +84,10 @@ type ServerInstance struct {
 	ScheduledStart *int64 `json:"scheduled_start" form:"scheduled_start"`
 	// StartOnBoot auto-starts this instance from its queue when SM launches.
 	StartOnBoot *int `json:"start_on_boot" form:"start_on_boot"`
+	// DriftScoreEnabled serves the drift-score CSP Lua HUD to clients. Only has
+	// an effect on the AssettoServer engine (vanilla acServer has no CSP-script
+	// delivery channel).
+	DriftScoreEnabled *int `json:"drift_score_enabled" form:"drift_score_enabled"`
 }
 
 type DriverStream struct {

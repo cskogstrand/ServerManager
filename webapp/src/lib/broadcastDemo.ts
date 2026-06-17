@@ -95,6 +95,10 @@ export function useBroadcastDemo(content: ContentStore) {
         // Lap completed: bump the counter and post a fresh "last lap".
         d.laps += 1;
         d.last_lap_ms = d.best_lap_ms + randInt(0, 3500);
+        // Simulate a fresh drift run so the broadcast panel animates in debug.
+        const run = randInt(0, 7000);
+        d.drift_last = run;
+        if (run > (d.drift_best ?? 0)) d.drift_best = run;
       }
       // Ellipse in image-fraction space, inverted through the AC projection so
       // mapPoint() lands each puck back on that fraction of the real map.
@@ -155,6 +159,8 @@ export function useBroadcastDemo(content: ContentStore) {
         last_lap_ms: best + randInt(0, 4000),
         best_lap_ms: best,
         connected: true,
+        drift_best: randInt(1500, 9000),
+        drift_last: randInt(0, 6000),
       });
       anim.push({ phase: Math.random(), rate: 0.01 + Math.random() * 0.012 });
       // ~70% of the grid is "streaming"; the rest exercise the offline tile.

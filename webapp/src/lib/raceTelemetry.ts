@@ -68,6 +68,8 @@ export interface TimingRow {
   gapLabel: string;
   gapTone: GapTone;
   splinePct: number;
+  driftLast: number;
+  driftBest: number;
 }
 
 // Order the field and label each car's gap to the leader.
@@ -95,6 +97,8 @@ export function computeRunningOrder(
     best_lap_ms: d.best_lap_ms,
     pos: posById.get(d.car_id),
     connected: d.connected,
+    driftLast: d.drift_last ?? 0,
+    driftBest: d.drift_best ?? 0,
   }));
 
   const isRace = sessionType === 3;

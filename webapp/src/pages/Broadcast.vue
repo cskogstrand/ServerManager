@@ -73,6 +73,9 @@ const positions = computed(() => (debug.value ? demo.positions.value : (inst.val
 const session = computed(() => (debug.value ? demo.session.value : (inst.value?.session ?? null)));
 const telemetry = computed(() => inst.value?.telemetry ?? null);
 const running = computed(() => (debug.value ? true : (inst.value?.running ?? false)));
+// Drift servers swap the lap-time rows for drift scores. Demo always shows the
+// drift layout so it can be previewed without a live drift instance.
+const isDrift = computed(() => (debug.value ? true : inst.value?.drift_score_enabled === 1));
 
 const telemetryOnline = computed(() => (debug.value ? true : !!telemetry.value?.udp_online));
 
@@ -595,24 +598,46 @@ onBeforeUnmount(() => {
                   <span class="font-mono text-xs tracking-wider text-dim uppercase">Lap</span>
                   <span class="numerals text-lg tabular-nums text-text">{{ card.row.laps }}</span>
                 </div>
-                <div class="flex items-center justify-between">
-                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
-                  <span
-                      class="numerals text-lg font-medium tabular-nums"
-                      :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'"
-                  >
-                    {{ lapTime(card.row.last_lap_ms) }}
-                  </span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="font-mono text-xs tracking-wider text-dim uppercase">Best Lap</span>
-                  <span
-                      class="numerals text-lg font-semibold tabular-nums"
-                      :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'"
-                  >
-                    {{ lapTime(card.row.best_lap_ms) }}
-                  </span>
-                </div>
+                <template v-if="isDrift">
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Drift Best</span>
+                    <span
+                        class="numerals text-lg font-semibold tabular-nums"
+                        :class="card.row.driftBest ? 'text-accent' : 'text-dim'"
+                    >
+                      {{ card.row.driftBest ? card.row.driftBest.toLocaleString() : "—" }}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Drift Run</span>
+                    <span
+                        class="numerals text-lg font-medium tabular-nums"
+                        :class="card.row.driftLast ? 'text-text' : 'text-dim'"
+                    >
+                      {{ card.row.driftLast ? card.row.driftLast.toLocaleString() : "—" }}
+                    </span>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
+                    <span
+                        class="numerals text-lg font-medium tabular-nums"
+                        :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'"
+                    >
+                      {{ lapTime(card.row.last_lap_ms) }}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Best Lap</span>
+                    <span
+                        class="numerals text-lg font-semibold tabular-nums"
+                        :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'"
+                    >
+                      {{ lapTime(card.row.best_lap_ms) }}
+                    </span>
+                  </div>
+                </template>
               </footer>
             </div>
 

@@ -100,6 +100,9 @@ function script.update(dt)
             end
             if totalScore > 0 then
                 lastScore = math.floor(totalScore)
+                -- SM: report the finished run to the server (parsed by the
+                -- manager's chat handler) so drift scores show on the broadcast.
+                ac.sendChatMessage("[DRIFT] last=" .. lastScore .. " best=" .. highestScore)
             end
 
             totalScore = 0

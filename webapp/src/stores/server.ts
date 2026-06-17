@@ -31,6 +31,8 @@ export interface DriverState {
   last_lap_ms: number;
   best_lap_ms: number;
   connected: boolean;
+  drift_last?: number;
+  drift_best?: number;
 }
 
 export interface CarPositionState {

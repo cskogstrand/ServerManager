@@ -229,7 +229,7 @@ function isRealMedia(m: MediaItem): boolean {
         <!-- avatar + identity -->
         <div class="flex items-center gap-4">
           <div class="relative">
-            <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="185" radius="lg" />
+            <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="137" radius="lg" />
             <button
               v-if="auth.canOperate"
               type="button"

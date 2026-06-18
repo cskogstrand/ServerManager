@@ -6,6 +6,7 @@
 // frontend change.
 import { api, ApiError } from "@/lib/api";
 import { lapTime } from "@/lib/raceTelemetry";
+import { useContentStore } from "@/stores/content";
 import type { CarRef, DriverDetail, DriverResult, DriverSummary, MediaItem, TrackRef } from "@/types/driverStats";
 
 // ---- formatting helpers -----------------------------------------------------
@@ -75,11 +76,20 @@ export function describeResult(r: DriverResult | null): ResultView {
 export async function listDrivers(): Promise<DriverSummary[]> {
   try {
     const res = await api.get<{ drivers: DriverSummary[] }>("/api/drivers");
-    return res.drivers ?? [];
+    const drivers = res.drivers ?? [];
+    // Empty roster (fresh server, nobody's raced yet) → seed one dummy driver so
+    // the detail page stays reachable for testing. Its detail resolves through
+    // the 404 mock fallback in getDriver().
+    if (drivers.length === 0) {
+      await ensureDummyContent();
+      return [toSummary(MOCK[0])];
+    }
+    return drivers;
   } catch (e) {
     // 404 / 501 → endpoint not built yet. Anything else (auth, network) we let
     // bubble so the page can surface a real error.
     if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      await ensureDummyContent();
       return MOCK.map(toSummary);
     }
     throw e;
@@ -91,10 +101,34 @@ export async function getDriver(guid: string): Promise<DriverDetail | null> {
     return await api.get<DriverDetail>(`/api/drivers/${encodeURIComponent(guid)}`);
   } catch (e) {
     if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      await ensureDummyContent();
       return MOCK.find((d) => d.guid === guid) ?? null;
     }
     throw e;
   }
+}
+
+// The canned mock content keys usually aren't installed, so the favourite
+// car/track previews 404. Repoint the dummy driver at a real installed car +
+// track (random, first skin) so the image lookups actually resolve. Runs once;
+// mutates MOCK[0] so the list summary and detail page stay in sync.
+let dummyContentPatched = false;
+async function ensureDummyContent(): Promise<void> {
+  const content = useContentStore();
+  await content.load();
+  if (dummyContentPatched) return;
+  const d = MOCK[0];
+  const cars = content.cars.filter((c) => c.key);
+  if (cars.length) {
+    const c = cars[Math.floor(Math.random() * cars.length)];
+    d.favourite_car = { key: c.key!, name: c.name ?? c.key!, skin: c.skins?.[0]?.key };
+  }
+  const tracks = content.tracks.filter((t) => t.key);
+  if (tracks.length) {
+    const t = tracks[Math.floor(Math.random() * tracks.length)];
+    d.favourite_track = { key: t.key!, config: t.config || undefined, name: t.name ?? t.key!, country: t.country };
+  }
+  dummyContentPatched = true;
 }
 
 // ---- mock data --------------------------------------------------------------

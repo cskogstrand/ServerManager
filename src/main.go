@@ -154,6 +154,10 @@ func main() {
 		log.Fatal("Could not load server instances: ", err)
 	}
 
+	// Drift-spike stream capture (no-op if ffmpeg is absent or no driver has a
+	// capture URL configured).
+	Captures = newCaptureManager()
+
 	router := gin.New()
 	if debug {
 		router.Use(gin.LoggerWithConfig(gin.LoggerConfig{

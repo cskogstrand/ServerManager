@@ -277,7 +277,8 @@ CREATE TABLE IF NOT EXISTS driver_stream (
   display_name TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   stream_embed_url TEXT NOT NULL,
-  stream_status_url TEXT
+  stream_status_url TEXT,
+  stream_capture_url TEXT
 );
 
 -- Driver Stats persistence. Live driver/lap/drift state is session-scoped and

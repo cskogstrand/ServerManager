@@ -104,6 +104,7 @@ export interface DriverStream {
   enabled?: number /* int */;
   stream_embed_url?: string;
   stream_status_url?: string;
+  stream_capture_url?: string;
 }
 export interface UserEvent {
   Id?: number /* int */;

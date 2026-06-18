@@ -102,6 +102,10 @@ type DriverStream struct {
 	Enabled         *int    `json:"enabled" form:"enabled"`
 	StreamEmbedUrl  *string `json:"stream_embed_url" form:"stream_embed_url"`
 	StreamStatusUrl *string `json:"stream_status_url" form:"stream_status_url"`
+	// StreamCaptureUrl is a raw, server-reachable stream (HLS/RTMP/SRT/RTSP) that
+	// ffmpeg can pull from to auto-capture drift-spike screenshots/clips. Empty
+	// disables capture for the driver (platform embeds can't be grabbed).
+	StreamCaptureUrl *string `json:"stream_capture_url" form:"stream_capture_url"`
 }
 
 const (

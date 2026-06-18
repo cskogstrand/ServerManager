@@ -66,6 +66,7 @@ interface DriverStream {
   enabled?: number;
   stream_embed_url?: string;
   stream_status_url?: string;
+  stream_capture_url?: string;
 }
 
 interface DriverStreamForm {
@@ -75,6 +76,7 @@ interface DriverStreamForm {
   enabled: boolean;
   stream_embed_url: string;
   stream_status_url: string;
+  stream_capture_url: string;
 }
 
 const editorOpen = ref(false);
@@ -237,6 +239,7 @@ function openDriverCreate() {
     enabled: true,
     stream_embed_url: "",
     stream_status_url: "",
+    stream_capture_url: "",
   };
   markDriverClean();
   driverEditorOpen.value = true;
@@ -250,6 +253,7 @@ function openDriverEdit(stream: DriverStream) {
     enabled: stream.enabled !== 0,
     stream_embed_url: stream.stream_embed_url ?? "",
     stream_status_url: stream.stream_status_url ?? "",
+    stream_capture_url: stream.stream_capture_url ?? "",
   };
   markDriverClean();
   driverEditorOpen.value = true;
@@ -265,6 +269,7 @@ const saveDriverStream = () =>
       enabled: f.enabled ? 1 : 0,
       stream_embed_url: f.stream_embed_url,
       stream_status_url: f.stream_status_url,
+      stream_capture_url: f.stream_capture_url,
     };
     if (f.id) {
       await api.put(`/api/driver-streams/${f.id}`, body);
@@ -502,6 +507,13 @@ const removeDriverStream = (stream: DriverStream) =>
       </FormRow>
       <FormRow label="Health URL" for-id="dsstatus" hint="Optional URL SM probes to show live/offline status.">
         <Input id="dsstatus" v-model="driverForm.stream_status_url" placeholder="https://stream.example.com/driver/health" />
+      </FormRow>
+      <FormRow
+        label="Capture URL"
+        for-id="dscapture"
+        hint="Optional raw stream (HLS/RTMP/RTSP/SRT) ffmpeg pulls from to auto-capture drift-spike screenshots & clips. Leave blank to disable capture."
+      >
+        <Input id="dscapture" v-model="driverForm.stream_capture_url" placeholder="https://stream.example.com/driver/index.m3u8" />
       </FormRow>
     </template>
     <template #footer>

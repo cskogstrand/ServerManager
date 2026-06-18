@@ -41,6 +41,15 @@ type DriverState struct {
 	sessTrack  string
 	sessConfig string
 	recorded   bool
+
+	// Drift-spike capture bookkeeping (not serialized): fire at most once per
+	// run (driftRunFired), with a per-session cap (captureCount) and per-driver
+	// cooldown (lastCaptureMs). driftRunBaseline is the score when the current
+	// run was first seen, used for the spike delta. See drivercapture.go.
+	driftRunBaseline int
+	driftRunFired    bool
+	captureCount     int
+	lastCaptureMs    int64
 }
 
 func (inst *Instance) driverJoin(nc NewConnection) {
@@ -128,6 +137,10 @@ func (inst *Instance) resetDriverLaps() {
 		d.sessType = newType
 		d.sessTrack = newTrack
 		d.sessConfig = newConfig
+		d.driftRunBaseline = 0
+		d.driftRunFired = false
+		d.captureCount = 0
+		d.lastCaptureMs = 0
 	}
 	inst.mu.Unlock()
 	inst.publishDrivers()
@@ -158,12 +171,36 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 	now := time.Now().UnixMilli()
 	inst.mu.Lock()
 	var run *dsDriftInsert
+	var capReq *captureRequest
 	if d := inst.drivers[carId]; d != nil {
 		if live {
+			// A run starts when the live score first rises from zero; remember
+			// that baseline so the spike delta is measured from it.
+			if d.DriftLive == 0 && score > 0 {
+				d.driftRunBaseline = score
+			}
 			d.DriftLive = score
+			// Fire one capture per run once the run gets "big", subject to the
+			// per-session cap, the cooldown, and a configured capture source.
+			if !d.driftRunFired && d.Guid != "" && score >= captureTriggerScore &&
+				d.captureCount < maxCapturesPerSession && now-d.lastCaptureMs >= captureCooldownMs &&
+				Captures.armed(d.Guid) {
+				d.driftRunFired = true
+				d.captureCount++
+				d.lastCaptureMs = now
+				capReq = &captureRequest{
+					guid:        d.Guid,
+					driverName:  d.Name,
+					trackKey:    d.sessTrack,
+					trackConfig: d.sessConfig,
+					score:       score,
+					delta:       score - d.driftRunBaseline,
+				}
+			}
 		} else {
 			d.DriftLast = score
 			d.DriftLive = 0
+			d.driftRunFired = false
 			// A completed run: persist it so the driver's drift history and
 			// best-ever score survive the session reset.
 			if d.Guid != "" && score > 0 {
@@ -186,6 +223,9 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 		if err := Dba.insertDriftRun(inst.Id(), *run); err != nil {
 			log.Print("driverstats: insert drift run: ", err)
 		}
+	}
+	if capReq != nil {
+		Captures.submit(*capReq)
 	}
 	inst.publishDrivers()
 }

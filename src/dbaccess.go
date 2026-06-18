@@ -144,6 +144,9 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
 		log.Fatal("Error applying database migration for users.role: ", err)
 	}
+	if err := dba.ensureColumn("driver_stream", "stream_capture_url", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for driver_stream.stream_capture_url: ", err)
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -1762,7 +1765,7 @@ func (dba Dbaccess) deleteServerInstance(id int) (int64, error) {
 
 func (dba Dbaccess) selectDriverStreams() ([]DriverStream, error) {
 	rows, err := dba.db.Query(`
-SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url, stream_capture_url
 FROM driver_stream
 ORDER BY COALESCE(display_name, ''), driver_guid`)
 	if err != nil {
@@ -1773,7 +1776,7 @@ ORDER BY COALESCE(display_name, ''), driver_guid`)
 	streams := make([]DriverStream, 0)
 	for rows.Next() {
 		ds := DriverStream{}
-		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl, &ds.StreamCaptureUrl); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		streams = append(streams, ds)
@@ -1786,11 +1789,11 @@ ORDER BY COALESCE(display_name, ''), driver_guid`)
 
 func (dba Dbaccess) selectDriverStream(id int) (DriverStream, error) {
 	row := dba.db.QueryRow(`
-SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url, stream_capture_url
 FROM driver_stream
 WHERE id = ?`, id)
 	ds := DriverStream{}
-	if err := row.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+	if err := row.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl, &ds.StreamCaptureUrl); err != nil {
 		return DriverStream{}, tracerr.Wrap(err)
 	}
 	return ds, nil
@@ -1817,7 +1820,7 @@ func (dba Dbaccess) selectDriverStreamsByGuids(guids []string) (map[string]Drive
 	}
 
 	rows, err := dba.db.Query(`
-SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url
+SELECT id, driver_guid, display_name, enabled, stream_embed_url, stream_status_url, stream_capture_url
 FROM driver_stream
 WHERE enabled = 1 AND driver_guid IN (`+strings.Join(placeholders, ",")+`)`, args...)
 	if err != nil {
@@ -1827,7 +1830,7 @@ WHERE enabled = 1 AND driver_guid IN (`+strings.Join(placeholders, ",")+`)`, arg
 
 	for rows.Next() {
 		ds := DriverStream{}
-		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl); err != nil {
+		if err := rows.Scan(&ds.Id, &ds.DriverGuid, &ds.DisplayName, &ds.Enabled, &ds.StreamEmbedUrl, &ds.StreamStatusUrl, &ds.StreamCaptureUrl); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		if ds.DriverGuid != nil {
@@ -1842,13 +1845,13 @@ WHERE enabled = 1 AND driver_guid IN (`+strings.Join(placeholders, ",")+`)`, arg
 
 func (dba Dbaccess) insertDriverStream(ds DriverStream) (int64, error) {
 	stmt, err := dba.db.Prepare(`
-INSERT INTO driver_stream (driver_guid, display_name, enabled, stream_embed_url, stream_status_url)
-VALUES (?, ?, ?, ?, ?)`)
+INSERT INTO driver_stream (driver_guid, display_name, enabled, stream_embed_url, stream_status_url, stream_capture_url)
+VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 	defer stmt.Close()
-	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl)
+	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl, ds.StreamCaptureUrl)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -1858,13 +1861,13 @@ VALUES (?, ?, ?, ?, ?)`)
 func (dba Dbaccess) updateDriverStream(ds DriverStream) (int64, error) {
 	stmt, err := dba.db.Prepare(`
 UPDATE driver_stream
-SET driver_guid = ?, display_name = ?, enabled = ?, stream_embed_url = ?, stream_status_url = ?
+SET driver_guid = ?, display_name = ?, enabled = ?, stream_embed_url = ?, stream_status_url = ?, stream_capture_url = ?
 WHERE id = ?`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 	defer stmt.Close()
-	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl, ds.Id)
+	res, err := stmt.Exec(ds.DriverGuid, ds.DisplayName, ds.Enabled, ds.StreamEmbedUrl, ds.StreamStatusUrl, ds.StreamCaptureUrl, ds.Id)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}

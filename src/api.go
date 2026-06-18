@@ -139,6 +139,7 @@ func normalizeDriverStream(ds *DriverStream) error {
 	ds.DisplayName = trimmedStringPtr(ds.DisplayName)
 	ds.StreamEmbedUrl = trimmedStringPtr(ds.StreamEmbedUrl)
 	ds.StreamStatusUrl = trimmedStringPtr(ds.StreamStatusUrl)
+	ds.StreamCaptureUrl = trimmedStringPtr(ds.StreamCaptureUrl)
 	if ds.DriverGuid == nil {
 		return errors.New("driver_guid is required")
 	}
@@ -146,6 +147,9 @@ func normalizeDriverStream(ds *DriverStream) error {
 		return err
 	}
 	if err := validateStreamURL("stream_status_url", ds.StreamStatusUrl, false); err != nil {
+		return err
+	}
+	if err := validateCaptureURL("stream_capture_url", ds.StreamCaptureUrl); err != nil {
 		return err
 	}
 	return nil
@@ -2405,6 +2409,7 @@ func apiDriverStreamCreate(c *gin.Context) {
 		apiDbError(c, err)
 		return
 	}
+	Captures.refresh()
 	c.PureJSON(http.StatusOK, gin.H{"stream": inserted})
 }
 
@@ -2437,6 +2442,7 @@ func apiDriverStreamUpdate(c *gin.Context) {
 		apiDbError(c, err)
 		return
 	}
+	Captures.refresh()
 	c.PureJSON(http.StatusOK, gin.H{"stream": updated})
 }
 
@@ -2454,6 +2460,7 @@ func apiDriverStreamDelete(c *gin.Context) {
 		apiNotFound(c)
 		return
 	}
+	Captures.refresh()
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
 }
 

@@ -117,8 +117,10 @@ onBeforeUnmount(() => {
   if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
 });
 
-function mediaIcon(m: MediaItem): string {
-  return m.kind === "clip" ? "play" : "camera";
+// Real captures resolve to a served file; mock items use "#" and fall back to a
+// styled placeholder tile.
+function isRealMedia(m: MediaItem): boolean {
+  return !!m.url && m.url !== "#";
 }
 </script>
 
@@ -368,25 +370,37 @@ function mediaIcon(m: MediaItem): string {
             <article
               v-for="(m, i) in clips"
               :key="m.id"
-              class="reveal group relative aspect-video overflow-hidden rounded-md border border-line"
-              :style="{ ...tileStyle(i), animationDelay: i * 40 + 'ms' }"
+              class="reveal group overflow-hidden rounded-md border border-line bg-surface-2/40"
+              :style="{ animationDelay: i * 40 + 'ms' }"
             >
-              <div class="scanlines" />
-              <div class="absolute inset-0 grid place-items-center">
-                <span class="grid size-11 place-items-center rounded-full border border-text/20 bg-bg/40 text-text/85 backdrop-blur-sm transition-transform group-hover:scale-110">
-                  <Icon :name="mediaIcon(m)" :size="20" />
+              <div class="relative aspect-video overflow-hidden" :style="!isRealMedia(m) ? tileStyle(i) : undefined">
+                <video
+                  v-if="isRealMedia(m)"
+                  :src="m.url"
+                  class="size-full bg-black object-cover"
+                  preload="none"
+                  controls
+                  playsinline
+                />
+                <template v-else>
+                  <div class="scanlines" />
+                  <div class="absolute inset-0 grid place-items-center">
+                    <span class="grid size-11 place-items-center rounded-full border border-text/20 bg-bg/40 text-text/85 backdrop-blur-sm">
+                      <Icon name="play" :size="20" />
+                    </span>
+                  </div>
+                </template>
+                <span
+                  v-if="m.trigger"
+                  class="pointer-events-none absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
+                >
+                  <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
+                </span>
+                <span v-if="m.duration_s" class="pointer-events-none absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
+                  0:{{ String(m.duration_s).padStart(2, "0") }}
                 </span>
               </div>
-              <span
-                v-if="m.trigger"
-                class="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
-              >
-                <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
-              </span>
-              <span v-if="m.duration_s" class="absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
-                0:{{ String(m.duration_s).padStart(2, "0") }}
-              </span>
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg/85 to-transparent p-2.5">
+              <div class="px-2.5 py-1.5">
                 <div class="truncate text-xs font-semibold text-text">{{ m.caption }}</div>
                 <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
               </div>
@@ -402,20 +416,31 @@ function mediaIcon(m: MediaItem): string {
             <article
               v-for="(m, i) in screenshots"
               :key="m.id"
-              class="reveal group relative aspect-video overflow-hidden rounded-md border border-line"
-              :style="{ ...tileStyle(i + 1), animationDelay: i * 40 + 'ms' }"
+              class="reveal group overflow-hidden rounded-md border border-line bg-surface-2/40"
+              :style="{ animationDelay: i * 40 + 'ms' }"
             >
-              <div class="scanlines" />
-              <div class="absolute inset-0 grid place-items-center text-text/30 transition-colors group-hover:text-text/55">
-                <Icon name="camera" :size="22" />
+              <div class="relative aspect-video overflow-hidden" :style="!isRealMedia(m) ? tileStyle(i + 1) : undefined">
+                <img
+                  v-if="isRealMedia(m)"
+                  :src="m.url"
+                  alt=""
+                  loading="lazy"
+                  class="size-full bg-black object-cover"
+                />
+                <template v-else>
+                  <div class="scanlines" />
+                  <div class="absolute inset-0 grid place-items-center text-text/30">
+                    <Icon name="camera" :size="22" />
+                  </div>
+                </template>
+                <span
+                  v-if="m.trigger"
+                  class="pointer-events-none absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
+                >
+                  <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
+                </span>
               </div>
-              <span
-                v-if="m.trigger"
-                class="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
-              >
-                <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
-              </span>
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg/85 to-transparent p-2">
+              <div class="px-2.5 py-1.5">
                 <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>
                 <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
               </div>

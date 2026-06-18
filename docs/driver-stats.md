@@ -8,9 +8,16 @@
   `GET /api/drivers`, `GET /api/drivers/:guid`,
   `GET|POST /api/drivers/:guid/avatar`, `GET /api/drivers/:guid/media/:file`.
   Not yet compiled here (no Go toolchain) — build/test in Docker.
-- ⏳ **Drift-spike auto-capture worker — pending.** The `driver_media` table + read
-  path ship now (reel shows real captures once files exist), but the ffmpeg
-  capture/throttle worker in §4 is not built yet.
+- ✅ **Drift-spike auto-capture worker — built** (`src/drivercapture.go`). On a live
+  drift score crossing `captureTriggerScore`, `driverDrift` submits one capture;
+  the worker pulls a screenshot + short clip via ffmpeg from the driver's
+  `driver_stream.stream_capture_url` (new column) and files them as `driver_media`.
+  Throttled by: one capture/run, per-session cap, per-driver cooldown, global
+  concurrency + per-minute ceiling, and top-by-score + most-recent retention.
+  No-op when ffmpeg is absent or no capture URL is set. Reel renders real
+  `<img>`/`<video>`; capture URL editable under Instances → Driver streams.
+  Not compiled here (no Go toolchain) — build/test in Docker; ffmpeg must be on
+  PATH in the container.
 
 The list (`/drivers`) and detail (`/drivers/:guid`) pages were built
 **frontend-first** against this contract, served by mock data only when the API

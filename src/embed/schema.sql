@@ -280,10 +280,72 @@ CREATE TABLE IF NOT EXISTS driver_stream (
   stream_status_url TEXT
 );
 
+-- Driver Stats persistence. Live driver/lap/drift state is session-scoped and
+-- wiped each session; these tables keep the history the Driver Stats pages
+-- aggregate. No FK constraints on purpose: telemetry writes must never fail on
+-- a missing parent row (the driver row is upserted on join, but analytics
+-- inserts should degrade gracefully rather than drop events).
+CREATE TABLE IF NOT EXISTS driver (
+  guid TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  first_seen INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  avatar_path TEXT
+);
+
+CREATE TABLE IF NOT EXISTS driver_session (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_guid TEXT NOT NULL,
+  instance_id INTEGER NOT NULL,
+  session_type INTEGER NOT NULL,
+  car_key TEXT,
+  skin_key TEXT,
+  track_key TEXT,
+  track_config TEXT,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL,
+  laps INTEGER NOT NULL DEFAULT 0,
+  best_lap_ms INTEGER NOT NULL DEFAULT 0,
+  finish_pos INTEGER,
+  entrants INTEGER,
+  drift_best INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS driver_drift_run (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_guid TEXT NOT NULL,
+  instance_id INTEGER NOT NULL,
+  track_key TEXT,
+  track_config TEXT,
+  car_key TEXT,
+  score INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL
+);
+
+-- Auto-captured stream highlights (screenshots/clips on big drift spikes). The
+-- capture worker is a planned follow-up (see docs/driver-stats.md); the table +
+-- read path ship now so the contract is complete.
+CREATE TABLE IF NOT EXISTS driver_media (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_guid TEXT NOT NULL,
+  session_id INTEGER,
+  kind TEXT NOT NULL,
+  path TEXT NOT NULL,
+  caption TEXT,
+  captured_at INTEGER NOT NULL,
+  duration_s INTEGER,
+  trigger_score INTEGER,
+  trigger_delta INTEGER
+);
+
 
 
 
 -- INDEXES
+
+CREATE INDEX IF NOT EXISTS idx_driver_session_guid ON driver_session (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_drift_run_guid ON driver_drift_run (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_media_guid ON driver_media (driver_guid);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_track_key_config
 ON cache_track (key, config);

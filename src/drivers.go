@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"regexp"
 	"sort"
 	"strconv"
@@ -29,31 +30,64 @@ type DriverState struct {
 	DriftLive int `json:"drift_live"`
 	DriftLast int `json:"drift_last"`
 	DriftBest int `json:"drift_best"`
+
+	// Persistence bookkeeping (not serialized): the session context captured
+	// when the driver joined or the session rolled over, used to write a
+	// driver_session row when the session ends. recorded guards against writing
+	// the same session twice (end-of-session vs. the disconnect that follows a
+	// track-change kick). See driverstats.go.
+	joinedAt   int64
+	sessType   int
+	sessTrack  string
+	sessConfig string
+	recorded   bool
 }
 
 func (inst *Instance) driverJoin(nc NewConnection) {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
 	if inst.drivers == nil {
 		inst.drivers = make(map[int]*DriverState)
 	}
 	inst.drivers[nc.carId] = &DriverState{
-		CarId:     nc.carId,
-		Name:      nc.driverName,
-		Car:       nc.carModel,
-		Skin:      nc.carSkin,
-		Guid:      nc.driverGuid,
-		Connected: true,
+		CarId:      nc.carId,
+		Name:       nc.driverName,
+		Car:        nc.carModel,
+		Skin:       nc.carSkin,
+		Guid:       nc.driverGuid,
+		Connected:  true,
+		joinedAt:   now,
+		sessType:   inst.Status.Session.typ,
+		sessTrack:  inst.Status.Session.track,
+		sessConfig: inst.Status.Session.trackConfig,
 	}
 	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
+	if nc.driverGuid != "" {
+		if err := Dba.recordDriverSeen(nc.driverGuid, nc.driverName, now); err != nil {
+			log.Print("driverstats: record driver: ", err)
+		}
+	}
 	inst.publishDrivers()
 }
 
 func (inst *Instance) driverLeave(carId int) {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
+	var row *dsSessionRow
+	if d := inst.drivers[carId]; d != nil {
+		if !d.recorded && d.Guid != "" && (d.Laps > 0 || d.DriftBest > 0) {
+			r := sessionRowFromDriverLocked(d, now)
+			d.recorded = true
+			row = &r
+		}
+	}
 	delete(inst.drivers, carId)
 	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
+	if row != nil {
+		persistFinishedSessions(inst.Id(), []dsSessionRow{*row})
+	}
 	inst.removeCarPosition(carId)
 	inst.publishDrivers()
 }
@@ -73,9 +107,15 @@ func (inst *Instance) driverLap(lc LapCompleted) {
 }
 
 // resetDriverLaps clears lap stats on a new session without dropping the
-// roster of who is connected.
+// roster of who is connected, and re-captures the new session context for each
+// driver. The previous session is persisted on ACSP_END_SESSION
+// (finalizeCurrentSession), which fires before this, so we don't record here.
 func (inst *Instance) resetDriverLaps() {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
+	newType := inst.Status.Session.typ
+	newTrack := inst.Status.Session.track
+	newConfig := inst.Status.Session.trackConfig
 	for _, d := range inst.drivers {
 		d.Laps = 0
 		d.LastLapMs = 0
@@ -83,6 +123,11 @@ func (inst *Instance) resetDriverLaps() {
 		d.DriftLive = 0
 		d.DriftLast = 0
 		d.DriftBest = 0
+		d.recorded = false
+		d.joinedAt = now
+		d.sessType = newType
+		d.sessTrack = newTrack
+		d.sessConfig = newConfig
 	}
 	inst.mu.Unlock()
 	inst.publishDrivers()
@@ -110,26 +155,50 @@ func parseDriftChat(msg string) (live bool, score int, best int, ok bool) {
 // and clears the live score. best is monotonic per the script; we keep the max
 // seen in case lines arrive out of order.
 func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
+	var run *dsDriftInsert
 	if d := inst.drivers[carId]; d != nil {
 		if live {
 			d.DriftLive = score
 		} else {
 			d.DriftLast = score
 			d.DriftLive = 0
+			// A completed run: persist it so the driver's drift history and
+			// best-ever score survive the session reset.
+			if d.Guid != "" && score > 0 {
+				run = &dsDriftInsert{
+					guid:        d.Guid,
+					trackKey:    d.sessTrack,
+					trackConfig: d.sessConfig,
+					carKey:      d.Car,
+					score:       score,
+					endedAt:     now,
+				}
+			}
 		}
 		if best > d.DriftBest {
 			d.DriftBest = best
 		}
 	}
 	inst.mu.Unlock()
+	if run != nil {
+		if err := Dba.insertDriftRun(inst.Id(), *run); err != nil {
+			log.Print("driverstats: insert drift run: ", err)
+		}
+	}
 	inst.publishDrivers()
 }
 
 func (inst *Instance) clearDrivers() {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
+	// Fallback: record any session not already captured by end-of-session, so a
+	// stop/track-change without a clean ACSP_END_SESSION still leaves history.
+	rows := inst.collectFinishedSessionsLocked(now)
 	inst.drivers = make(map[int]*DriverState)
 	inst.mu.Unlock()
+	persistFinishedSessions(inst.Id(), rows)
 	inst.clearPositions()
 	inst.publishDrivers()
 }

@@ -83,6 +83,7 @@ const allSections = [
       { to: "/", label: "Dashboard", icon: "dashboard" },
       { to: "/events", label: "Race Setups", icon: "events" },
       { to: "/queue", label: "Run Plan", icon: "queue" },
+      { to: "/drivers", label: "Driver Stats", icon: "trophy" },
     ],
   },
   {

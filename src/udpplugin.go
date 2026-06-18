@@ -396,6 +396,10 @@ func (inst *Instance) udpReceive() bool {
 		file := r.ReadUTF32String()
 		log.Print("ACSP_END_SESSION: " + file)
 
+		// Persist each connected driver's just-finished session (with race
+		// finishing order) before any track-change kick disconnects them.
+		inst.finalizeCurrentSession()
+
 		inst.mu.Lock()
 		lastSession := inst.Status.Session.currentSessionIndex == inst.Status.Session.sessionCount-1
 		inst.mu.Unlock()

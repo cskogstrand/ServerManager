@@ -58,6 +58,9 @@ func stewardCanMutate(path string) bool {
 		return true
 	case p == "/classes" || strings.HasPrefix(p, "/class/"):
 		return true
+	case strings.HasPrefix(p, "/drivers/") && strings.HasSuffix(p, "/avatar"):
+		// Uploading a driver photo is an operate-time action.
+		return true
 	}
 	return false
 }

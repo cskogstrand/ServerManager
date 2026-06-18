@@ -11,6 +11,7 @@ import { ApiError, csrfToken } from "@/lib/api";
 import { useToastStore } from "@/stores/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
+import { useContentStore } from "@/stores/content";
 import type { DriverState } from "@/stores/server";
 import type { DriverDetail, DriverResult, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
@@ -25,6 +26,7 @@ const route = useRoute();
 const toast = useToastStore();
 const auth = useAuthStore();
 const server = useServerStore();
+const content = useContentStore();
 
 const guid = computed(() => String(route.params.guid));
 const driver = ref<DriverDetail | null>(null);
@@ -128,12 +130,22 @@ const screenshots = computed(() => driver.value?.media.filter((m) => m.kind === 
 const clips = computed(() => driver.value?.media.filter((m) => m.kind === "clip") ?? []);
 const streamLive = computed(() => !!driver.value?.stream && driver.value.stream.status === "live" && !!driver.value.stream.embed_url);
 
-function carImg(d: DriverDetail): string {
-  const c = d.favourite_car;
+// Resolve the favourite car's preview against the cached car list — the same
+// source the Content car grid renders from — so the image matches (and carries
+// the imageVersion cache-buster) even when the driver's recorded skin is blank
+// or no longer present. Falls back to the recorded skin if the car isn't cached.
+const carImgUrl = computed(() => {
+  const c = driver.value?.favourite_car;
   if (!c) return "";
-  return `/api/car/image/${encodeURIComponent(c.key)}/${encodeURIComponent(c.skin ?? "")}`;
-}
+  const car = content.carByKey(c.key);
+  const skin = car?.skins.find((s) => s.key === c.skin)?.key ?? car?.skins[0]?.key ?? c.skin ?? "";
+  return `/api/car/image/${encodeURIComponent(c.key)}/${encodeURIComponent(skin)}?v=${content.imageVersion}`;
+});
 const carImgOk = ref(true);
+// Give a freshly-resolved URL a clean shot (the car list may load after first paint).
+watch(carImgUrl, () => {
+  carImgOk.value = true;
+});
 
 const tileTints = [
   "linear-gradient(135deg, rgba(98,179,232,0.18), rgba(16,26,37,0.94))",
@@ -163,7 +175,10 @@ async function load() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  void content.load(); // car list backs the favourite-car preview
+  void load();
+});
 watch(guid, load);
 onBeforeUnmount(() => {
   if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
@@ -288,7 +303,7 @@ function isRealMedia(m: MediaItem): boolean {
           <div class="grid h-20 w-32 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2">
             <img
               v-if="carImgOk"
-              :src="carImg(driver)"
+              :src="carImgUrl"
               alt=""
               class="size-full object-cover"
               @error="carImgOk = false"

@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         tzdata \
         p7zip-full \
+        ffmpeg \
         libicu72 \
         libssl3 \
         libstdc++6 \

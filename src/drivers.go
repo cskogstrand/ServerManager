@@ -172,6 +172,7 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 	inst.mu.Lock()
 	var run *dsDriftInsert
 	var capReq *captureRequest
+	var endedGuid string
 	if d := inst.drivers[carId]; d != nil {
 		if live {
 			// A run starts when the live score first rises from zero; remember
@@ -182,9 +183,7 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 			d.DriftLive = score
 			// Fire one capture per run once the run gets "big", subject to the
 			// per-session cap, the cooldown, and a configured capture source.
-			if !d.driftRunFired && d.Guid != "" && score >= captureTriggerScore &&
-				d.captureCount < maxCapturesPerSession && now-d.lastCaptureMs >= captureCooldownMs &&
-				Captures.armed(d.Guid) {
+			if !d.driftRunFired && Captures.shouldTrigger(d.Guid, score, d.captureCount, d.lastCaptureMs, now) {
 				d.driftRunFired = true
 				d.captureCount++
 				d.lastCaptureMs = now
@@ -201,6 +200,10 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 			d.DriftLast = score
 			d.DriftLive = 0
 			d.driftRunFired = false
+			// A run just ended: stop any manual recording for this driver.
+			if d.Guid != "" {
+				endedGuid = d.Guid
+			}
 			// A completed run: persist it so the driver's drift history and
 			// best-ever score survive the session reset.
 			if d.Guid != "" && score > 0 {
@@ -226,6 +229,9 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 	}
 	if capReq != nil {
 		Captures.submit(*capReq)
+	}
+	if endedGuid != "" {
+		Captures.onDriftRunEnd(endedGuid)
 	}
 	inst.publishDrivers()
 }

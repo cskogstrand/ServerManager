@@ -67,6 +67,7 @@ const paths = {
   upload: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 8l-5-5-5 5", "M12 3v12"],
   arrowLeft: ["M19 12H5", "m12 19-7-7 7-7"],
   externalLink: ["M15 3h6v6", "M10 14 21 3", "M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"],
+  record: ["M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"],
 } as const;
 
 const props = withDefaults(

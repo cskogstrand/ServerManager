@@ -18,6 +18,16 @@
   `<img>`/`<video>`; capture URL editable under Instances → Driver streams.
   Not compiled here (no Go toolchain) — build/test in Docker; ffmpeg must be on
   PATH in the container.
+- ✅ **Manual "Record now" — built.** `POST /api/drivers/:guid/record` starts an
+  ffmpeg recording (no fixed length) that stops on the driver's next/current
+  drift-run end (`driverDrift` → `Captures.onDriftRunEnd`), capped at 120s.
+  Button on the Driver Detail stream card (operate role); the page polls until
+  the clip lands. Manual clips carry no spike badge (NULL trigger).
+- ✅ **Configurable auto-capture — built.** `user_config` columns
+  `capture_enabled/screenshots/clips/trigger_score/clip_seconds/cooldown_seconds/max_per_session`,
+  edited under Server Configuration → "Stream highlight capture". `captureManager`
+  caches them (`loadCaptureSettings`) and reloads on config save / stream CRUD via
+  `Captures.refresh()`.
 
 The list (`/drivers`) and detail (`/drivers/:guid`) pages were built
 **frontend-first** against this contract, served by mock data only when the API

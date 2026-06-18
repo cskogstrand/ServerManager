@@ -40,6 +40,13 @@ export interface UserConfig {
   csp_hidepit?: number /* int */;
   cfg_filled?: number /* int */;
   mod_filled?: number /* int */;
+  capture_enabled?: number /* int */;
+  capture_screenshots?: number /* int */;
+  capture_clips?: number /* int */;
+  capture_trigger_score?: number /* int */;
+  capture_clip_seconds?: number /* int */;
+  capture_cooldown_seconds?: number /* int */;
+  capture_max_per_session?: number /* int */;
 }
 export interface ServerEvent {
   Id?: number /* int */;

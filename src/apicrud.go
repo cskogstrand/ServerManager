@@ -570,6 +570,8 @@ func apiConfigUpdate(c *gin.Context) {
 		apiDbError(c, err)
 		return
 	}
+	// Pick up changed auto-capture tunables without a restart.
+	Captures.refresh()
 	c.PureJSON(http.StatusOK, gin.H{"success": true})
 }
 

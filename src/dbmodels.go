@@ -44,7 +44,15 @@ type UserConfig struct {
 	CspHidepit         *int    `form:"csp_hidepit" json:"csp_hidepit"`
 	CfgFilled          *int    `json:"cfg_filled"`
 	ModFilled          *int    `json:"mod_filled"`
-	SecretKey          *string `json:"-"`
+	// Drift-spike auto-capture tuning (consumed by drivercapture.go).
+	CaptureEnabled         *int `json:"capture_enabled" form:"capture_enabled"`
+	CaptureScreenshots     *int `json:"capture_screenshots" form:"capture_screenshots"`
+	CaptureClips           *int `json:"capture_clips" form:"capture_clips"`
+	CaptureTriggerScore    *int `json:"capture_trigger_score" form:"capture_trigger_score"`
+	CaptureClipSeconds     *int `json:"capture_clip_seconds" form:"capture_clip_seconds"`
+	CaptureCooldownSeconds *int `json:"capture_cooldown_seconds" form:"capture_cooldown_seconds"`
+	CaptureMaxPerSession   *int `json:"capture_max_per_session" form:"capture_max_per_session"`
+	SecretKey              *string `json:"-"`
 }
 
 type ServerEvent struct {

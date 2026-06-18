@@ -88,7 +88,16 @@ CREATE TABLE IF NOT EXISTS user_config (
 
   secret_key TEXT,
   cfg_filled INTEGER DEFAULT 0,
-  mod_filled INTEGER DEFAULT 0
+  mod_filled INTEGER DEFAULT 0,
+
+  -- Drift-spike auto-capture tuning (see drivercapture.go).
+  capture_enabled INTEGER NOT NULL DEFAULT 1,
+  capture_screenshots INTEGER NOT NULL DEFAULT 1,
+  capture_clips INTEGER NOT NULL DEFAULT 1,
+  capture_trigger_score INTEGER NOT NULL DEFAULT 2500,
+  capture_clip_seconds INTEGER NOT NULL DEFAULT 14,
+  capture_cooldown_seconds INTEGER NOT NULL DEFAULT 45,
+  capture_max_per_session INTEGER NOT NULL DEFAULT 12
 );
 
 CREATE TABLE IF NOT EXISTS users (

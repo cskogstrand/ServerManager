@@ -14,6 +14,7 @@ import { useServerStore } from "@/stores/server";
 import type { DriverState } from "@/stores/server";
 import type { DriverDetail, DriverResult, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
+import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 import Sparkline from "@/components/ui/Sparkline.vue";
@@ -72,6 +73,56 @@ async function onPickFile(e: Event) {
   }
 }
 
+// --- manual "Record now" -----------------------------------------------------
+const recording = ref(false);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function recordNow() {
+  if (!driver.value || recording.value) return;
+  recording.value = true;
+  try {
+    const res = await fetch(`/api/drivers/${encodeURIComponent(guid.value)}/record`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken() },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
+    }
+    toast.info("Recording — the clip ends with the next drift run, then shows up here.");
+    void pollForClip();
+  } catch (e) {
+    recording.value = false;
+    toast.error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+// Recording ends server-side on the next drift run; poll until the clip lands
+// (or give up after ~3 min) so it appears without a manual refresh.
+async function pollForClip() {
+  const before = driver.value?.media.length ?? 0;
+  for (let i = 0; i < 18 && recording.value; i++) {
+    await sleep(10000);
+    if (!recording.value) return;
+    try {
+      const fresh = await getDriver(guid.value);
+      if (fresh) {
+        driver.value = fresh;
+        if (fresh.media.length > before) {
+          toast.success("Clip captured.");
+          break;
+        }
+      }
+    } catch {
+      /* transient — keep polling */
+    }
+  }
+  recording.value = false;
+}
+
 // --- derived data ------------------------------------------------------------
 const screenshots = computed(() => driver.value?.media.filter((m) => m.kind === "screenshot") ?? []);
 const clips = computed(() => driver.value?.media.filter((m) => m.kind === "clip") ?? []);
@@ -100,6 +151,7 @@ function kindBadge(r: DriverResult): string {
 
 async function load() {
   loading.value = true;
+  recording.value = false;
   carImgOk.value = true;
   try {
     driver.value = await getDriver(guid.value);
@@ -115,6 +167,7 @@ onMounted(load);
 watch(guid, load);
 onBeforeUnmount(() => {
   if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
+  recording.value = false;
 });
 
 // Real captures resolve to a served file; mock items use "#" and fall back to a
@@ -161,7 +214,7 @@ function isRealMedia(m: MediaItem): boolean {
         <!-- avatar + identity -->
         <div class="flex items-center gap-4">
           <div class="relative">
-            <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="92" radius="lg" />
+            <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="185" radius="lg" />
             <button
               v-if="auth.canOperate"
               type="button"
@@ -326,6 +379,18 @@ function isRealMedia(m: MediaItem): boolean {
           >
             <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
           </span>
+        </template>
+        <template v-if="auth.canOperate" #actions>
+          <Button
+            size="sm"
+            :variant="recording ? 'danger' : 'ghost'"
+            :disabled="recording"
+            title="Record a clip that ends when the current or next drift run ends"
+            @click="recordNow"
+          >
+            <Icon :name="recording ? 'activity' : 'record'" :size="14" />
+            {{ recording ? "Recording…" : "Record now" }}
+          </Button>
         </template>
         <iframe
           v-if="streamLive"

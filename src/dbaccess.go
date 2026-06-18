@@ -147,6 +147,19 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("driver_stream", "stream_capture_url", "TEXT"); err != nil {
 		log.Fatal("Error applying database migration for driver_stream.stream_capture_url: ", err)
 	}
+	for col, def := range map[string]string{
+		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
+		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",
+		"capture_clips":            "INTEGER NOT NULL DEFAULT 1",
+		"capture_trigger_score":    "INTEGER NOT NULL DEFAULT 2500",
+		"capture_clip_seconds":     "INTEGER NOT NULL DEFAULT 14",
+		"capture_cooldown_seconds": "INTEGER NOT NULL DEFAULT 45",
+		"capture_max_per_session":  "INTEGER NOT NULL DEFAULT 12",
+	} {
+		if err := dba.ensureColumn("user_config", col, def); err != nil {
+			log.Fatal("Error applying database migration for user_config."+col+": ", err)
+		}
+	}
 }
 
 func (dba Dbaccess) tableExists(tablename string) (int, error) {
@@ -419,14 +432,14 @@ func (dba Dbaccess) selectConfigFilled() (bool, error) {
 
 func (dba Dbaccess) selectConfig() (UserConfig, error) {
 	cfg := UserConfig{}
-	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, mod_download_url, server_engine, as_relax_checksums, auto_start_server, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, cfg_filled, mod_filled, secret_key FROM user_config")
+	row := dba.db.QueryRow("SELECT name, password, admin_password, register_to_lobby, locked_entry_list, result_screen_time, udp_port, tcp_port, http_port, client_send_interval, num_threads, max_clients, welcome_message, append_eventname, append_modlinks, mod_download_url, server_engine, as_relax_checksums, auto_start_server, install_path, csp_required, csp_version, csp_phycars, csp_phytracks, csp_hidepit, capture_enabled, capture_screenshots, capture_clips, capture_trigger_score, capture_clip_seconds, capture_cooldown_seconds, capture_max_per_session, cfg_filled, mod_filled, secret_key FROM user_config")
 
 	err := row.Err()
 	if err != nil {
 		return cfg, err
 	}
 
-	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
+	err = row.Scan(&cfg.Name, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendEventname, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer, &cfg.InstallPath, &cfg.CspRequired, &cfg.CspVersion, &cfg.CspPhycars, &cfg.CspPhytracks, &cfg.CspHidepit, &cfg.CaptureEnabled, &cfg.CaptureScreenshots, &cfg.CaptureClips, &cfg.CaptureTriggerScore, &cfg.CaptureClipSeconds, &cfg.CaptureCooldownSeconds, &cfg.CaptureMaxPerSession, &cfg.CfgFilled, &cfg.ModFilled, &cfg.SecretKey)
 	if err != nil {
 		return cfg, err
 	}
@@ -435,13 +448,13 @@ func (dba Dbaccess) selectConfig() (UserConfig, error) {
 }
 
 func (dba Dbaccess) updateConfig(cfg UserConfig) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, mod_download_url = ?, server_engine = ?, as_relax_checksums = ?, auto_start_server = ?, cfg_filled = 1")
+	stmt, err := dba.db.Prepare("UPDATE user_config SET name = ?, append_eventname = ?, password = ?, admin_password = ?, register_to_lobby = ?, locked_entry_list = ?, result_screen_time = ?, udp_port = ?, tcp_port = ?, http_port = ?, client_send_interval = ?, num_threads = ?, max_clients = ?, welcome_message = ?, append_modlinks = ?, mod_download_url = ?, server_engine = ?, as_relax_checksums = ?, auto_start_server = ?, capture_enabled = ?, capture_screenshots = ?, capture_clips = ?, capture_trigger_score = ?, capture_clip_seconds = ?, capture_cooldown_seconds = ?, capture_max_per_session = ?, cfg_filled = 1")
 
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
 
-	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer)
+	res, err := stmt.Exec(&cfg.Name, &cfg.AppendEventname, &cfg.Password, &cfg.AdminPassword, &cfg.RegisterToLobby, &cfg.LockedEntryList, &cfg.ResultScreenTime, &cfg.UdpPort, &cfg.TcpPort, &cfg.HttpPort, &cfg.ClientSendInterval, &cfg.NumThreads, &cfg.MaxClients, &cfg.WelcomeMessage, &cfg.AppendModlinks, &cfg.ModDownloadUrl, &cfg.ServerEngine, &cfg.AsRelaxChecksums, &cfg.AutoStartServer, &cfg.CaptureEnabled, &cfg.CaptureScreenshots, &cfg.CaptureClips, &cfg.CaptureTriggerScore, &cfg.CaptureClipSeconds, &cfg.CaptureCooldownSeconds, &cfg.CaptureMaxPerSession)
 	defer stmt.Close()
 	if err != nil {
 		return -1, tracerr.Wrap(err)

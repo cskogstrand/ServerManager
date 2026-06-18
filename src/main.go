@@ -319,6 +319,7 @@ func main() {
 		api.POST("/drivers/:guid/avatar", apiDriverAvatarUpload)
 		api.POST("/drivers/:guid/record", apiDriverRecord)
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
+		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)
 	}
 
 	// Everything that is not /api or /static is the SPA

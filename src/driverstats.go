@@ -885,5 +885,45 @@ func apiDriverMedia(c *gin.Context) {
 		return
 	}
 	abs := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid), file)
+	// ?download=1 forces a save dialog (Content-Disposition: attachment) instead
+	// of inline playback/preview.
+	if c.Query("download") != "" {
+		c.FileAttachment(abs, file)
+		return
+	}
 	c.File(abs)
+}
+
+func apiDriverMediaDelete(c *gin.Context) {
+	guid := strings.TrimSpace(c.Param("guid"))
+	file := filepath.Base(c.Param("file"))
+	if guid == "" || file == "" || file == "." || file == "/" {
+		apiNotFound(c)
+		return
+	}
+	// Match by filename, scoped to the driver — guarantees the item belongs to
+	// this guid before we touch the DB row or the file on disk.
+	rows, err := Dba.listDriverMedia(guid)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	var ids []int64
+	for _, r := range rows {
+		if filepath.Base(r.path) == file {
+			ids = append(ids, r.id)
+		}
+	}
+	if len(ids) == 0 {
+		apiNotFound(c)
+		return
+	}
+	if err := Dba.deleteDriverMedia(ids); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	// Row is gone; remove the file best-effort (a missing file shouldn't fail).
+	abs := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid), file)
+	_ = os.Remove(abs)
+	c.PureJSON(http.StatusOK, gin.H{"status": "deleted"})
 }

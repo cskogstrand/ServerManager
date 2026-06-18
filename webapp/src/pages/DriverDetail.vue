@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getDriver, describeResult, fmtDate, fmtScore, sessionKindLabel, shortGuid, timeAgo } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
-import { ApiError, csrfToken } from "@/lib/api";
+import { api, ApiError, csrfToken } from "@/lib/api";
 import { useToastStore } from "@/stores/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
@@ -21,6 +21,7 @@ import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 import Sparkline from "@/components/ui/Sparkline.vue";
 import CountUp from "@/components/ui/CountUp.vue";
 import TrackImage from "@/components/TrackImage.vue";
+import MediaActions from "@/components/MediaActions.vue";
 
 const route = useRoute();
 const toast = useToastStore();
@@ -189,6 +190,41 @@ onBeforeUnmount(() => {
 // styled placeholder tile.
 function isRealMedia(m: MediaItem): boolean {
   return !!m.url && m.url !== "#";
+}
+
+// --- highlight download / delete ---------------------------------------------
+// Both key off m.url (= /api/drivers/:guid/media/:file); download flips the
+// served file to an attachment, delete removes the row + file then drops it
+// from the local list so the reel updates without a refetch.
+function downloadMedia(m: MediaItem) {
+  if (!isRealMedia(m)) return;
+  const href = m.url + (m.url.includes("?") ? "&" : "?") + "download=1";
+  const a = document.createElement("a");
+  a.href = href;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+const deleting = ref<Set<string>>(new Set());
+
+async function deleteMedia(m: MediaItem) {
+  if (!isRealMedia(m) || deleting.value.has(m.id)) return;
+  const label = m.kind === "clip" ? "clip" : "screenshot";
+  if (!window.confirm(`Delete this ${label}? This can't be undone.`)) return;
+  deleting.value.add(m.id);
+  try {
+    await api.delete(m.url);
+    if (driver.value) {
+      driver.value.media = driver.value.media.filter((x) => x.id !== m.id);
+    }
+    toast.success(`${label[0].toUpperCase()}${label.slice(1)} deleted.`);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    deleting.value.delete(m.id);
+  }
 }
 </script>
 
@@ -479,6 +515,7 @@ function isRealMedia(m: MediaItem): boolean {
                 <span v-if="m.duration_s" class="pointer-events-none absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
                   0:{{ String(m.duration_s).padStart(2, "0") }}
                 </span>
+                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
               <div class="px-2.5 py-1.5">
                 <div class="truncate text-xs font-semibold text-text">{{ m.caption }}</div>
@@ -519,6 +556,7 @@ function isRealMedia(m: MediaItem): boolean {
                 >
                   <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
                 </span>
+                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
               <div class="px-2.5 py-1.5">
                 <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>

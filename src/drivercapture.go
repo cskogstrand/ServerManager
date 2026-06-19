@@ -79,10 +79,12 @@ type captureManager struct {
 
 	// Rolling-buffer recorders (driverbuffer.go): one persistent ffmpeg per
 	// connected+armed driver, reconciled by a background loop.
-	recMu         sync.Mutex
-	recorders     map[string]*bufferRecorder // guid -> running recorder
-	lastDesiredAt map[string]int64           // guid -> last time it was wanted (grace)
-	nudgeCh       chan struct{}              // wake the reconciler early
+	recMu          sync.Mutex
+	recorders      map[string]*bufferRecorder // guid -> running recorder
+	lastDesiredAt  map[string]int64           // guid -> last time it was wanted (grace)
+	recFails       map[string]int             // guid -> consecutive start failures (backoff)
+	recNextAttempt map[string]int64           // guid -> earliest next start (unix-ms)
+	nudgeCh        chan struct{}              // wake the reconciler early
 
 	manualMu sync.Mutex
 	manual   map[string]*manualMark // guid -> in-progress manual recording
@@ -92,12 +94,14 @@ var Captures *captureManager
 
 func newCaptureManager() *captureManager {
 	m := &captureManager{
-		armedGuids:    map[string]bool{},
-		recorders:     map[string]*bufferRecorder{},
-		lastDesiredAt: map[string]int64{},
-		manual:        map[string]*manualMark{},
-		nudgeCh:       make(chan struct{}, 1),
-		sem:           make(chan struct{}, maxCaptureConcurrent),
+		armedGuids:     map[string]bool{},
+		recorders:      map[string]*bufferRecorder{},
+		lastDesiredAt:  map[string]int64{},
+		recFails:       map[string]int{},
+		recNextAttempt: map[string]int64{},
+		manual:         map[string]*manualMark{},
+		nudgeCh:        make(chan struct{}, 1),
+		sem:            make(chan struct{}, maxCaptureConcurrent),
 	}
 	if path, err := exec.LookPath("ffmpeg"); err == nil {
 		m.enabled = true

@@ -226,7 +226,10 @@ func apiStreamsProbe(c *gin.Context) {
 // pullable source returns fast with detected streams; a WebRTC/LL-HLS source
 // hangs until the timeout (TimedOut) or errors immediately — the diagnostic.
 func (m *captureManager) probe(target string) probeResult {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	// Short enough to return before a typical reverse-proxy read timeout; long
+	// enough that a working source (which outputs in a few seconds) succeeds and
+	// a stalling one (WebRTC/LL-HLS) is caught as TimedOut.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "info"}
 	args = append(args, inputArgs(target)...)

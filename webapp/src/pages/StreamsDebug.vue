@@ -97,7 +97,8 @@ async function probe(s: StreamRow) {
     probes.value[key] = { loading: false, result };
   } catch (e) {
     probes.value[key] = { loading: false };
-    toast.error(e instanceof ApiError ? e.message : String(e));
+    const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
+    toast.error(msg || "Probe request failed — it may have timed out at a proxy. Try again, or check the segment count below.");
   }
 }
 

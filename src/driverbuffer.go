@@ -271,21 +271,26 @@ func (m *captureManager) reconcile() {
 	}
 	// Start or restart recorders for desired drivers — restart if the process
 	// died (stream blip, ffmpeg crash) or stalled (alive but writing no
-	// segments, e.g. an unpullable WebRTC/LL-HLS source).
+	// segments, e.g. an unpullable WebRTC/LL-HLS source). A recorder that keeps
+	// failing is retried with growing backoff so a bad source doesn't thrash.
 	for g := range desired {
 		if r := m.recorders[g]; r != nil {
 			dead := r.dead()
 			stalled := !dead && m.recorderStalled(g, r.startedAt)
 			if !dead && !stalled {
+				m.recFails[g] = 0 // healthy — clear backoff
 				continue
 			}
 			if stalled {
-				log.Printf("driver capture: recorder for %s stalled (no fresh segments) — restarting", g)
+				log.Printf("driver capture: recorder for %s stalled (no fresh segments) — stopping", g)
 			}
 			r.stop()
 			delete(m.recorders, g)
+			m.recFails[g]++
+			m.recNextAttempt[g] = now + recorderBackoffMs(m.recFails[g])
+			continue // restart on a later tick once the backoff elapses
 		}
-		if len(m.recorders) >= maxBufferRecorders {
+		if now < m.recNextAttempt[g] || len(m.recorders) >= maxBufferRecorders {
 			continue
 		}
 		url := m.captureURLFor(g)
@@ -306,9 +311,25 @@ func (m *captureManager) reconcile() {
 		if now-m.lastDesiredAt[g] > graceMs {
 			r.stop()
 			delete(m.recorders, g)
+			delete(m.recFails, g)
+			delete(m.recNextAttempt, g)
 			log.Printf("driver capture: rolling buffer stopped for %s", g)
 		}
 	}
+}
+
+// recorderBackoffMs grows the retry delay for a repeatedly failing source:
+// 15s, 30s, 60s, 120s, then capped at 300s.
+func recorderBackoffMs(fails int) int64 {
+	steps := []int64{15, 30, 60, 120, 300}
+	i := fails - 1
+	if i < 0 {
+		i = 0
+	}
+	if i >= len(steps) {
+		i = len(steps) - 1
+	}
+	return steps[i] * 1000
 }
 
 // recorderStalled reports whether a live recorder has produced no fresh segment

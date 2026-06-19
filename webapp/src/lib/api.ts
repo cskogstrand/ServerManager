@@ -52,8 +52,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
   if (!res.ok || json?.error || json?.success === false) {
     const code = json?.error?.code ?? "http_error";
-    const message = json?.error?.message ?? json?.message ?? res.statusText;
-    throw new ApiError(res.status, code, message);
+    // statusText is empty under HTTP/2 — fall back to the status code so a
+    // proxy 502/504 never surfaces as a blank toast.
+    const message = json?.error?.message ?? json?.message ?? res.statusText ?? "";
+    throw new ApiError(res.status, code, message || `Request failed (HTTP ${res.status})`);
   }
 
   return json as T;

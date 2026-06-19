@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Hover-revealed download / delete controls for a highlight tile (clip or
-// screenshot). Sits over the bottom-right of the media area; the parent owns
+// screenshot). Sits over the top-right of the media area; the parent owns
 // the actual download/delete logic and just listens for the events.
 import type { MediaItem } from "@/types/driverStats";
 import Icon from "@/components/ui/Icon.vue";
@@ -19,7 +19,7 @@ defineEmits<{
 
 <template>
   <div
-    class="absolute right-2 bottom-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+    class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
   >
     <button
       type="button"

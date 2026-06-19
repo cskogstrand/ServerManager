@@ -589,49 +589,17 @@ onBeforeUnmount(() => {
                 <div class="min-w-0 flex-1">
                   <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
                 </div>
-                <!-- Driver-detail link (any role) + capture controls (operate role) -->
-                <div
+                <!-- Driver-detail link (any role); capture controls live over the stream -->
+                <RouterLink
                   v-if="guidForCar(card.row.car_id)"
-                  class="flex shrink-0 items-center gap-1"
+                  :to="{ name: 'driver-detail', params: { guid: guidForCar(card.row.car_id)! } }"
+                  target="_blank"
+                  title="Open driver detail"
+                  class="grid size-7 shrink-0 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent"
+                  @click.stop
                 >
-                  <RouterLink
-                    :to="{ name: 'driver-detail', params: { guid: guidForCar(card.row.car_id)! } }"
-                    target="_blank"
-                    title="Open driver detail"
-                    class="grid size-7 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent"
-                    @click.stop
-                  >
-                    <Icon name="user" :size="14" />
-                  </RouterLink>
-                  <template v-if="auth.canOperate">
-                  <button
-                    type="button"
-                    title="Take picture from this stream"
-                    class="grid size-7 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-40"
-                    :disabled="snappingGuids.has(guidForCar(card.row.car_id)!)"
-                    @click.stop="takePic(guidForCar(card.row.car_id))"
-                  >
-                    <Icon name="camera" :size="14" />
-                  </button>
-                  <button
-                    type="button"
-                    :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Stop recording and save the clip' : 'Record clip (ends with next drift run)'"
-                    class="flex h-7 items-center gap-1 rounded-md border px-1.5 text-[10px] font-bold transition-colors"
-                    :class="cap.isRecording(guidForCar(card.row.car_id)!)
-                      ? 'border-danger/50 bg-danger-glow text-danger'
-                      : 'border-line bg-surface-2/70 text-text/90 hover:border-danger/50 hover:text-danger'"
-                    @click.stop="recordCar(guidForCar(card.row.car_id))"
-                  >
-                    <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'stop' : 'record'" :size="14" />
-                    <span v-if="cap.isRecording(guidForCar(card.row.car_id)!)">{{ fmtClipDuration(cap.manualElapsed(guidForCar(card.row.car_id)!)) }}</span>
-                  </button>
-                  <span
-                    v-if="cap.isBuffering(guidForCar(card.row.car_id)!)"
-                    class="size-1.5 rounded-full bg-ok live-dot"
-                    title="Rolling buffer recording — drift-run clips cut from this"
-                  />
-                  </template>
-                </div>
+                  <Icon name="user" :size="14" />
+                </RouterLink>
               </header>
 
               <!-- Speed / gear + RPM bar -->
@@ -734,6 +702,38 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="relative min-h-0 flex-1 border-t border-line bg-bg xl:border-l xl:border-t-0">
+              <!-- Capture controls (operate role): top-left over the stream -->
+              <div
+                v-if="auth.canOperate && guidForCar(card.row.car_id)"
+                class="absolute left-3 top-3 z-10 flex items-center gap-1"
+              >
+                <button
+                  type="button"
+                  title="Take picture from this stream"
+                  class="grid size-8 place-items-center rounded-lg border border-line bg-bg/60 text-muted shadow-sm backdrop-blur transition-all hover:border-accent/60 hover:bg-bg/90 hover:text-accent disabled:opacity-40"
+                  :disabled="snappingGuids.has(guidForCar(card.row.car_id)!)"
+                  @click.stop="takePic(guidForCar(card.row.car_id))"
+                >
+                  <Icon name="camera" :size="14" />
+                </button>
+                <button
+                  type="button"
+                  :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Stop recording and save the clip' : 'Record clip (ends with next drift run)'"
+                  class="flex h-8 items-center gap-1 rounded-lg border px-2 text-[10px] font-bold shadow-sm backdrop-blur transition-all"
+                  :class="cap.isRecording(guidForCar(card.row.car_id)!)
+                    ? 'border-danger/50 bg-danger-glow text-danger'
+                    : 'border-line bg-bg/60 text-muted hover:border-danger/50 hover:bg-bg/90 hover:text-danger'"
+                  @click.stop="recordCar(guidForCar(card.row.car_id))"
+                >
+                  <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'stop' : 'record'" :size="14" />
+                  <span v-if="cap.isRecording(guidForCar(card.row.car_id)!)">{{ fmtClipDuration(cap.manualElapsed(guidForCar(card.row.car_id)!)) }}</span>
+                </button>
+                <span
+                  v-if="cap.isBuffering(guidForCar(card.row.car_id)!)"
+                  class="size-1.5 rounded-full bg-ok live-dot"
+                  title="Rolling buffer recording — drift-run clips cut from this"
+                />
+              </div>
               <iframe
                   v-if="card.channel?.online"
                   :src="card.channel.url"

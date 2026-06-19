@@ -42,7 +42,9 @@ local function smStreamTelemetry(player, dt)
     end
     smSendTimer = smSendTimer + dt
     if smSendTimer >= 0.05 then
-        smSock({ i = player.index, lvx = player.localVelocity.x, kmh = player.speedKmh, dt = smSendTimer })
+        -- Car id is not sent: the server takes it from the connection URL (CSP
+        -- {SessionID}), so the script never needs to know its own session slot.
+        smSock({ lvx = player.localVelocity.x, kmh = player.speedKmh, dt = smSendTimer })
         smSendTimer = 0
     end
 end

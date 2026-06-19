@@ -561,7 +561,11 @@ const (
 // carries the same reachability requirement: SM's web port must be reachable by
 // joining clients — which the WebSocket ingest shares (same host:port).
 func driftScriptURL(cfg UserConfig, instanceId int) string {
-	return modDownloadBaseURL(cfg) + "/sm/lua/driftscore?instance=" + strconv.Itoa(instanceId)
+	// {SessionID} is a CSP script-URL placeholder: "0-based index of entry list
+	// used by the player" — i.e. the ACSP car id. CSP substitutes it per client
+	// when fetching the script, so the server learns each client's car id
+	// without the script having to figure out its own session slot.
+	return modDownloadBaseURL(cfg) + "/sm/lua/driftscore?instance=" + strconv.Itoa(instanceId) + "&sid={SessionID}"
 }
 
 // stripDriftCspBlock removes any previously-written managed block (including a

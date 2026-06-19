@@ -133,9 +133,10 @@ func (s *driftScorer) step(lvx, speedMs, speedKmh, dt float64) (live, best int, 
 	return live, best, runEnded, last
 }
 
-// driftFrame is one telemetry sample from a client's CSP feeder script.
+// driftFrame is one telemetry sample from a client's CSP feeder script. The car
+// id is not in the frame — it comes from the connection's ?car= query (CSP
+// {SessionID} substitution), fixed for the life of the socket.
 type driftFrame struct {
-	I   int     `json:"i"`   // session car id (ACSP carId), from car.index
 	Lvx float64 `json:"lvx"` // car-local lateral velocity, m/s
 	Kmh float64 `json:"kmh"` // speed, km/h
 	Dt  float64 `json:"dt"`  // seconds since this client's previous sample
@@ -148,6 +149,7 @@ type driftFrame struct {
 // handshake does not require one, so accepting the upgrade is fine.
 func apiTelemetryIngest(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Query("instance"))
+	carId, _ := strconv.Atoi(c.Query("car"))
 	if driftIngestToken == "" || c.Query("token") != driftIngestToken {
 		log.Printf("drift ingest: rejected bad token instance=%d remote=%s", id, c.ClientIP())
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -178,23 +180,22 @@ func apiTelemetryIngest(c *gin.Context) {
 			if json.Unmarshal([]byte(msg), &f) != nil {
 				continue
 			}
-			// One diagnostic line per connection: did frames arrive, what carId
-			// did the client report, and does it map to a connected driver? A
-			// "known=false" here is the carId-mapping bug (player.index vs ACSP
-			// carId).
+			// One diagnostic line per connection: did frames arrive, and does the
+			// connection's car id map to a connected driver? "known=false" means
+			// the ?car= value (CSP {SessionID}) didn't match any connected car.
 			if first {
 				first = false
 				inst.mu.Lock()
-				_, known := inst.drivers[f.I]
+				_, known := inst.drivers[carId]
 				cars := make([]int, 0, len(inst.drivers))
 				for k := range inst.drivers {
 					cars = append(cars, k)
 				}
 				inst.mu.Unlock()
 				log.Printf("drift ingest: first frame instance=%d carId=%d known=%v connectedCars=%v lvx=%.2f kmh=%.1f dt=%.3f",
-					id, f.I, known, cars, f.Lvx, f.Kmh, f.Dt)
+					id, carId, known, cars, f.Lvx, f.Kmh, f.Dt)
 			}
-			inst.applyDriftTelemetry(f.I, f.Lvx, f.Kmh, f.Dt)
+			inst.applyDriftTelemetry(carId, f.Lvx, f.Kmh, f.Dt)
 		}
 	})
 
@@ -217,10 +218,14 @@ func apiDriftLuaScript(c *gin.Context) {
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
 		scheme = "wss"
 	}
-	ingest := fmt.Sprintf("%s://%s/telemetry/ingest?instance=%s&token=%s",
+	// car carries the client's ACSP car id (from CSP's {SessionID} substitution
+	// on the script URL) onto the ingest connection, so the server maps frames
+	// to the right driver without the script knowing its own session slot.
+	ingest := fmt.Sprintf("%s://%s/telemetry/ingest?instance=%s&token=%s&car=%s",
 		scheme, c.Request.Host,
 		url.QueryEscape(c.Query("instance")),
-		url.QueryEscape(driftIngestToken))
+		url.QueryEscape(driftIngestToken),
+		url.QueryEscape(c.Query("sid")))
 
 	header := "local SM_INGEST = " + strconv.Quote(ingest) + "\n"
 	c.Header("Content-Type", "text/plain; charset=utf-8")

@@ -616,7 +616,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                   <div
-                      class="h-full rounded-full transition-all duration-100 ease-out"
+                      class="h-full rounded-full transition-[width] duration-200 ease-linear"
                       :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
                       :style="{ width: `${rpmPct(card.row.pos)}%` }"
                   />

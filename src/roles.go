@@ -23,6 +23,13 @@ func RoleMiddleware(c *gin.Context) {
 		return
 	}
 
+	// Stream debug exposes capture URLs (which can carry tokens) and can run an
+	// ffmpeg probe — admin-only, reads included.
+	if strings.HasPrefix(path, "/api/streams/debug") && role != roleAdmin {
+		forbidden(c)
+		return
+	}
+
 	// Safe methods, logout, and editing your own account are open to any role.
 	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions ||
 		path == "/api/logout" || path == "/api/user" {
@@ -61,6 +68,9 @@ func stewardCanMutate(path string) bool {
 	case strings.HasPrefix(p, "/drivers/") && (strings.HasSuffix(p, "/avatar") || strings.HasSuffix(p, "/record")):
 		// Uploading a driver photo and starting a manual recording are
 		// operate-time actions.
+		return true
+	case strings.HasPrefix(p, "/drivers/") && strings.Contains(p, "/media/"):
+		// Deleting a highlight clip/screenshot is an operate-time action.
 		return true
 	}
 	return false

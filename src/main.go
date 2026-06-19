@@ -118,7 +118,7 @@ func main() {
 	}
 	defer logfile.Close()
 
-	mw := io.MultiWriter(os.Stdout, logfile, &LogBuffer)
+	mw := io.MultiWriter(os.Stdout, logfile, &LogBuffer, LogLines)
 	log.SetOutput(mw)
 
 	TempFolder = filepath.Join(ConfigFolder, "tmp")
@@ -324,6 +324,9 @@ func main() {
 		api.POST("/driver-streams", apiDriverStreamCreate)
 		api.PUT("/driver-streams/:id", apiDriverStreamUpdate)
 		api.DELETE("/driver-streams/:id", apiDriverStreamDelete)
+
+		api.GET("/streams/debug", apiStreamsDebug)
+		api.POST("/streams/debug/probe", apiStreamsProbe)
 
 		api.GET("/drivers", apiDriversList)
 		api.GET("/drivers/:guid", apiDriverGet)

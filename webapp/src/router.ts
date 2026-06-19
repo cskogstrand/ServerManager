@@ -21,6 +21,7 @@ const router = createRouter({
     { path: "/setup", name: "setup", component: () => import("@/pages/SetupWorkbench.vue") },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue") },
     { path: "/settings/instances", name: "instances", component: () => import("@/pages/SettingsInstances.vue") },
+    { path: "/settings/streams", name: "streams-debug", component: () => import("@/pages/StreamsDebug.vue"), meta: { admin: true } },
     { path: "/maintenance", name: "maintenance", component: () => import("@/pages/Maintenance.vue") },
     { path: "/settings/users", name: "users", component: () => import("@/pages/Users.vue"), meta: { admin: true } },
     { path: "/preferences", name: "preferences", component: () => import("@/pages/SettingsUser.vue") },

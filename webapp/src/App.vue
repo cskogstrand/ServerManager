@@ -101,6 +101,7 @@ const allSections = [
       { to: "/setup", label: "Server Setup", icon: "settings", admin: true },
       { to: "/settings", label: "Configuration", icon: "settings", admin: true },
       { to: "/settings/instances", label: "Instances", icon: "instances", admin: true },
+      { to: "/settings/streams", label: "Stream Debug", icon: "broadcast", admin: true },
       { to: "/content", label: "Content", icon: "content", admin: true },
       { to: "/maintenance", label: "Backup & Restore", icon: "content", admin: true },
       { to: "/settings/users", label: "Users & Roles", icon: "users", admin: true },

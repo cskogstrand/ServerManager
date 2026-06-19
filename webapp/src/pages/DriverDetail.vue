@@ -6,6 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getDriver, describeResult, fmtDate, fmtScore, sessionKindLabel, shortGuid, timeAgo } from "@/lib/driversApi";
+import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
 import { lapTime } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useToastStore } from "@/stores/toast";
@@ -28,8 +29,10 @@ const toast = useToastStore();
 const auth = useAuthStore();
 const server = useServerStore();
 const content = useContentStore();
+const cap = useDriverCapture();
 
 const guid = computed(() => String(route.params.guid));
+const capStatus = computed(() => cap.statusFor(guid.value));
 const driver = ref<DriverDetail | null>(null);
 const loading = ref(true);
 
@@ -83,7 +86,7 @@ async function takePicture() {
   if (!driver.value || snapping.value) return;
   snapping.value = true;
   try {
-    await api.post(`/api/drivers/${encodeURIComponent(guid.value)}/snapshot`);
+    await cap.takePicture(guid.value);
     toast.success("Picture captured.");
     const fresh = await getDriver(guid.value);
     if (fresh) driver.value = fresh;
@@ -105,19 +108,12 @@ async function recordNow() {
   if (!driver.value || recording.value) return;
   recording.value = true;
   try {
-    const res = await fetch(`/api/drivers/${encodeURIComponent(guid.value)}/record`, {
-      method: "POST",
-      headers: { "X-CSRF-Token": csrfToken() },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
-    }
+    await cap.recordNow(guid.value);
     toast.info("Recording — the clip ends with the next drift run, then shows up here.");
     void pollForClip();
   } catch (e) {
     recording.value = false;
-    toast.error(e instanceof Error ? e.message : String(e));
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 
@@ -197,11 +193,13 @@ async function load() {
 onMounted(() => {
   void content.load(); // car list backs the favourite-car preview
   void load();
+  cap.startPoll();
 });
 watch(guid, load);
 onBeforeUnmount(() => {
   if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
   recording.value = false;
+  cap.stopPoll();
 });
 
 // Real captures resolve to a served file; mock items use "#" and fall back to a
@@ -448,6 +446,27 @@ async function deleteMedia(m: MediaItem) {
           >
             <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
           </span>
+          <!-- Live capture status from the rolling-buffer recorder -->
+          <span
+            v-if="capStatus?.manual_active"
+            class="inline-flex items-center gap-1.5 rounded-full border border-danger/45 bg-danger-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-danger uppercase"
+          >
+            <span class="size-1.5 rounded-full bg-danger live-dot" /> REC {{ fmtClipDuration(cap.manualElapsed(guid)) }}
+          </span>
+          <span
+            v-else-if="capStatus?.buffering"
+            class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
+            title="Rolling buffer recording — drift-run clips are cut from this"
+          >
+            <span class="size-1.5 rounded-full bg-ok" /> Buffering
+          </span>
+          <span
+            v-else-if="capStatus?.recorder_running"
+            class="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-warn uppercase"
+            title="Recorder running but no fresh segments — source may be down"
+          >
+            Connecting…
+          </span>
         </template>
         <template v-if="auth.canOperate" #actions>
           <Button
@@ -541,7 +560,7 @@ async function deleteMedia(m: MediaItem) {
                   <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
                 </span>
                 <span v-if="m.duration_s" class="pointer-events-none absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
-                  0:{{ String(m.duration_s).padStart(2, "0") }}
+                  {{ fmtClipDuration(m.duration_s) }}
                 </span>
                 <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>

@@ -185,6 +185,75 @@ func (m *captureManager) fillDebugRow(row *streamDebugRow, guid string) {
 	row.BufferBytes = total
 }
 
+// ---- live capture status (lightweight, any role) ----------------------------
+
+type captureStatus struct {
+	RecorderRunning bool  `json:"recorder_running"`
+	SegmentCount    int   `json:"segment_count"`
+	Buffering       bool  `json:"buffering"` // a fresh segment landed very recently
+	ManualActive    bool  `json:"manual_active"`
+	ManualStartedMs int64 `json:"manual_started_ms"`
+}
+
+// captureStatuses returns the live recording state for every guid that has a
+// recorder, is armed, or has a manual recording in progress.
+func (m *captureManager) captureStatuses() map[string]captureStatus {
+	out := map[string]captureStatus{}
+	if m == nil {
+		return out
+	}
+	now := time.Now().UnixMilli()
+	guids := map[string]bool{}
+	m.recMu.Lock()
+	for g := range m.recorders {
+		guids[g] = true
+	}
+	m.recMu.Unlock()
+	m.mu.Lock()
+	for g := range m.armedGuids {
+		guids[g] = true
+	}
+	m.mu.Unlock()
+	m.manualMu.Lock()
+	for g := range m.manual {
+		guids[g] = true
+	}
+	m.manualMu.Unlock()
+
+	freshMs := int64(bufSegmentSeconds*3) * 1000
+	for g := range guids {
+		if g == "" {
+			continue
+		}
+		st := captureStatus{}
+		m.recMu.Lock()
+		if r := m.recorders[g]; r != nil {
+			st.RecorderRunning = !r.dead()
+		}
+		m.recMu.Unlock()
+		segs := listBufferSegments(bufferDir(g))
+		st.SegmentCount = len(segs)
+		if len(segs) > 0 {
+			st.Buffering = now-segs[len(segs)-1].startMs < freshMs
+		}
+		m.manualMu.Lock()
+		if mk := m.manual[g]; mk != nil {
+			st.ManualActive = true
+			st.ManualStartedMs = mk.startMs
+		}
+		m.manualMu.Unlock()
+		out[g] = st
+	}
+	return out
+}
+
+func apiCaptureStatus(c *gin.Context) {
+	c.PureJSON(http.StatusOK, gin.H{
+		"now_ms":  time.Now().UnixMilli(),
+		"drivers": Captures.captureStatuses(),
+	})
+}
+
 // ---- live probe -------------------------------------------------------------
 
 type probeRequest struct {

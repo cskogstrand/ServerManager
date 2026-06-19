@@ -44,12 +44,15 @@ type DriverState struct {
 	sessConfig string
 	recorded   bool
 
-	// Drift-spike capture bookkeeping (not serialized): fire at most once per
-	// run (driftRunFired), with a per-session cap (captureCount) and per-driver
-	// cooldown (lastCaptureMs). driftRunBaseline is the score when the current
-	// run was first seen, used for the spike delta. See drivercapture.go.
+	// Drift-run capture bookkeeping (not serialized). A clip is captured at the
+	// END of a drift run if its peak score cleared the trigger, subject to a
+	// per-session cap (captureCount) and per-driver cooldown (lastCaptureMs).
+	// The run's start time, baseline and peak (value + when) define the clip
+	// window and the screenshot moment. See drivercapture.go.
 	driftRunBaseline int
-	driftRunFired    bool
+	driftRunStartMs  int64
+	driftRunPeak     int
+	driftRunPeakMs   int64
 	captureCount     int
 	lastCaptureMs    int64
 }
@@ -143,7 +146,9 @@ func (inst *Instance) resetDriverLaps() {
 		d.sessTrack = newTrack
 		d.sessConfig = newConfig
 		d.driftRunBaseline = 0
-		d.driftRunFired = false
+		d.driftRunStartMs = 0
+		d.driftRunPeak = 0
+		d.driftRunPeakMs = 0
 		d.captureCount = 0
 		d.lastCaptureMs = 0
 	}
@@ -191,15 +196,24 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 	if d := inst.drivers[carId]; d != nil {
 		if live {
 			// A run starts when the live score first rises from zero; remember
-			// that baseline so the spike delta is measured from it.
+			// the baseline, start time and (rolling) peak so the end-of-run clip
+			// can span the whole run and the screenshot can land on the peak.
 			if d.DriftLive == 0 && score > 0 {
 				d.driftRunBaseline = score
+				d.driftRunStartMs = now
+				d.driftRunPeak = score
+				d.driftRunPeakMs = now
 			}
 			d.DriftLive = score
-			// Fire one capture per run once the run gets "big", subject to the
-			// per-session cap, the cooldown, and a configured capture source.
-			if !d.driftRunFired && Captures.shouldTrigger(d.Guid, score, d.captureCount, d.lastCaptureMs, now) {
-				d.driftRunFired = true
+			if score > d.driftRunPeak {
+				d.driftRunPeak = score
+				d.driftRunPeakMs = now
+			}
+		} else {
+			// Run ended. Capture the whole run if its peak cleared the trigger,
+			// subject to the per-session cap, cooldown and a configured source.
+			if d.Guid != "" && d.driftRunStartMs > 0 &&
+				Captures.shouldTrigger(d.Guid, d.driftRunPeak, d.captureCount, d.lastCaptureMs, now) {
 				d.captureCount++
 				d.lastCaptureMs = now
 				capReq = &captureRequest{
@@ -207,14 +221,19 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 					driverName:  d.Name,
 					trackKey:    d.sessTrack,
 					trackConfig: d.sessConfig,
-					score:       score,
-					delta:       score - d.driftRunBaseline,
+					score:       d.driftRunPeak,
+					delta:       d.driftRunPeak - d.driftRunBaseline,
+					runStartMs:  d.driftRunStartMs,
+					runEndMs:    now,
+					peakMs:      d.driftRunPeakMs,
 				}
 			}
-		} else {
 			d.DriftLast = score
 			d.DriftLive = 0
-			d.driftRunFired = false
+			d.driftRunBaseline = 0
+			d.driftRunStartMs = 0
+			d.driftRunPeak = 0
+			d.driftRunPeakMs = 0
 			// A run just ended: stop any manual recording for this driver.
 			if d.Guid != "" {
 				endedGuid = d.Guid

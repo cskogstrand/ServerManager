@@ -327,6 +327,7 @@ func main() {
 
 		api.GET("/streams/debug", apiStreamsDebug)
 		api.POST("/streams/debug/probe", apiStreamsProbe)
+		api.GET("/streams/capture-status", apiCaptureStatus)
 
 		api.GET("/drivers", apiDriversList)
 		api.GET("/drivers/:guid", apiDriverGet)

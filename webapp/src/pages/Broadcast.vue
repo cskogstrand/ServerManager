@@ -24,6 +24,9 @@ import {
 } from "@/lib/raceTelemetry";
 import {type StreamChannel, useDriverStreams} from "@/lib/useDriverStreams";
 import {useBroadcastDemo} from "@/lib/broadcastDemo";
+import {useDriverCapture, fmtClipDuration} from "@/lib/useDriverCapture";
+import {useAuthStore} from "@/stores/auth";
+import {useToastStore} from "@/stores/toast";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
 
@@ -52,6 +55,9 @@ interface TrackMapMeta {
 const route = useRoute();
 const server = useServerStore();
 const content = useContentStore();
+const auth = useAuthStore();
+const toast = useToastStore();
+const cap = useDriverCapture();
 
 const instanceId = computed(() => Number(route.params.id));
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
@@ -244,6 +250,32 @@ const driverCards = computed<DriverCard[]>(() =>
     timingRows.value.map((row) => ({row, channel: channelForCar(row.car_id)})),
 );
 
+// --- per-driver capture (operate role): grab a still / record from a card ----
+const snappingGuids = ref<Set<string>>(new Set());
+
+async function takePic(guid: string | undefined) {
+  if (!guid || debug.value || snappingGuids.value.has(guid)) return;
+  snappingGuids.value.add(guid);
+  try {
+    await cap.takePicture(guid);
+    toast.success("Picture captured.");
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+  } finally {
+    snappingGuids.value.delete(guid);
+  }
+}
+
+async function recordCar(guid: string | undefined) {
+  if (!guid || debug.value || cap.isRecording(guid)) return;
+  try {
+    await cap.recordNow(guid);
+    toast.info("Recording — clip ends with the next drift run.");
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function fetchStatus() {
   if (debug.value) return;
   try {
@@ -307,6 +339,7 @@ onMounted(async () => {
   void content.load();
   void driverStreams.loadStreams();
   driverStreams.startHealthPoll(() => instanceId.value);
+  cap.startPoll();
   await fetchStatus();
   await fetchMapMeta();
 });
@@ -319,6 +352,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   driverStreams.stopHealthPoll();
+  cap.stopPoll();
   demo.stop();
 });
 </script>
@@ -549,6 +583,39 @@ onBeforeUnmount(() => {
                 </span>
                 <div class="min-w-0 flex-1">
                   <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
+                </div>
+                <!-- Capture controls (operate role; needs a configured stream guid) -->
+                <div
+                  v-if="auth.canOperate && guidForCar(card.row.car_id)"
+                  class="flex shrink-0 items-center gap-1"
+                >
+                  <button
+                    type="button"
+                    title="Take picture from this stream"
+                    class="grid size-7 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-40"
+                    :disabled="snappingGuids.has(guidForCar(card.row.car_id)!)"
+                    @click.stop="takePic(guidForCar(card.row.car_id))"
+                  >
+                    <Icon name="camera" :size="14" />
+                  </button>
+                  <button
+                    type="button"
+                    :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Recording…' : 'Record clip (ends with next drift run)'"
+                    class="flex h-7 items-center gap-1 rounded-md border px-1.5 text-[10px] font-bold transition-colors"
+                    :class="cap.isRecording(guidForCar(card.row.car_id)!)
+                      ? 'border-danger/50 bg-danger-glow text-danger'
+                      : 'border-line bg-surface-2/70 text-text/90 hover:border-danger/50 hover:text-danger'"
+                    :disabled="cap.isRecording(guidForCar(card.row.car_id)!)"
+                    @click.stop="recordCar(guidForCar(card.row.car_id))"
+                  >
+                    <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'activity' : 'record'" :size="14" />
+                    <span v-if="cap.isRecording(guidForCar(card.row.car_id)!)">{{ fmtClipDuration(cap.manualElapsed(guidForCar(card.row.car_id)!)) }}</span>
+                  </button>
+                  <span
+                    v-if="cap.isBuffering(guidForCar(card.row.car_id)!)"
+                    class="size-1.5 rounded-full bg-ok live-dot"
+                    title="Rolling buffer recording — drift-run clips cut from this"
+                  />
                 </div>
               </header>
 

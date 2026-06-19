@@ -1,22 +1,22 @@
 package main
 
-// Drift-spike auto-capture. When a driver's live drift score crosses the
-// configured trigger score during a run, driverDrift (drivers.go) submits one
-// captureRequest. This engine pulls a screenshot + short clip from the driver's
-// configured raw stream (driver_stream.stream_capture_url) via ffmpeg and files
-// them as driver_media so they surface in the Driver Detail highlight reel.
+// Drift-run auto-capture. A rolling buffer (driverbuffer.go) continuously
+// records each armed stream; when a drift run ENDS whose peak score cleared the
+// trigger, driverDrift (drivers.go) submits one captureRequest spanning the
+// run. This engine cuts the clip from the buffer and pulls the peak-moment
+// screenshot — no per-event network connect — filing them as driver_media so
+// they surface in the Driver Detail highlight reel.
 //
 // Throttling keeps the reel curated rather than endless:
-//   - one capture per drift run            (DriverState.driftRunFired)
+//   - one capture per drift run            (fired once at run end)
 //   - per-session cap                       (DriverState.captureCount)
 //   - per-driver cooldown                   (DriverState.lastCaptureMs)
 //   - global concurrency + per-minute rate  (captureManager.sem / recent)
 //   - retention: keep the top-by-score + most-recent, prune the rest
 //
-// Capture is only available where ffmpeg is on PATH and the driver has a raw,
-// server-reachable capture URL (HLS/RTMP/SRT/RTSP) — platform embeds can't be
-// grabbed. Every ffmpeg failure is logged and swallowed; nothing here blocks
-// the UDP event loop.
+// Capture needs ffmpeg on PATH and a raw, server-reachable capture URL
+// (HLS/RTMP/SRT/RTSP) — WebRTC/WHEP and Low-Latency HLS can't be pulled. Every
+// ffmpeg failure is logged and swallowed; nothing here blocks the UDP loop.
 
 import (
 	"database/sql"
@@ -62,8 +62,11 @@ type captureRequest struct {
 	driverName  string
 	trackKey    string
 	trackConfig string
-	score       int
-	delta       int
+	score       int   // peak score of the run
+	delta       int   // peak - baseline
+	runStartMs  int64 // when the run's live score first rose from zero
+	runEndMs    int64 // when the run ended
+	peakMs      int64 // when the peak score occurred (screenshot moment)
 }
 
 type captureManager struct {
@@ -176,9 +179,10 @@ func (m *captureManager) submit(req captureRequest) {
 	}
 }
 
-// run assembles a spike's clip + screenshot from the driver's rolling buffer.
-// No network connect: the recorder is already capturing, so we cut the segments
-// straddling the spike. Most of the clip leads into the peak, the rest trails.
+// run assembles a finished drift run's clip + screenshot from the rolling
+// buffer. No network connect: the recorder is already capturing, so we cut the
+// segments spanning the whole run (a little lead-in/trail), and grab the
+// screenshot at the run's peak moment. Clip length tracks the run length.
 func (m *captureManager) run(req captureRequest) {
 	m.mu.Lock()
 	cfg := m.cfg
@@ -194,37 +198,32 @@ func (m *captureManager) run(req captureRequest) {
 		return
 	}
 
-	clipSec := cfg.clipSeconds
-	if clipSec <= 0 {
-		clipSec = defaultCaptureClipSeconds
+	const preMs, postMs = 3000, 3000
+	startMs := req.runStartMs - preMs
+	endMs := req.runEndMs + postMs
+	// Never ask for more than the buffer can hold.
+	if maxSpan := int64(bufRingSeconds-5) * 1000; endMs-startMs > maxSpan {
+		startMs = endMs - maxSpan
 	}
-	post := clipSec / 3
-	if post < 3 {
-		post = 3
-	}
-	pre := clipSec - post
-	// T is "now" at submit — a beat after the spike, close enough to centre on.
-	T := time.Now().UnixMilli()
-	startMs := T - int64(pre)*1000
-	endMs := T + int64(post)*1000
 
 	m.waitForWindow(endMs)
 
-	stamp := strconv.FormatInt(T, 10)
+	stamp := strconv.FormatInt(req.runEndMs, 10)
 	clipFile := stamp + "_clip.mp4"
 	clipPath := filepath.Join(dir, clipFile)
 	clipStartMs, ok := m.assembleClip(guid, startMs, endMs, clipPath)
 	if !ok {
-		log.Printf("driver capture: no buffered video for %s spike — recorder may have just started", guid)
+		log.Printf("driver capture: no buffered video for %s run — recorder may have just started", guid)
 		return
 	}
 	at := time.Now()
 	trackName := m.trackName(req.trackKey, req.trackConfig)
+	durS := int((endMs - startMs) / 1000)
 
 	// Screenshot: pull the peak frame straight from the local clip.
 	if cfg.screenshots {
 		shot := stamp + "_shot.jpg"
-		offset := float64(T-clipStartMs) / 1000.0
+		offset := float64(req.peakMs-clipStartMs) / 1000.0
 		if offset < 0 {
 			offset = 0
 		}
@@ -241,7 +240,7 @@ func (m *captureManager) run(req captureRequest) {
 		if trackName != "" {
 			caption += " · " + trackName
 		}
-		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), clipSec, req.score, req.delta); err != nil {
+		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), durS, req.score, req.delta); err != nil {
 			log.Print("driver capture: insert clip: ", err)
 		}
 	} else {

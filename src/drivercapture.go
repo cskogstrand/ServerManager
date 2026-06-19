@@ -618,6 +618,33 @@ func (m *captureManager) assembleManual(mark *manualMark) {
 	log.Printf("driver capture: manual recording finished for %s", guid)
 }
 
+// takeSnapshot grabs a still from the freshest buffered video and files it as a
+// screenshot. Returns the media filename, or an error when capture is
+// unavailable or the buffer is empty (stream down / just started).
+func (m *captureManager) takeSnapshot(guid string) (string, error) {
+	if m == nil || !m.enabled {
+		return "", errors.New("capture is unavailable: ffmpeg is not installed on the server")
+	}
+	if m.captureURLFor(guid) == "" {
+		return "", errors.New("no capture URL is configured for this driver")
+	}
+	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return "", err
+	}
+	stamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	file := stamp + "_snap.jpg"
+	if !m.grabLatestFrame(guid, filepath.Join(dir, file)) {
+		return "", errors.New("no buffered video yet — the stream may be down or still starting")
+	}
+	// trigger 0 -> NULL -> no spike badge (this is an operator snapshot).
+	if err := Dba.insertDriverMedia(guid, "screenshot", file, "Snapshot", time.Now().UnixMilli(), 0, 0, 0); err != nil {
+		return "", err
+	}
+	m.prune(guid, dir)
+	return file, nil
+}
+
 // apiDriverRecord (POST /api/drivers/:guid/record) starts a manual recording.
 func apiDriverRecord(c *gin.Context) {
 	guid := strings.TrimSpace(c.Param("guid"))
@@ -634,4 +661,24 @@ func apiDriverRecord(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"status": "recording"})
+}
+
+// apiDriverSnapshot (POST /api/drivers/:guid/snapshot) grabs a still from the
+// driver's live stream now.
+func apiDriverSnapshot(c *gin.Context) {
+	guid := strings.TrimSpace(c.Param("guid"))
+	if guid == "" {
+		apiBadRequest(c, "Invalid driver")
+		return
+	}
+	if Captures == nil {
+		apiError(c, http.StatusServiceUnavailable, "capture_unavailable", "Capture is not available.")
+		return
+	}
+	file, err := Captures.takeSnapshot(guid)
+	if err != nil {
+		apiError(c, http.StatusConflict, "capture_error", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"status": "captured", "url": "/api/drivers/" + url.PathEscape(guid) + "/media/" + file})
 }

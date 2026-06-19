@@ -210,18 +210,20 @@ func (m *captureManager) janitorLoop() {
 	}
 }
 
-// computeDesired is the set of guids that should have a running recorder:
-// connected + armed drivers, plus any driver with an active manual recording.
+// computeDesired is the set of guids that should have a running recorder.
+//
+// 24/7 model: record every armed stream (enabled + capture URL configured),
+// whether or not the driver is connected — so the buffer is always warm before
+// a session and streams can be debugged any time from the debug screen.
+// Persistence is separate: spike clips are only written while the driver is
+// online and drifting (driverDrift), manual clips only on "Record now".
 func (m *captureManager) computeDesired() map[string]bool {
 	out := map[string]bool{}
-	for g := range onlineDriverGuids() {
-		m.mu.Lock()
-		armed := m.armedGuids[g]
-		m.mu.Unlock()
-		if armed {
-			out[g] = true
-		}
+	m.mu.Lock()
+	for g := range m.armedGuids {
+		out[g] = true
 	}
+	m.mu.Unlock()
 	m.manualMu.Lock()
 	for g := range m.manual {
 		out[g] = true
@@ -411,6 +413,39 @@ func (m *captureManager) concatEncode(listPath, outPath string) bool {
 		outPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("driver capture: clip concat encode failed: %v %s", err, strings.TrimSpace(string(out)))
+		return false
+	}
+	return fileNonEmpty(outPath)
+}
+
+// grabLatestFrame extracts a still from the freshest fully-written buffer
+// segment for the driver. Returns false if nothing is buffered yet.
+func (m *captureManager) grabLatestFrame(guid, outPath string) bool {
+	segs := listBufferSegments(bufferDir(guid))
+	if len(segs) == 0 {
+		return false
+	}
+	// Prefer the second-newest segment — the newest is still being written.
+	src := segs[len(segs)-1].path
+	if len(segs) >= 2 {
+		src = segs[len(segs)-2].path
+	}
+	return m.grabFrameFromFileEnd(src, outPath)
+}
+
+// grabFrameFromFileEnd grabs the frame ~1s before the end of a local file (the
+// freshest decodable still).
+func (m *captureManager) grabFrameFromFileEnd(src, outPath string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), localFfmpegTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, m.ffmpeg,
+		"-nostdin", "-y", "-loglevel", "error",
+		"-sseof", "-1",
+		"-i", src,
+		"-frames:v", "1", "-q:v", "3",
+		outPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("driver capture: snapshot frame failed: %v %s", err, strings.TrimSpace(string(out)))
 		return false
 	}
 	return fileNonEmpty(outPath)

@@ -76,6 +76,24 @@ async function onPickFile(e: Event) {
   }
 }
 
+// --- "Take picture" — grab a still from the live stream now ------------------
+const snapping = ref(false);
+
+async function takePicture() {
+  if (!driver.value || snapping.value) return;
+  snapping.value = true;
+  try {
+    await api.post(`/api/drivers/${encodeURIComponent(guid.value)}/snapshot`);
+    toast.success("Picture captured.");
+    const fresh = await getDriver(guid.value);
+    if (fresh) driver.value = fresh;
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    snapping.value = false;
+  }
+}
+
 // --- manual "Record now" -----------------------------------------------------
 const recording = ref(false);
 
@@ -432,6 +450,16 @@ async function deleteMedia(m: MediaItem) {
           </span>
         </template>
         <template v-if="auth.canOperate" #actions>
+          <Button
+            size="sm"
+            variant="ghost"
+            :disabled="snapping"
+            title="Grab a still from the live stream now"
+            @click="takePicture"
+          >
+            <Icon name="camera" :size="14" />
+            {{ snapping ? "Capturing…" : "Take picture" }}
+          </Button>
           <Button
             size="sm"
             :variant="recording ? 'danger' : 'ghost'"

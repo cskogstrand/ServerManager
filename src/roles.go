@@ -65,9 +65,9 @@ func stewardCanMutate(path string) bool {
 		return true
 	case p == "/classes" || strings.HasPrefix(p, "/class/"):
 		return true
-	case strings.HasPrefix(p, "/drivers/") && (strings.HasSuffix(p, "/avatar") || strings.HasSuffix(p, "/record")):
-		// Uploading a driver photo and starting a manual recording are
-		// operate-time actions.
+	case strings.HasPrefix(p, "/drivers/") && (strings.HasSuffix(p, "/avatar") || strings.HasSuffix(p, "/record") || strings.HasSuffix(p, "/snapshot")):
+		// Uploading a driver photo, starting a manual recording, and grabbing a
+		// snapshot are operate-time actions.
 		return true
 	case strings.HasPrefix(p, "/drivers/") && strings.Contains(p, "/media/"):
 		// Deleting a highlight clip/screenshot is an operate-time action.

@@ -126,11 +126,11 @@ function diagnose(s: StreamRow): Diag {
   if (!s.capture_supported)
     return { tone: "danger", text: `Unsupported source (${s.capture_scheme || "?"}). ffmpeg can't pull WebRTC/WHEP — use HLS (mpegTS) or RTSP.` };
   if (s.recorder_running && s.segment_count === 0)
-    return { tone: "danger", text: "Recorder connected but wrote 0 segments — source likely WebRTC/LL-HLS. Probe it." };
+    return { tone: "danger", text: "Recorder connected but wrote 0 segments — source not pullable (WebRTC/LL-HLS). Probe it." };
   if (s.recorder_dead) return { tone: "danger", text: "Recorder process died — ffmpeg couldn't read the source. Probe it." };
-  if (s.recorder_running && s.segment_count > 0) return { tone: "ok", text: `Recording — ${s.segment_count} segments buffered` };
-  if (s.online && !s.recorder_running) return { tone: "warn", text: "Online but no recorder yet (reconciling…)" };
-  if (!s.online) return { tone: "dim", text: "Driver offline — recorder idle" };
+  if (s.recorder_running && s.segment_count > 0)
+    return { tone: "ok", text: `Recording 24/7 — ${s.segment_count} segments buffered${s.online ? " · driver online, clips persisting" : " · driver offline, clips paused"}` };
+  if (!s.recorder_running) return { tone: "warn", text: "No recorder running — capture disabled globally, or starting up" };
   return { tone: "dim", text: "Idle" };
 }
 
@@ -209,6 +209,7 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
       <div><span class="text-dim">Cooldown</span> <span class="font-mono text-text">{{ cap.cooldown_seconds }}s</span></div>
       <div><span class="text-dim">Max / session</span> <span class="font-mono text-text">{{ cap.max_per_session }}</span></div>
       <div><span class="text-dim">Ring buffer</span> <span class="font-mono text-text">{{ cap.ring_seconds }}s @ {{ cap.segment_seconds }}s segs</span></div>
+      <div class="col-span-2 sm:col-span-3 lg:col-span-4"><span class="text-dim">Mode</span> <span class="font-semibold text-text">always-on — records every armed stream 24/7; clips persist only while the driver is online &amp; drifting</span></div>
       <div v-if="cap.ffmpeg_path" class="col-span-2 truncate sm:col-span-3 lg:col-span-4"><span class="text-dim">ffmpeg path</span> <span class="font-mono text-xs text-muted">{{ cap.ffmpeg_path }}</span></div>
     </div>
   </Card>

@@ -124,13 +124,20 @@ const navSections = computed(() =>
     .filter((s) => s.items.length > 0),
 );
 
-// Bottom-tab nav (mobile): daily operations + role-appropriate shortcuts.
+// Bottom-tab nav (mobile): the four daily-operations items; the fifth slot is a
+// hamburger that opens a drawer with every remaining (role-visible) item.
 const operate = allSections[0].items as readonly NavItem[];
-const admin = allSections[2].items as readonly NavItem[];
 const mobileNav = computed<NavItem[]>(() =>
-  auth.isAdmin
-    ? [operate[0], operate[1], operate[2], admin[0], admin[3]] // Dashboard, Events, Queue, Setup, Content
-    : [operate[0], operate[1], operate[2], admin[6], admin[7]], // Dashboard, Events, Queue, Preferences, About
+  (operate as NavItem[]).filter(canSee), // Dashboard, Events, Queue, Driver Stats
+);
+
+// Mobile "more" drawer: all nav sections, closed on navigation.
+const mobileMenuOpen = ref(false);
+watch(
+  () => route.fullPath,
+  () => {
+    mobileMenuOpen.value = false;
+  },
 );
 </script>
 
@@ -149,9 +156,9 @@ const mobileNav = computed<NavItem[]>(() =>
       Skip to main content
     </a>
 
-    <div class="flex min-h-screen">
-      <aside class="hidden w-64 shrink-0 flex-col border-r border-line bg-surface/95 px-3 py-4 md:flex">
-        <div class="mb-6 flex items-center gap-3 px-2">
+    <div class="flex h-screen overflow-hidden">
+      <aside class="hidden h-full w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface/95 px-3 py-4 md:flex">
+        <div class="mb-6 flex shrink-0 items-center gap-3 px-2">
           <div class="grid size-9 place-items-center rounded-md border border-accent/30 bg-accent-dim text-sm font-black text-accent">
             SM
           </div>
@@ -166,7 +173,7 @@ const mobileNav = computed<NavItem[]>(() =>
           />
         </div>
 
-        <nav class="space-y-5">
+        <nav class="-mr-1 flex-1 space-y-5 overflow-y-auto pr-1">
           <section v-for="section in navSections" :key="section.label">
             <h2 class="mb-1.5 px-3 text-[11px] font-bold tracking-wide text-dim uppercase">
               {{ section.label }}
@@ -186,7 +193,7 @@ const mobileNav = computed<NavItem[]>(() =>
           </section>
         </nav>
 
-        <div class="mt-auto border-t border-line px-2 pt-3">
+        <div class="mt-3 shrink-0 border-t border-line px-2 pt-3">
           <div class="mb-2 flex items-center gap-2">
             <div class="grid size-7 place-items-center rounded-md bg-surface-2 text-xs font-bold text-muted">
               {{ auth.user?.name?.charAt(0)?.toUpperCase() ?? "?" }}
@@ -207,7 +214,7 @@ const mobileNav = computed<NavItem[]>(() =>
         </div>
       </aside>
 
-      <main id="main-content" class="min-w-0 flex-1 px-4 py-4 pb-24 md:px-6 md:py-6 lg:px-8">
+      <main id="main-content" class="min-w-0 flex-1 overflow-y-auto px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6 lg:px-8">
         <div class="mb-4 flex items-center gap-3 md:hidden">
           <div class="grid size-9 place-items-center rounded-md border border-accent/30 bg-accent-dim text-sm font-black text-accent">
             SM
@@ -248,6 +255,74 @@ const mobileNav = computed<NavItem[]>(() =>
         <Icon :name="item.icon" :size="18" />
         <span>{{ item.label }}</span>
       </RouterLink>
+      <button
+        type="button"
+        class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+        :class="mobileMenuOpen ? 'bg-accent-dim !text-accent' : ''"
+        aria-label="More menu"
+        @click="mobileMenuOpen = true"
+      >
+        <Icon name="menu" :size="18" />
+        <span>More</span>
+      </button>
     </nav>
+
+    <!-- Mobile "more" drawer: every role-visible nav item -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition-opacity duration-200"
+        leave-active-class="transition-opacity duration-200"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="mobileMenuOpen"
+          class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+          @click="mobileMenuOpen = false"
+        />
+      </Transition>
+      <Transition
+        enter-active-class="transition-transform duration-200 ease-out"
+        leave-active-class="transition-transform duration-200 ease-in"
+        enter-from-class="translate-y-full"
+        leave-to-class="translate-y-full"
+      >
+        <div
+          v-if="mobileMenuOpen"
+          class="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-line bg-surface px-3 pt-3 pb-6 md:hidden"
+        >
+          <div class="mb-3 flex items-center justify-between px-2">
+            <h2 class="text-sm font-bold text-text">Menu</h2>
+            <button
+              type="button"
+              class="grid size-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              aria-label="Close menu"
+              @click="mobileMenuOpen = false"
+            >
+              <Icon name="x" :size="18" />
+            </button>
+          </div>
+          <nav class="space-y-4">
+            <section v-for="section in navSections" :key="section.label">
+              <h3 class="mb-1.5 px-3 text-[11px] font-bold tracking-wide text-dim uppercase">
+                {{ section.label }}
+              </h3>
+              <div class="space-y-1">
+                <RouterLink
+                  v-for="item in section.items"
+                  :key="item.to"
+                  :to="item.to"
+                  class="flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                  active-class="bg-accent-dim !text-accent"
+                >
+                  <Icon :name="item.icon" :size="17" />
+                  <span class="truncate">{{ item.label }}</span>
+                </RouterLink>
+              </div>
+            </section>
+          </nav>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

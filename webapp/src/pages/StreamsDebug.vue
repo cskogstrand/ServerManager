@@ -278,7 +278,7 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
           </template>
           <span class="ml-auto font-mono text-xs text-dim">{{ probes[rowKey(s)]!.result!.elapsed_ms }} ms</span>
         </div>
-        <div v-if="probes[rowKey(s)]!.result!.streams.length" class="mt-2 space-y-0.5">
+        <div v-if="probes[rowKey(s)]!.result!.streams?.length" class="mt-2 space-y-0.5">
           <div v-for="(st, i) in probes[rowKey(s)]!.result!.streams" :key="i" class="font-mono text-[11px] text-muted">{{ st }}</div>
         </div>
         <pre v-if="probes[rowKey(s)]!.result!.log_tail" class="mt-2 max-h-48 overflow-auto rounded bg-surface-2 p-2 font-mono text-[10px] leading-relaxed text-dim">{{ probes[rowKey(s)]!.result!.log_tail }}</pre>

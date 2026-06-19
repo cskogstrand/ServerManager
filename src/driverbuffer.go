@@ -27,14 +27,15 @@ import (
 )
 
 const (
-	bufSegmentSeconds   = 2                // length of each buffer segment
-	bufRingSeconds      = 180              // history kept on disk per driver
-	maxBufferRecorders  = 8                // simultaneous persistent ffmpeg recorders
-	reconcileInterval   = 15 * time.Second // recorder set reconciliation tick
-	janitorInterval     = 12 * time.Second // buffer prune tick
-	recorderGrace       = 30 * time.Second // keep recording this long after a driver leaves
-	assembleFlushMargin = 3 * time.Second  // wait past a window's end for ffmpeg to flush
-	localFfmpegTimeout  = 30 * time.Second
+	bufSegmentSeconds    = 2                // length of each buffer segment
+	bufRingSeconds       = 180              // history kept on disk per driver
+	maxBufferRecorders   = 8                // simultaneous persistent ffmpeg recorders
+	reconcileInterval    = 15 * time.Second // recorder set reconciliation tick
+	janitorInterval      = 12 * time.Second // buffer prune tick
+	recorderGrace        = 30 * time.Second // keep recording this long after a driver leaves
+	assembleFlushMargin  = 3 * time.Second  // wait past a window's end for ffmpeg to flush
+	localFfmpegTimeout   = 30 * time.Second
+	recorderStallTimeout = 20 * time.Second // alive but no fresh segments this long → restart
 )
 
 // bufferRecorder is one persistent segmenting ffmpeg for a driver's stream.
@@ -266,12 +267,18 @@ func (m *captureManager) reconcile() {
 	for g := range desired {
 		m.lastDesiredAt[g] = now
 	}
-	// Start or restart recorders for desired drivers (restart if the process
-	// died — stream blip, ffmpeg crash).
+	// Start or restart recorders for desired drivers — restart if the process
+	// died (stream blip, ffmpeg crash) or stalled (alive but writing no
+	// segments, e.g. an unpullable WebRTC/LL-HLS source).
 	for g := range desired {
 		if r := m.recorders[g]; r != nil {
-			if !r.dead() {
+			dead := r.dead()
+			stalled := !dead && m.recorderStalled(g, r.startedAt)
+			if !dead && !stalled {
 				continue
+			}
+			if stalled {
+				log.Printf("driver capture: recorder for %s stalled (no fresh segments) — restarting", g)
 			}
 			r.stop()
 			delete(m.recorders, g)
@@ -300,6 +307,22 @@ func (m *captureManager) reconcile() {
 			log.Printf("driver capture: rolling buffer stopped for %s", g)
 		}
 	}
+}
+
+// recorderStalled reports whether a live recorder has produced no fresh segment
+// for recorderStallTimeout (after a spin-up grace). True for a source ffmpeg
+// connects to but can't actually demux (WebRTC/LL-HLS).
+func (m *captureManager) recorderStalled(guid string, startedAt int64) bool {
+	now := time.Now().UnixMilli()
+	stallMs := int64(recorderStallTimeout / time.Millisecond)
+	if now-startedAt < stallMs {
+		return false // still spinning up
+	}
+	segs := listBufferSegments(bufferDir(guid))
+	if len(segs) == 0 {
+		return true
+	}
+	return now-segs[len(segs)-1].startMs > stallMs
 }
 
 func (m *captureManager) pruneBuffers() {

@@ -234,7 +234,7 @@ func (m *captureManager) probe(target string) probeResult {
 	cmd := exec.CommandContext(ctx, m.ffmpeg, args...)
 	start := time.Now()
 	out, err := cmd.CombinedOutput()
-	res := probeResult{ElapsedMs: time.Since(start).Milliseconds()}
+	res := probeResult{ElapsedMs: time.Since(start).Milliseconds(), Streams: []string{}}
 	text := string(out)
 	for _, ln := range strings.Split(text, "\n") {
 		t := strings.TrimSpace(ln)

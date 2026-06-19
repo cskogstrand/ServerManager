@@ -338,7 +338,7 @@ async function deleteMedia(m: MediaItem) {
         </div>
 
         <!-- KPIs + trend -->
-        <div class="md:ml-auto md:max-w-[460px] md:flex-1">
+        <div class="md:ml-auto md:max-w-[500px] md:flex-1">
           <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-5">
             <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
               <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best drift</div>

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -133,13 +134,15 @@ type driftFrame struct {
 // Game clients are not browsers and send no Origin — x/net/websocket's server
 // handshake does not require one, so accepting the upgrade is fine.
 func apiTelemetryIngest(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Query("instance"))
 	if driftIngestToken == "" || c.Query("token") != driftIngestToken {
+		log.Printf("drift ingest: rejected bad token instance=%d remote=%s", id, c.ClientIP())
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
-	id, _ := strconv.Atoi(c.Query("instance"))
 	inst, err := instanceById(id)
 	if err != nil {
+		log.Printf("drift ingest: rejected unknown instance=%d remote=%s", id, c.ClientIP())
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
@@ -147,6 +150,9 @@ func apiTelemetryIngest(c *gin.Context) {
 	websocket.Handler(func(ws *websocket.Conn) {
 		defer ws.Close()
 		ws.MaxPayloadBytes = 512
+		log.Printf("drift ingest: connected instance=%d remote=%s", id, ws.Request().RemoteAddr)
+		defer log.Printf("drift ingest: disconnected instance=%d", id)
+		first := true
 		for {
 			// A continuously-streaming client refreshes this on every sample; a
 			// silent/dead one is reaped after the deadline.
@@ -158,6 +164,22 @@ func apiTelemetryIngest(c *gin.Context) {
 			var f driftFrame
 			if json.Unmarshal([]byte(msg), &f) != nil {
 				continue
+			}
+			// One diagnostic line per connection: did frames arrive, what carId
+			// did the client report, and does it map to a connected driver? A
+			// "known=false" here is the carId-mapping bug (player.index vs ACSP
+			// carId).
+			if first {
+				first = false
+				inst.mu.Lock()
+				_, known := inst.drivers[f.I]
+				cars := make([]int, 0, len(inst.drivers))
+				for k := range inst.drivers {
+					cars = append(cars, k)
+				}
+				inst.mu.Unlock()
+				log.Printf("drift ingest: first frame instance=%d carId=%d known=%v connectedCars=%v lvx=%.2f kmh=%.1f dt=%.3f",
+					id, f.I, known, cars, f.Lvx, f.Kmh, f.Dt)
 			}
 			inst.applyDriftTelemetry(f.I, f.Lvx, f.Kmh, f.Dt)
 		}

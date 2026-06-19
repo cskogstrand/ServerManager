@@ -28,8 +28,17 @@ local smSendTimer = 0
 local function smStreamTelemetry(player, dt)
     if SM_INGEST == '' then return end
     if smSock == nil then
-        smSock = web.socket(SM_INGEST, nil, function() end, { encoding = 'json', reconnect = true })
-        if smSock == nil then return end
+        ac.log('SM drift: connecting to ' .. SM_INGEST)
+        smSock = web.socket(SM_INGEST, nil, function() end, {
+            encoding = 'json',
+            reconnect = true,
+            onError = function(err) ac.log('SM drift: socket error: ' .. tostring(err)) end,
+            onClose = function(reason) ac.log('SM drift: socket closed: ' .. tostring(reason)) end,
+        })
+        if smSock == nil then
+            ac.log('SM drift: web.socket returned nil (sandbox or bad URL)')
+            return
+        end
     end
     smSendTimer = smSendTimer + dt
     if smSendTimer >= 0.05 then

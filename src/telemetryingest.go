@@ -142,6 +142,15 @@ type driftFrame struct {
 	Dt  float64 `json:"dt"`  // seconds since this client's previous sample
 }
 
+// driftEcho is the authoritative score the server sends back to the client each
+// frame so the HUD mirrors it. Short keys to keep the frame small.
+type driftEcho struct {
+	L int `json:"l"` // live run score
+	T int `json:"t"` // last completed run
+	B int `json:"b"` // session best
+	C int `json:"c"` // combo meter
+}
+
 // apiTelemetryIngest is the public WebSocket endpoint each client's CSP script
 // streams slip telemetry to. It is intentionally outside the JWT-authenticated
 // /api group (game clients have no cookie); the per-process token gates it.
@@ -195,7 +204,14 @@ func apiTelemetryIngest(c *gin.Context) {
 				log.Printf("drift ingest: first frame instance=%d carId=%d known=%v connectedCars=%v lvx=%.2f kmh=%.1f dt=%.3f",
 					id, carId, known, cars, f.Lvx, f.Kmh, f.Dt)
 			}
-			inst.applyDriftTelemetry(carId, f.Lvx, f.Kmh, f.Dt)
+			live, last, best, combo, ok := inst.applyDriftTelemetry(carId, f.Lvx, f.Kmh, f.Dt)
+			if ok {
+				// Echo the authoritative score back on the same socket so the
+				// client HUD displays the server's numbers (kept in sync).
+				if websocket.JSON.Send(ws, driftEcho{L: live, T: last, B: best, C: combo}) != nil {
+					return
+				}
+			}
 		}
 	})
 

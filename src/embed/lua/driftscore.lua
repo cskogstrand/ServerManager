@@ -13,42 +13,6 @@
 -- Event configuration:
 local requiredSpeed = 40
 
--- SM: server-side scoring. The authoritative drift score is now computed by
--- Server Manager from the slip telemetry streamed below; this client keeps its
--- own local copy only to drive the HUD. SM_INGEST is the WebSocket URL+token
--- the server injects when it serves this script; it is empty when the file is
--- fetched directly (e.g. from /static), which disables streaming.
-if not SM_INGEST then SM_INGEST = '' end
-local smSock = nil
-local smSendTimer = 0
--- smStreamTelemetry streams one car-local-lateral-velocity + speed sample to
--- the server about every 50ms, regardless of drift state, so the server can
--- detect run starts and ends. dt carries the integration window since the last
--- send so the server's score is independent of this client's frame rate.
-local function smStreamTelemetry(player, dt)
-    if SM_INGEST == '' then return end
-    if smSock == nil then
-        ac.log('SM drift: connecting to ' .. SM_INGEST)
-        smSock = web.socket(SM_INGEST, nil, function() end, {
-            encoding = 'json',
-            reconnect = true,
-            onError = function(err) ac.log('SM drift: socket error: ' .. tostring(err)) end,
-            onClose = function(reason) ac.log('SM drift: socket closed: ' .. tostring(reason)) end,
-        })
-        if smSock == nil then
-            ac.log('SM drift: web.socket returned nil (sandbox or bad URL)')
-            return
-        end
-    end
-    smSendTimer = smSendTimer + dt
-    if smSendTimer >= 0.05 then
-        -- Car id is not sent: the server takes it from the connection URL (CSP
-        -- {SessionID}), so the script never needs to know its own session slot.
-        smSock({ lvx = player.localVelocity.x, kmh = player.speedKmh, dt = smSendTimer })
-        smSendTimer = 0
-    end
-end
-
 -- ScoreTrackerPlugin
 -- local msg = ac.OnlineEvent({
     -- ac.StructItem.key("driftScoreEnd"),
@@ -83,6 +47,66 @@ local topScore = 0
 local topScorePlayer = ""
 local sliding = 0
 local slidingMult = 0
+
+-- SM: server-side scoring. The authoritative drift score is computed by Server
+-- Manager from the slip telemetry streamed below; the HUD just displays what the
+-- server echoes back, so client and broadcast never diverge. SM_INGEST is the
+-- WebSocket URL+token the server injects when it serves this script; empty when
+-- the file is fetched directly (e.g. /static), which disables streaming and
+-- falls back to local scoring.
+if not SM_INGEST then SM_INGEST = '' end
+local smSock = nil
+local smSendTimer = 0
+
+-- smField pulls one integer field from the server's JSON echo by name, whether
+-- the socket handed us a parsed table or the raw JSON string (the CSP callback
+-- contract is encoding-dependent, so handle both; no JSON lib needed).
+local function smField(data, key)
+    if type(data) == 'table' then return data[key] end
+    local v = tostring(data):match('"' .. key .. '":(%-?%d+)')
+    return v and tonumber(v)
+end
+
+-- smOnServerMsg applies the server's authoritative scores to the HUD's display
+-- state. Keys: l=live, t=last, b=best, c=combo.
+local function smOnServerMsg(data)
+    local l = smField(data, 'l')
+    if l == nil then return end
+    totalScore = l
+    lastScore = smField(data, 't') or lastScore
+    highestScore = smField(data, 'b') or highestScore
+    comboMeter = smField(data, 'c') or comboMeter
+    comboProgress = comboMeter
+end
+
+-- smStreamTelemetry streams one car-local-lateral-velocity + speed sample to the
+-- server about every 50ms, regardless of drift state, so the server can detect
+-- run starts and ends. dt carries the integration window since the last send so
+-- the server's score is frame-rate independent. The server echoes the
+-- authoritative score back on the same socket (smOnServerMsg).
+local function smStreamTelemetry(player, dt)
+    if SM_INGEST == '' then return end
+    if smSock == nil then
+        ac.log('SM drift: connecting to ' .. SM_INGEST)
+        smSock = web.socket(SM_INGEST, nil, smOnServerMsg, {
+            encoding = 'json',
+            reconnect = true,
+            onError = function(err) ac.log('SM drift: socket error: ' .. tostring(err)) end,
+            onClose = function(reason) ac.log('SM drift: socket closed: ' .. tostring(reason)) end,
+        })
+        if smSock == nil then
+            ac.log('SM drift: web.socket returned nil (sandbox or bad URL)')
+            return
+        end
+    end
+    smSendTimer = smSendTimer + dt
+    if smSendTimer >= 0.05 then
+        -- Car id is not sent: the server takes it from the connection URL (CSP
+        -- {SessionID}), so the script never needs to know its own session slot.
+        smSock({ lvx = player.localVelocity.x, kmh = player.speedKmh, dt = smSendTimer })
+        smSendTimer = 0
+    end
+end
 
 function script.update(dt)
     if timePassed == 0 then
@@ -119,7 +143,11 @@ function script.update(dt)
 -- Is car Drifting/Sliding?
     sliding = player.localVelocity.x / math.max(3, player.speedMs)
     slidingMult = math.abs(sliding) * 10
-    
+
+    -- Local scoring runs only as a standalone fallback (SM not in the loop).
+    -- When connected, the server is authoritative and smOnServerMsg drives the
+    -- display, so skip local accumulation to avoid diverging from the broadcast.
+    if SM_INGEST == '' then
     if player.speedKmh > requiredSpeed and slidingMult > 1 then
         driftPoints = slidingMult * 0.05
         totalScore = totalScore + (driftPoints * comboMeter)        
@@ -154,6 +182,7 @@ function script.update(dt)
         return
     else
         dangerouslySlowTimer = 0
+    end
     end
 
 end

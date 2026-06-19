@@ -255,8 +255,12 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 // into that car's server-side drift score, then routes the result through the
 // shared recordDrift path so capture and persistence behave exactly as before.
 // Live updates publish to SSE at ~10Hz; run ends always publish immediately so
-// the final score and DriftLast land without delay.
-func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) {
+// the final score and DriftLast land without delay. It returns the authoritative
+// display values (live run score, last completed run, session best, combo) so
+// the caller can echo them back to the client — the HUD then shows the server's
+// numbers instead of its own, keeping the two in sync. ok is false when no
+// driver maps to carId (frame dropped).
+func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) (live, last, best, combo int, ok bool) {
 	// Clamp dt: a reconnect or stall can produce a huge gap that would dump a
 	// burst of points in one step; an absent/zero dt falls back to the feeder's
 	// nominal interval.
@@ -265,9 +269,9 @@ func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) {
 	}
 
 	inst.mu.Lock()
-	if _, ok := inst.drivers[carId]; !ok {
+	if _, exists := inst.drivers[carId]; !exists {
 		inst.mu.Unlock()
-		return
+		return 0, 0, 0, 0, false
 	}
 	if inst.driftScorers == nil {
 		inst.driftScorers = make(map[int]*driftScorer)
@@ -277,7 +281,11 @@ func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) {
 		sc = newDriftScorer()
 		inst.driftScorers[carId] = sc
 	}
-	live, best, ended, last := sc.step(lvx, kmh/3.6, kmh, dt)
+	var ended bool
+	var lastRun int
+	live, best, ended, lastRun = sc.step(lvx, kmh/3.6, kmh, dt)
+	last = sc.lastScore
+	combo = sc.comboMeter
 	publishNow := ended || time.Since(inst.lastDriftPublish) >= 100*time.Millisecond
 	if publishNow {
 		inst.lastDriftPublish = time.Now()
@@ -285,10 +293,11 @@ func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) {
 	inst.mu.Unlock()
 
 	if ended {
-		inst.recordDrift(carId, false, last, best, true)
+		inst.recordDrift(carId, false, lastRun, best, true)
 	} else {
 		inst.recordDrift(carId, true, live, best, publishNow)
 	}
+	return live, last, best, combo, true
 }
 
 func (inst *Instance) clearDrivers() {

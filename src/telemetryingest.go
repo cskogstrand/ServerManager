@@ -10,7 +10,10 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,12 +30,19 @@ var driftScoreLuaSource string
 
 // driftIngestToken authenticates the telemetry WebSocket. It is baked into the
 // script body the server hands each client (apiDriftLuaScript), so only clients
-// that fetched the script from this process can stream. Regenerated each start:
-// a process restart rejects already-connected clients' reconnects until they
-// rejoin the AC server (which refetches the script); new joiners are unaffected.
+// that fetched the script from this process can stream. Persisted under
+// ConfigFolder so it survives restarts — CSP caches the served script by URL, so
+// a token that changed each boot would 401 every client running a cached copy.
 var driftIngestToken string
 
 func initDriftIngestToken() {
+	path := filepath.Join(ConfigFolder, "drift_ingest.token")
+	if b, err := os.ReadFile(path); err == nil {
+		if t := strings.TrimSpace(string(b)); t != "" {
+			driftIngestToken = t
+			return
+		}
+	}
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		// Deterministic fallback is still better than an empty token (which
@@ -41,6 +51,9 @@ func initDriftIngestToken() {
 		return
 	}
 	driftIngestToken = hex.EncodeToString(b)
+	if err := os.WriteFile(path, []byte(driftIngestToken), 0600); err != nil {
+		log.Printf("drift ingest: could not persist token to %s: %v", path, err)
+	}
 }
 
 // driftScorer holds the per-car running state for server-side drift scoring. It

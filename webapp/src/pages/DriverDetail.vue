@@ -143,6 +143,22 @@ async function recordNow() {
   }
 }
 
+// True while a manual recording is in flight — locally (just pressed) or per
+// the server's live capture status.
+const isRecording = computed(() => recording.value || cap.isRecording(guid.value));
+
+async function stopRecord() {
+  try {
+    await cap.stopRecording(guid.value);
+    recording.value = false;
+    toast.success("Recording stopped — clip saved.");
+    const fresh = await getDriver(guid.value);
+    if (fresh) driver.value = fresh;
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
 // Recording ends server-side on the next drift run; poll until the clip lands
 // (or give up after ~3 min) so it appears without a manual refresh.
 async function pollForClip() {
@@ -569,13 +585,12 @@ async function deleteMedia(m: MediaItem) {
           </Button>
           <Button
             size="sm"
-            :variant="recording ? 'danger' : 'ghost'"
-            :disabled="recording"
-            title="Record a clip that ends when the current or next drift run ends"
-            @click="recordNow"
+            :variant="isRecording ? 'danger' : 'ghost'"
+            :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
+            @click="isRecording ? stopRecord() : recordNow()"
           >
-            <Icon :name="recording ? 'activity' : 'record'" :size="14" />
-            {{ recording ? "Recording…" : "Record now" }}
+            <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
+            {{ isRecording ? "Stop recording" : "Record now" }}
           </Button>
         </template>
         <iframe

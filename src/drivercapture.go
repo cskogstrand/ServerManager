@@ -579,6 +579,22 @@ func (m *captureManager) onDriftRunEnd(guid string) {
 	m.finalizeManual(guid)
 }
 
+// stopManualRecording finalizes an in-progress manual recording immediately
+// (assembling the clip up to now). Errors when none is armed.
+func (m *captureManager) stopManualRecording(guid string) error {
+	if m == nil || !m.enabled {
+		return errors.New("capture is unavailable")
+	}
+	m.manualMu.Lock()
+	_, ok := m.manual[guid]
+	m.manualMu.Unlock()
+	if !ok {
+		return errors.New("no recording in progress for this driver")
+	}
+	m.finalizeManual(guid)
+	return nil
+}
+
 func (m *captureManager) finalizeManual(guid string) {
 	m.manualMu.Lock()
 	mark := m.manual[guid]
@@ -664,6 +680,25 @@ func apiDriverRecord(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"status": "recording"})
+}
+
+// apiDriverRecordStop (POST /api/drivers/:guid/record/stop) finalizes an
+// in-progress manual recording now.
+func apiDriverRecordStop(c *gin.Context) {
+	guid := strings.TrimSpace(c.Param("guid"))
+	if guid == "" {
+		apiBadRequest(c, "Invalid driver")
+		return
+	}
+	if Captures == nil {
+		apiError(c, http.StatusServiceUnavailable, "capture_unavailable", "Capture is not available.")
+		return
+	}
+	if err := Captures.stopManualRecording(guid); err != nil {
+		apiError(c, http.StatusConflict, "capture_error", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"status": "stopped"})
 }
 
 // apiDriverSnapshot (POST /api/drivers/:guid/snapshot) grabs a still from the

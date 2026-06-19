@@ -334,6 +334,7 @@ func main() {
 		api.GET("/drivers/:guid/avatar", apiDriverAvatar)
 		api.POST("/drivers/:guid/avatar", apiDriverAvatarUpload)
 		api.POST("/drivers/:guid/record", apiDriverRecord)
+		api.POST("/drivers/:guid/record/stop", apiDriverRecordStop)
 		api.POST("/drivers/:guid/snapshot", apiDriverSnapshot)
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
 		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)

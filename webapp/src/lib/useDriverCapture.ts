@@ -69,6 +69,10 @@ export function useDriverCapture() {
     await api.post(`/api/drivers/${encodeURIComponent(guid)}/record`);
     void refresh();
   }
+  async function stopRecording(guid: string): Promise<void> {
+    await api.post(`/api/drivers/${encodeURIComponent(guid)}/record/stop`);
+    void refresh();
+  }
   return {
     statuses,
     nowMs,
@@ -81,6 +85,7 @@ export function useDriverCapture() {
     manualElapsed,
     takePicture,
     recordNow,
+    stopRecording,
   };
 }
 

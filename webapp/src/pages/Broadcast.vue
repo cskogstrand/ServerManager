@@ -267,10 +267,15 @@ async function takePic(guid: string | undefined) {
 }
 
 async function recordCar(guid: string | undefined) {
-  if (!guid || debug.value || cap.isRecording(guid)) return;
+  if (!guid || debug.value) return;
   try {
-    await cap.recordNow(guid);
-    toast.info("Recording — clip ends with the next drift run.");
+    if (cap.isRecording(guid)) {
+      await cap.stopRecording(guid);
+      toast.success("Recording stopped — clip saved.");
+    } else {
+      await cap.recordNow(guid);
+      toast.info("Recording — clip ends with the next drift run.");
+    }
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e));
   }
@@ -610,15 +615,14 @@ onBeforeUnmount(() => {
                   </button>
                   <button
                     type="button"
-                    :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Recording…' : 'Record clip (ends with next drift run)'"
+                    :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Stop recording and save the clip' : 'Record clip (ends with next drift run)'"
                     class="flex h-7 items-center gap-1 rounded-md border px-1.5 text-[10px] font-bold transition-colors"
                     :class="cap.isRecording(guidForCar(card.row.car_id)!)
                       ? 'border-danger/50 bg-danger-glow text-danger'
                       : 'border-line bg-surface-2/70 text-text/90 hover:border-danger/50 hover:text-danger'"
-                    :disabled="cap.isRecording(guidForCar(card.row.car_id)!)"
                     @click.stop="recordCar(guidForCar(card.row.car_id))"
                   >
-                    <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'activity' : 'record'" :size="14" />
+                    <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'stop' : 'record'" :size="14" />
                     <span v-if="cap.isRecording(guidForCar(card.row.car_id)!)">{{ fmtClipDuration(cap.manualElapsed(guidForCar(card.row.car_id)!)) }}</span>
                   </button>
                   <span

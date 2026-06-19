@@ -19,11 +19,9 @@ package main
 // the UDP event loop.
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -50,11 +48,10 @@ const (
 	maxCaptureClipSeconds       = 120 // clamp on the configured clip length
 
 	// Internal safety limits (not user-tunable).
-	maxCaptureConcurrent = 2 // simultaneous auto-capture ffmpeg jobs
+	maxCaptureConcurrent = 2 // simultaneous spike-assembly jobs
 	maxCapturesPerMinute = 8 // global ceiling
 	retainTopByScore     = 12
 	retainRecent         = 8
-	ffmpegTimeout        = 40 * time.Second
 
 	manualMaxDuration   = 120 * time.Second // safety cap for a manual recording
 	maxManualConcurrent = 4
@@ -78,28 +75,41 @@ type captureManager struct {
 	cfg        captureSettings // tunables from user_config
 	recent     []int64         // unix-ms of recent captures (global rate window)
 
-	sem chan struct{} // auto-capture concurrency limiter
+	sem chan struct{} // spike-assembly concurrency limiter
+
+	// Rolling-buffer recorders (driverbuffer.go): one persistent ffmpeg per
+	// connected+armed driver, reconciled by a background loop.
+	recMu         sync.Mutex
+	recorders     map[string]*bufferRecorder // guid -> running recorder
+	lastDesiredAt map[string]int64           // guid -> last time it was wanted (grace)
+	nudgeCh       chan struct{}              // wake the reconciler early
 
 	manualMu sync.Mutex
-	manual   map[string]*manualRec // guid -> in-progress manual recording
+	manual   map[string]*manualMark // guid -> in-progress manual recording
 }
 
 var Captures *captureManager
 
 func newCaptureManager() *captureManager {
 	m := &captureManager{
-		armedGuids: map[string]bool{},
-		manual:     map[string]*manualRec{},
-		sem:        make(chan struct{}, maxCaptureConcurrent),
+		armedGuids:    map[string]bool{},
+		recorders:     map[string]*bufferRecorder{},
+		lastDesiredAt: map[string]int64{},
+		manual:        map[string]*manualMark{},
+		nudgeCh:       make(chan struct{}, 1),
+		sem:           make(chan struct{}, maxCaptureConcurrent),
 	}
 	if path, err := exec.LookPath("ffmpeg"); err == nil {
 		m.enabled = true
 		m.ffmpeg = path
-		log.Print("driver capture: ffmpeg found, stream highlight capture enabled")
+		log.Print("driver capture: ffmpeg found, rolling-buffer highlight capture enabled")
 	} else {
 		log.Print("driver capture: ffmpeg not found on PATH — stream highlight capture disabled")
 	}
 	m.refresh()
+	if m.enabled {
+		m.startBackgroundLoops()
+	}
 	return m
 }
 
@@ -120,6 +130,9 @@ func (m *captureManager) refresh() {
 	if err != nil {
 		log.Print("driver capture: refresh guids: ", err)
 	}
+	// A stream may have been (dis)armed or its URL changed — re-evaluate which
+	// recorders should run.
+	m.nudge()
 }
 
 // submit runs a capture job if the global rate + concurrency budget allows,
@@ -159,102 +172,79 @@ func (m *captureManager) submit(req captureRequest) {
 	}
 }
 
+// run assembles a spike's clip + screenshot from the driver's rolling buffer.
+// No network connect: the recorder is already capturing, so we cut the segments
+// straddling the spike. Most of the clip leads into the peak, the rest trails.
 func (m *captureManager) run(req captureRequest) {
-	captureURL := m.captureURLFor(req.guid)
-	if captureURL == "" {
-		return
-	}
 	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
+	if !cfg.clips && !cfg.screenshots {
+		return
+	}
 
-	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(req.guid))
+	guid := req.guid
+	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		log.Print("driver capture: mkdir: ", err)
 		return
 	}
+
+	clipSec := cfg.clipSeconds
+	if clipSec <= 0 {
+		clipSec = defaultCaptureClipSeconds
+	}
+	post := clipSec / 3
+	if post < 3 {
+		post = 3
+	}
+	pre := clipSec - post
+	// T is "now" at submit — a beat after the spike, close enough to centre on.
+	T := time.Now().UnixMilli()
+	startMs := T - int64(pre)*1000
+	endMs := T + int64(post)*1000
+
+	m.waitForWindow(endMs)
+
+	stamp := strconv.FormatInt(T, 10)
+	clipFile := stamp + "_clip.mp4"
+	clipPath := filepath.Join(dir, clipFile)
+	clipStartMs, ok := m.assembleClip(guid, startMs, endMs, clipPath)
+	if !ok {
+		log.Printf("driver capture: no buffered video for %s spike — recorder may have just started", guid)
+		return
+	}
 	at := time.Now()
-	stamp := strconv.FormatInt(at.UnixMilli(), 10)
 	trackName := m.trackName(req.trackKey, req.trackConfig)
 
-	// Screenshot: a single frame from the live edge.
+	// Screenshot: pull the peak frame straight from the local clip.
 	if cfg.screenshots {
 		shot := stamp + "_shot.jpg"
-		if m.grabFrame(captureURL, filepath.Join(dir, shot)) {
+		offset := float64(T-clipStartMs) / 1000.0
+		if offset < 0 {
+			offset = 0
+		}
+		if m.grabFrameFromFile(clipPath, offset, filepath.Join(dir, shot)) {
 			caption := fmt.Sprintf("Drift spike — %s pts", groupThousands(req.score))
-			if err := Dba.insertDriverMedia(req.guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta); err != nil {
+			if err := Dba.insertDriverMedia(guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta); err != nil {
 				log.Print("driver capture: insert screenshot: ", err)
 			}
 		}
 	}
 
-	// Clip: a short forward window catching the rest of the run.
 	if cfg.clips {
-		clip := stamp + "_clip.mp4"
-		if m.grabClip(captureURL, filepath.Join(dir, clip), cfg.clipSeconds) {
-			caption := fmt.Sprintf("Drift run — %s pts", groupThousands(req.score))
-			if trackName != "" {
-				caption += " · " + trackName
-			}
-			if err := Dba.insertDriverMedia(req.guid, "clip", clip, caption, at.UnixMilli(), cfg.clipSeconds, req.score, req.delta); err != nil {
-				log.Print("driver capture: insert clip: ", err)
-			}
+		caption := fmt.Sprintf("Drift run — %s pts", groupThousands(req.score))
+		if trackName != "" {
+			caption += " · " + trackName
 		}
+		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), clipSec, req.score, req.delta); err != nil {
+			log.Print("driver capture: insert clip: ", err)
+		}
+	} else {
+		_ = os.Remove(clipPath) // built only to source the screenshot
 	}
 
-	m.prune(req.guid, dir)
-}
-
-func (m *captureManager) grabFrame(srcURL, outPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, m.ffmpeg,
-		"-nostdin", "-y", "-loglevel", "error",
-		"-i", srcURL,
-		"-frames:v", "1", "-q:v", "3",
-		outPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("driver capture: frame grab failed: %v %s", err, strings.TrimSpace(string(out)))
-		return false
-	}
-	return fileNonEmpty(outPath)
-}
-
-func (m *captureManager) grabClip(srcURL, outPath string, seconds int) bool {
-	if seconds <= 0 {
-		seconds = defaultCaptureClipSeconds
-	}
-	// Stream copy first (fast, no re-encode). `-t` before `-i` bounds how much
-	// of the live input is read.
-	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
-	defer cancel()
-	copyCmd := exec.CommandContext(ctx, m.ffmpeg,
-		"-nostdin", "-y", "-loglevel", "error",
-		"-t", strconv.Itoa(seconds),
-		"-i", srcURL,
-		"-c", "copy", "-movflags", "+faststart",
-		outPath)
-	if out, err := copyCmd.CombinedOutput(); err == nil && fileNonEmpty(outPath) {
-		return true
-	} else if err != nil {
-		log.Printf("driver capture: clip copy failed, re-encoding: %v %s", err, strings.TrimSpace(string(out)))
-	}
-
-	// Fall back to H.264 for sources that won't copy cleanly into mp4.
-	ctx2, cancel2 := context.WithTimeout(context.Background(), ffmpegTimeout)
-	defer cancel2()
-	encCmd := exec.CommandContext(ctx2, m.ffmpeg,
-		"-nostdin", "-y", "-loglevel", "error",
-		"-t", strconv.Itoa(seconds),
-		"-i", srcURL,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-		"-c:a", "aac", "-movflags", "+faststart",
-		outPath)
-	if out, err := encCmd.CombinedOutput(); err != nil {
-		log.Printf("driver capture: clip encode failed: %v %s", err, strings.TrimSpace(string(out)))
-		return false
-	}
-	return fileNonEmpty(outPath)
+	m.prune(guid, dir)
 }
 
 func (m *captureManager) captureURLFor(guid string) string {
@@ -535,38 +525,26 @@ func (m *captureManager) shouldTrigger(guid string, score, count int, lastMs, no
 
 // ---- manual "Record now" ----------------------------------------------------
 
-// manualRec is an in-progress operator-triggered recording. ffmpeg runs without
-// a fixed duration and is stopped gracefully (write "q") when the driver's next
-// drift run ends, or after manualMaxDuration as a safety cap.
-type manualRec struct {
-	guid      string
-	file      string // filename under the driver media dir
-	outPath   string
-	dir       string
-	startedAt int64
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stopOnce  sync.Once
+// manualMark is an in-progress operator-triggered recording. The rolling buffer
+// keeps capturing regardless; we just remember when "Record now" was pressed
+// and assemble a clip spanning from then until the driver's next drift run ends
+// (or manualMaxDuration as a safety cap). It also pins the recorder on so the
+// buffer keeps filling even if the driver isn't connected to a server.
+type manualMark struct {
+	guid    string
+	startMs int64
+	timer   *time.Timer
 }
 
-func (r *manualRec) stop() {
-	r.stopOnce.Do(func() {
-		if r.stdin != nil {
-			_, _ = io.WriteString(r.stdin, "q\n")
-			_ = r.stdin.Close()
-		}
-	})
-}
-
-// startManualRecording begins recording the driver's stream until the next/
-// current drift run ends. Returns a user-facing error when capture isn't
-// possible or a recording is already running.
+// startManualRecording arms a manual recording: it marks the start, ensures a
+// recorder is running so the buffer fills from now forward, and finalizes when
+// the driver's next drift run ends. Returns a user-facing error when capture
+// isn't possible or one is already running.
 func (m *captureManager) startManualRecording(guid string) error {
 	if m == nil || !m.enabled {
 		return errors.New("capture is unavailable: ffmpeg is not installed on the server")
 	}
-	captureURL := m.captureURLFor(guid)
-	if captureURL == "" {
+	if m.captureURLFor(guid) == "" {
 		return errors.New("no capture URL is configured for this driver")
 	}
 
@@ -579,88 +557,65 @@ func (m *captureManager) startManualRecording(guid string) error {
 		m.manualMu.Unlock()
 		return errors.New("too many recordings in progress — try again shortly")
 	}
-
-	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		m.manualMu.Unlock()
-		return err
-	}
-	stamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	file := stamp + "_manual.mp4"
-	outPath := filepath.Join(dir, file)
-
-	// Fragmented mp4 stays playable even if the process is interrupted, and we
-	// keep stdin open to stop ffmpeg gracefully with "q".
-	cmd := exec.Command(m.ffmpeg,
-		"-y", "-loglevel", "error",
-		"-i", captureURL,
-		"-c", "copy", "-movflags", "+frag_keyframe+empty_moov",
-		outPath)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		m.manualMu.Unlock()
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		m.manualMu.Unlock()
-		return err
-	}
-	rec := &manualRec{guid: guid, file: file, outPath: outPath, dir: dir, startedAt: time.Now().UnixMilli(), cmd: cmd, stdin: stdin}
-	m.manual[guid] = rec
+	mark := &manualMark{guid: guid, startMs: time.Now().UnixMilli()}
+	mark.timer = time.AfterFunc(manualMaxDuration, func() { m.finalizeManual(guid) })
+	m.manual[guid] = mark
 	m.manualMu.Unlock()
 
-	log.Printf("driver capture: manual recording started for %s", guid)
-	go m.superviseManual(rec)
+	m.nudge() // make sure a recorder is (or comes) up to fill the buffer
+	log.Printf("driver capture: manual recording armed for %s", guid)
 	return nil
 }
 
-// onDriftRunEnd stops a manual recording for the guid, if one is active. Called
-// when a drift run ends so a manual clip ends with the current/next run.
+// onDriftRunEnd finalizes a manual recording when the driver's current/next
+// drift run ends. No-op if none is armed.
 func (m *captureManager) onDriftRunEnd(guid string) {
 	if m == nil || guid == "" {
 		return
 	}
-	m.manualMu.Lock()
-	rec := m.manual[guid]
-	m.manualMu.Unlock()
-	if rec != nil {
-		rec.stop()
-	}
+	m.finalizeManual(guid)
 }
 
-func (m *captureManager) superviseManual(rec *manualRec) {
-	waitErr := make(chan error, 1)
-	go func() { waitErr <- rec.cmd.Wait() }()
-
-	select {
-	case <-waitErr:
-		// Stopped gracefully (drift run ended) or the stream ended on its own.
-	case <-time.After(manualMaxDuration):
-		rec.stop()
-		select {
-		case <-waitErr:
-		case <-time.After(8 * time.Second):
-			if rec.cmd.Process != nil {
-				_ = rec.cmd.Process.Kill()
-			}
-			<-waitErr
-		}
-	}
-
+func (m *captureManager) finalizeManual(guid string) {
 	m.manualMu.Lock()
-	delete(m.manual, rec.guid)
-	m.manualMu.Unlock()
-
-	if fileNonEmpty(rec.outPath) {
-		if err := Dba.insertDriverMedia(rec.guid, "clip", rec.file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0); err != nil {
-			log.Print("driver capture: insert manual clip: ", err)
-		}
-		m.prune(rec.guid, rec.dir)
-		log.Printf("driver capture: manual recording finished for %s", rec.guid)
-	} else {
-		log.Printf("driver capture: manual recording for %s produced no file", rec.guid)
-		_ = os.Remove(rec.outPath)
+	mark := m.manual[guid]
+	if mark == nil {
+		m.manualMu.Unlock()
+		return
 	}
+	delete(m.manual, guid)
+	m.manualMu.Unlock()
+	if mark.timer != nil {
+		mark.timer.Stop()
+	}
+	go m.assembleManual(mark)
+}
+
+func (m *captureManager) assembleManual(mark *manualMark) {
+	guid := mark.guid
+	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		log.Print("driver capture: mkdir: ", err)
+		return
+	}
+	// A little lead-in before the press, a little trail after the run end.
+	startMs := mark.startMs - 4000
+	endMs := time.Now().UnixMilli() + 2000
+	m.waitForWindow(endMs)
+
+	stamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	file := stamp + "_manual.mp4"
+	if _, ok := m.assembleClip(guid, startMs, endMs, filepath.Join(dir, file)); !ok {
+		log.Printf("driver capture: manual recording for %s produced no file", guid)
+		return
+	}
+	// duration 0: the mm:ss badge is for short auto-clips; manual clips can run
+	// long, so leave it off (matches the prior manual-recording behaviour).
+	if err := Dba.insertDriverMedia(guid, "clip", file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0); err != nil {
+		log.Print("driver capture: insert manual clip: ", err)
+	}
+	m.prune(guid, dir)
+	log.Printf("driver capture: manual recording finished for %s", guid)
 }
 
 // apiDriverRecord (POST /api/drivers/:guid/record) starts a manual recording.

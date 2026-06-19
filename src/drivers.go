@@ -79,6 +79,7 @@ func (inst *Instance) driverJoin(nc NewConnection) {
 			log.Print("driverstats: record driver: ", err)
 		}
 	}
+	Captures.nudge() // a connect may arm a rolling-buffer recorder
 	inst.publishDrivers()
 }
 
@@ -101,6 +102,7 @@ func (inst *Instance) driverLeave(carId int) {
 		persistFinishedSessions(inst.Id(), []dsSessionRow{*row})
 	}
 	inst.removeCarPosition(carId)
+	Captures.nudge() // a disconnect may retire a rolling-buffer recorder
 	inst.publishDrivers()
 }
 

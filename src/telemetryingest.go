@@ -160,7 +160,7 @@ func apiTelemetryIngest(c *gin.Context) {
 		return
 	}
 
-	websocket.Handler(func(ws *websocket.Conn) {
+	handler := websocket.Handler(func(ws *websocket.Conn) {
 		defer ws.Close()
 		ws.MaxPayloadBytes = 512
 		log.Printf("drift ingest: connected instance=%d remote=%s", id, ws.Request().RemoteAddr)
@@ -196,6 +196,15 @@ func apiTelemetryIngest(c *gin.Context) {
 			}
 			inst.applyDriftTelemetry(f.I, f.Lvx, f.Kmh, f.Dt)
 		}
+	})
+
+	// Serve via websocket.Server with a permissive Handshake. websocket.Handler's
+	// default handshake requires an Origin header and answers 403 without one —
+	// game clients (CSP/WinHTTP) and curl send none. The token query param
+	// checked above is our access control instead.
+	(&websocket.Server{
+		Handshake: func(*websocket.Config, *http.Request) error { return nil },
+		Handler:   handler,
 	}).ServeHTTP(c.Writer, c.Request)
 }
 

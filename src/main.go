@@ -158,6 +158,10 @@ func main() {
 	// capture URL configured).
 	Captures = newCaptureManager()
 
+	// Token gating the public drift telemetry WebSocket, baked into the script
+	// served to clients.
+	initDriftIngestToken()
+
 	router := gin.New()
 	if debug {
 		router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
@@ -174,6 +178,14 @@ func main() {
 	// Public mod downloads — joining players are not authenticated.
 	router.GET("/dl/car/:key", apiDownloadCar)
 	router.GET("/dl/track/:key", apiDownloadTrack)
+
+	// Public drift telemetry — a joining player's CSP script fetches the
+	// rendered HUD/feeder script (/sm/lua/driftscore) and streams slip data back
+	// over the WebSocket (/telemetry/ingest). Authenticated by the per-process
+	// ingest token baked into the served script, not the JWT cookie (game
+	// clients have none).
+	router.GET("/sm/lua/driftscore", apiDriftLuaScript)
+	router.GET("/telemetry/ingest", apiTelemetryIngest)
 
 	// Login is the only unauthenticated API endpoint
 	router.POST("/api/login", apiLogin)

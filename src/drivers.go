@@ -21,12 +21,14 @@ type DriverState struct {
 	LastLapMs uint32 `json:"last_lap_ms"`
 	BestLapMs uint32 `json:"best_lap_ms"`
 	Connected bool   `json:"connected"`
-	// DriftLive/DriftLast/DriftBest are populated from the client-side drift
-	// HUD's chat lines. DriftLive is the score of the run currently in
-	// progress ([DRIFT] live=..), updated ~1x/sec and reset to 0 when the run
-	// ends; DriftLast is the final score of the last completed run ([DRIFT]
-	// last=..); DriftBest is the best score seen this session. All zero when
-	// the drift feature is off or the driver has not drifted yet.
+	// DriftLive/DriftLast/DriftBest are the int snapshot of this car's drift
+	// score, computed server-side in driftScorer from slip telemetry streamed by
+	// the client's CSP feeder (applyDriftTelemetry; legacy chat path still feeds
+	// driverDrift). DriftLive is the score of the run currently in progress,
+	// updated in real time and reset to 0 when the run ends; DriftLast is the
+	// final score of the last completed run; DriftBest is the best score seen
+	// this session. All zero when the drift feature is off or the driver has not
+	// drifted yet.
 	DriftLive int `json:"drift_live"`
 	DriftLast int `json:"drift_last"`
 	DriftBest int `json:"drift_best"`
@@ -92,6 +94,7 @@ func (inst *Instance) driverLeave(carId int) {
 		}
 	}
 	delete(inst.drivers, carId)
+	delete(inst.driftScorers, carId)
 	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
 	if row != nil {
@@ -142,6 +145,7 @@ func (inst *Instance) resetDriverLaps() {
 		d.captureCount = 0
 		d.lastCaptureMs = 0
 	}
+	inst.driftScorers = make(map[int]*driftScorer)
 	inst.mu.Unlock()
 	inst.publishDrivers()
 }
@@ -163,11 +167,20 @@ func parseDriftChat(msg string) (live bool, score int, best int, ok bool) {
 	return live, score, best, true
 }
 
-// driverDrift records a drift report from the client-side HUD. A live report
-// updates the in-progress score; an end-of-run report finalizes it (DriftLast)
-// and clears the live score. best is monotonic per the script; we keep the max
-// seen in case lines arrive out of order.
+// driverDrift records a drift report on the legacy chat path (clients running
+// an older cached HUD that still posts "[DRIFT]" lines). It always publishes
+// immediately. The current path is applyDriftTelemetry, which scores
+// server-side and throttles publishing.
 func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
+	inst.recordDrift(carId, live, score, best, true)
+}
+
+// recordDrift applies one drift report to a driver. A live report updates the
+// in-progress score; an end-of-run report finalizes it (DriftLast) and clears
+// the live score. best is the max of the completed PB and the live run. When
+// publishNow is false the SSE push is skipped (the high-rate telemetry path
+// throttles it in applyDriftTelemetry), but capture and persistence still run.
+func (inst *Instance) recordDrift(carId int, live bool, score, best int, publishNow bool) {
 	now := time.Now().UnixMilli()
 	inst.mu.Lock()
 	var run *dsDriftInsert
@@ -233,7 +246,49 @@ func (inst *Instance) driverDrift(carId int, live bool, score, best int) {
 	if endedGuid != "" {
 		Captures.onDriftRunEnd(endedGuid)
 	}
-	inst.publishDrivers()
+	if publishNow {
+		inst.publishDrivers()
+	}
+}
+
+// applyDriftTelemetry folds one raw slip sample (from a client's CSP feeder)
+// into that car's server-side drift score, then routes the result through the
+// shared recordDrift path so capture and persistence behave exactly as before.
+// Live updates publish to SSE at ~10Hz; run ends always publish immediately so
+// the final score and DriftLast land without delay.
+func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) {
+	// Clamp dt: a reconnect or stall can produce a huge gap that would dump a
+	// burst of points in one step; an absent/zero dt falls back to the feeder's
+	// nominal interval.
+	if dt <= 0 || dt > 1 {
+		dt = 0.05
+	}
+
+	inst.mu.Lock()
+	if _, ok := inst.drivers[carId]; !ok {
+		inst.mu.Unlock()
+		return
+	}
+	if inst.driftScorers == nil {
+		inst.driftScorers = make(map[int]*driftScorer)
+	}
+	sc := inst.driftScorers[carId]
+	if sc == nil {
+		sc = newDriftScorer()
+		inst.driftScorers[carId] = sc
+	}
+	live, best, ended, last := sc.step(lvx, kmh/3.6, kmh, dt)
+	publishNow := ended || time.Since(inst.lastDriftPublish) >= 100*time.Millisecond
+	if publishNow {
+		inst.lastDriftPublish = time.Now()
+	}
+	inst.mu.Unlock()
+
+	if ended {
+		inst.recordDrift(carId, false, last, best, true)
+	} else {
+		inst.recordDrift(carId, true, live, best, publishNow)
+	}
 }
 
 func (inst *Instance) clearDrivers() {
@@ -243,6 +298,7 @@ func (inst *Instance) clearDrivers() {
 	// stop/track-change without a clean ACSP_END_SESSION still leaves history.
 	rows := inst.collectFinishedSessionsLocked(now)
 	inst.drivers = make(map[int]*DriverState)
+	inst.driftScorers = make(map[int]*driftScorer)
 	inst.mu.Unlock()
 	persistFinishedSessions(inst.Id(), rows)
 	inst.clearPositions()

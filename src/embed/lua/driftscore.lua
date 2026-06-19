@@ -13,6 +13,31 @@
 -- Event configuration:
 local requiredSpeed = 40
 
+-- SM: server-side scoring. The authoritative drift score is now computed by
+-- Server Manager from the slip telemetry streamed below; this client keeps its
+-- own local copy only to drive the HUD. SM_INGEST is the WebSocket URL+token
+-- the server injects when it serves this script; it is empty when the file is
+-- fetched directly (e.g. from /static), which disables streaming.
+if not SM_INGEST then SM_INGEST = '' end
+local smSock = nil
+local smSendTimer = 0
+-- smStreamTelemetry streams one car-local-lateral-velocity + speed sample to
+-- the server about every 50ms, regardless of drift state, so the server can
+-- detect run starts and ends. dt carries the integration window since the last
+-- send so the server's score is independent of this client's frame rate.
+local function smStreamTelemetry(player, dt)
+    if SM_INGEST == '' then return end
+    if smSock == nil then
+        smSock = web.socket(SM_INGEST, nil, function() end, { encoding = 'json', reconnect = true })
+        if smSock == nil then return end
+    end
+    smSendTimer = smSendTimer + dt
+    if smSendTimer >= 0.05 then
+        smSock({ i = player.index, lvx = player.localVelocity.x, kmh = player.speedKmh, dt = smSendTimer })
+        smSendTimer = 0
+    end
+end
+
 -- ScoreTrackerPlugin
 -- local msg = ac.OnlineEvent({
     -- ac.StructItem.key("driftScoreEnd"),
@@ -40,8 +65,6 @@ local comboProgress = 1
 local comboColor = 0
 local highestScore = 0
 local lastScore = 0
--- SM: throttles the mid-run live-score chat line (see below).
-local driftSendTimer = 0
 local dangerouslySlowTimer = 0
 local carsState = {}
 local wheelsWarningTimeout = 0
@@ -59,6 +82,9 @@ function script.update(dt)
     if not player then
         return
     end
+    -- SM: stream raw slip telemetry every frame (even when idle) so the server
+    -- can score the run and detect its start/end. The server is authoritative.
+    smStreamTelemetry(player, dt)
     timePassed = timePassed + dt
 -- Activate or disable combo fading
     --local comboFadingRate = 0.4 * math.lerp(1, 0.1, math.lerpInvSat(player.speedKmh, 80, 200)) + player.wheelsOutside    
@@ -91,15 +117,6 @@ function script.update(dt)
         if comboMeter > highestCombo then
             highestCombo = comboMeter
         end
-        -- SM: stream the live score to the server ~1x/sec so the broadcast
-        -- updates mid-run instead of only when the run ends. Stays under
-        -- AC/CSP chat flood limits (~1 msg/sec). best is max(completed-best,
-        -- current run) so the broadcast's Drift Best tracks in real time.
-        driftSendTimer = driftSendTimer + dt
-        if driftSendTimer >= 1.0 then
-            driftSendTimer = 0
-            ac.sendChatMessage("[DRIFT] live=" .. math.floor(totalScore) .. " best=" .. math.max(highestScore, math.floor(totalScore)))
-        end
     end
 
     if player.speedKmh < requiredSpeed and slidingMult < 1 then
@@ -111,15 +128,11 @@ function script.update(dt)
             end
             if totalScore > 0 then
                 lastScore = math.floor(totalScore)
-                -- SM: report the finished run to the server (parsed by the
-                -- manager's chat handler) so drift scores show on the broadcast.
-                ac.sendChatMessage("[DRIFT] last=" .. lastScore .. " best=" .. highestScore)
             end
 
             totalScore = 0
             comboMeter = 1
             comboProgress = 1
-            driftSendTimer = 0
         else
             if dangerouslySlowTimer == 0 then
                 addMessage("Get Going!", -1)

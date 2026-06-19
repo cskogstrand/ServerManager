@@ -615,7 +615,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 		// Serve (or strip) the drift-score CSP Lua HUD per the instance toggle.
 		// enable=false on a disabled instance removes any block from a prior run.
 		driftEnabled := inst.Conf.DriftScoreEnabled != nil && *inst.Conf.DriftScoreEnabled == 1
-		ensureAssettoServerCspExtraOptions(dir, driftEnabled, driftScriptURL(cfg))
+		ensureAssettoServerCspExtraOptions(dir, driftEnabled, driftScriptURL(cfg, inst.Id()))
 		// Disable (or restore) the CSP wrong-way "back to pits" teleport per the
 		// instance toggle. Stripped on a disabled instance to undo a prior run.
 		allowWrongWay := inst.Conf.AllowWrongWay != nil && *inst.Conf.AllowWrongWay == 1

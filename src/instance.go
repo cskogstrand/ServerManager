@@ -17,14 +17,19 @@ import (
 type Instance struct {
 	Conf ServerInstance
 
-	// mu guards cmd, lines, Status, drivers, positions and tel.
+	// mu guards cmd, lines, Status, drivers, positions, driftScorers and tel.
 	mu                  sync.Mutex
 	cmd                 *exec.Cmd
 	lines               string
 	drivers             map[int]*DriverState
 	positions           map[int]*CarPositionState
 	lastPositionPublish time.Time
-	tel                 telemetryHealth
+	// driftScorers holds per-car server-side drift scoring state, fed by the
+	// telemetry ingest WebSocket. lastDriftPublish throttles the high-rate live
+	// drift updates pushed to SSE subscribers. See drivers.go / telemetryingest.go.
+	driftScorers     map[int]*driftScorer
+	lastDriftPublish time.Time
+	tel              telemetryHealth
 
 	Udp    *UdpPlugin
 	Status ServerStatus

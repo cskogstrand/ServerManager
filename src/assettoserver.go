@@ -553,13 +553,15 @@ const (
 	driftCspBlockEnd   = "; <<< Server Manager: drift score (managed)"
 )
 
-// driftScriptURL is the public URL CSP clients fetch the vendored drift-score
-// HUD from. It reuses the same public base players already use for mod
-// downloads (admin-configured value, else the detected public IP on the web
-// port), so it carries the same reachability requirement: SM's web port must be
-// reachable by joining clients.
-func driftScriptURL(cfg UserConfig) string {
-	return modDownloadBaseURL(cfg) + "/static/lua/driftscore.lua"
+// driftScriptURL is the public URL CSP clients fetch the drift-score HUD/feeder
+// from. It points at the rendered endpoint (not the raw /static file) so the
+// per-instance telemetry ingest URL+token is injected into the script body. It
+// reuses the same public base players already use for mod downloads
+// (admin-configured value, else the detected public IP on the web port), so it
+// carries the same reachability requirement: SM's web port must be reachable by
+// joining clients — which the WebSocket ingest shares (same host:port).
+func driftScriptURL(cfg UserConfig, instanceId int) string {
+	return modDownloadBaseURL(cfg) + "/sm/lua/driftscore?instance=" + strconv.Itoa(instanceId)
 }
 
 // stripDriftCspBlock removes any previously-written managed block (including a

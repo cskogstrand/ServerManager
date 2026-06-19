@@ -7,13 +7,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getDriver, describeResult, fmtDate, fmtScore, sessionKindLabel, shortGuid, timeAgo } from "@/lib/driversApi";
 import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
-import { lapTime } from "@/lib/raceTelemetry";
+import { lapTime, sessionTypeLabel, computeRunningOrder } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useToastStore } from "@/stores/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
-import type { DriverState } from "@/stores/server";
+import type { DriverState, InstanceState } from "@/stores/server";
 import type { DriverDetail, DriverResult, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
@@ -47,6 +47,32 @@ const live = computed<DriverState | null>(() => {
 });
 const online = computed(() => !!live.value || !!driver.value?.online);
 const liveDrift = computed(() => (live.value ? live.value.drift_live || live.value.drift_best || 0 : 0));
+
+// The running instance this driver is connected to right now (for the live
+// "Current race" panel), plus derived session/standing info.
+const liveInstance = computed<InstanceState | null>(() => {
+  for (const inst of server.instanceList) {
+    if (!inst.running) continue;
+    if (inst.drivers.some((x) => x.connected && x.guid === guid.value)) return inst;
+  }
+  return null;
+});
+const liveSession = computed(() => liveInstance.value?.session ?? null);
+const liveIsDrift = computed(() => !!liveInstance.value?.drift_score_enabled);
+const liveRow = computed(() => {
+  const inst = liveInstance.value;
+  if (!inst || !live.value) return null;
+  const rows = computeRunningOrder(inst.drivers, inst.positions, inst.session?.type ?? 0);
+  return rows.find((r) => r.car_id === live.value!.car_id) ?? null;
+});
+const liveTrackName = computed(() => {
+  const s = liveSession.value;
+  if (!s?.track) return "";
+  const t =
+    content.tracks.find((x) => x.key === s.track && (x.config ?? "") === (s.track_config ?? "")) ??
+    content.tracks.find((x) => x.key === s.track);
+  return t?.name || s.track;
+});
 
 // --- avatar upload (local preview until the backend persists it) -------------
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -342,6 +368,68 @@ async function deleteMedia(m: MediaItem) {
         </div>
       </div>
     </section>
+
+    <!-- CURRENT RACE (only while the driver is on track) -->
+    <Card v-if="online && live" class="reveal mt-4">
+      <template #header>
+        <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
+          <Icon name="flag" :size="15" class="text-accent" /> Current race
+        </h2>
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase">
+          <span class="size-1.5 rounded-full bg-ok live-dot" /> On track
+        </span>
+      </template>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-x-2 text-sm">
+            <span class="font-bold text-text">{{ sessionTypeLabel(liveSession?.type) }}</span>
+            <span v-if="liveSession?.name" class="truncate text-muted">· {{ liveSession.name }}</span>
+          </div>
+          <div class="mt-1 flex items-center gap-1.5 text-xs text-muted">
+            <Icon name="mapPin" :size="13" class="text-dim" /> {{ liveTrackName || "—" }}
+            <span v-if="liveInstance" class="text-dim">· {{ liveInstance.name }}</span>
+          </div>
+        </div>
+        <RouterLink
+          v-if="liveInstance"
+          :to="{ name: 'server-broadcast', params: { id: liveInstance.id } }"
+          class="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          <Icon name="broadcast" :size="14" /> Broadcast
+        </RouterLink>
+      </div>
+
+      <div class="mt-4 grid grid-cols-3 gap-3">
+        <template v-if="liveIsDrift">
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Live</div>
+            <div class="numerals mt-1 text-2xl font-bold tabular-nums" :class="liveDrift ? 'text-accent' : 'text-dim'">{{ liveDrift ? fmtScore(liveDrift) : "—" }}</div>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best</div>
+            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ live!.drift_best ? fmtScore(live!.drift_best) : "—" }}</div>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Last</div>
+            <div class="numerals mt-1 text-2xl font-medium tabular-nums text-muted">{{ live!.drift_last ? fmtScore(live!.drift_last) : "—" }}</div>
+          </div>
+        </template>
+        <template v-else>
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Position</div>
+            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ liveRow ? `P${liveRow.position}` : "—" }}</div>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Last lap</div>
+            <div class="numerals mt-1 text-2xl font-medium tabular-nums text-text">{{ live!.last_lap_ms ? lapTime(live!.last_lap_ms) : "—" }}</div>
+          </div>
+          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
+            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Laps</div>
+            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ live!.laps }}</div>
+          </div>
+        </template>
+      </div>
+    </Card>
 
     <!-- FAVOURITES -->
     <div class="mt-4 grid gap-4 md:grid-cols-2">

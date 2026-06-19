@@ -1213,6 +1213,15 @@ onBeforeUnmount(() => {
                   </div>
                   <div class="font-mono text-[11px] text-dim">L{{ row.laps }}</div>
                 </div>
+                <RouterLink
+                  v-if="guidForCar(row.car_id)"
+                  :to="{ name: 'driver-detail', params: { guid: guidForCar(row.car_id)! } }"
+                  class="shrink-0 rounded-md p-1 text-dim transition-colors hover:bg-surface-3 hover:text-accent"
+                  :title="`${row.name} — driver detail`"
+                  :aria-label="`${row.name} — driver detail`"
+                >
+                  <Icon name="user" :size="14" />
+                </RouterLink>
                 <button
                   v-if="hasStreamForCar(row.car_id)"
                   type="button"

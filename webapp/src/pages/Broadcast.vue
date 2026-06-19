@@ -584,11 +584,21 @@ onBeforeUnmount(() => {
                 <div class="min-w-0 flex-1">
                   <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
                 </div>
-                <!-- Capture controls (operate role; needs a configured stream guid) -->
+                <!-- Driver-detail link (any role) + capture controls (operate role) -->
                 <div
-                  v-if="auth.canOperate && guidForCar(card.row.car_id)"
+                  v-if="guidForCar(card.row.car_id)"
                   class="flex shrink-0 items-center gap-1"
                 >
+                  <RouterLink
+                    :to="{ name: 'driver-detail', params: { guid: guidForCar(card.row.car_id)! } }"
+                    target="_blank"
+                    title="Open driver detail"
+                    class="grid size-7 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent"
+                    @click.stop
+                  >
+                    <Icon name="user" :size="14" />
+                  </RouterLink>
+                  <template v-if="auth.canOperate">
                   <button
                     type="button"
                     title="Take picture from this stream"
@@ -616,6 +626,7 @@ onBeforeUnmount(() => {
                     class="size-1.5 rounded-full bg-ok live-dot"
                     title="Rolling buffer recording — drift-run clips cut from this"
                   />
+                  </template>
                 </div>
               </header>
 

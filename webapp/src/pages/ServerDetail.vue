@@ -1310,7 +1310,7 @@ onBeforeUnmount(() => {
     <!-- Operate now: the loaded event and what's queued next, side by side -->
     <div class="page-enter mt-4 grid gap-4 lg:grid-cols-2" style="animation-delay: 90ms">
       <!-- Current event -->
-      <Card v-if="detail?.current_event?.id">
+      <Card v-if="detail?.current_event?.id" class="min-w-0">
         <template #header>
           <Icon name="events" :size="15" class="text-accent" />
           <h2 class="text-sm font-bold">Current event</h2>
@@ -1342,7 +1342,7 @@ onBeforeUnmount(() => {
           </span>
         </div>
       </Card>
-      <Card v-else>
+      <Card v-else class="min-w-0">
         <template #header>
           <Icon name="events" :size="15" class="text-dim" />
           <h2 class="text-sm font-bold">Current event</h2>
@@ -1351,7 +1351,7 @@ onBeforeUnmount(() => {
       </Card>
 
       <!-- Up next -->
-      <Card>
+      <Card class="min-w-0">
         <template #header>
           <Icon name="queue" :size="15" class="text-dim" />
           <h2 class="text-sm font-bold">Up next</h2>
@@ -1366,7 +1366,7 @@ onBeforeUnmount(() => {
               :config="q.track_config ?? ''"
               class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50"
             />
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>
               <div class="truncate text-xs text-dim">
                 {{ q.name ? `${q.track} · ` : "" }}{{ q.class }} · {{ q.session }} · {{ q.time }}

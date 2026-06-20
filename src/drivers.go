@@ -257,8 +257,13 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 	}
 	inst.mu.Unlock()
 	if run != nil {
-		if err := Dba.insertDriftRun(inst.Id(), *run); err != nil {
+		runId, err := Dba.insertDriftRun(inst.Id(), *run)
+		if err != nil {
 			log.Print("driverstats: insert drift run: ", err)
+		} else if capReq != nil {
+			// Same end-of-run block built both — tag the capture's media with the
+			// run id so the leaderboard links score → video exactly.
+			capReq.driftRunId = runId
 		}
 	}
 	if capReq != nil {

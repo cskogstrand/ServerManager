@@ -67,6 +67,7 @@ type captureRequest struct {
 	runStartMs  int64 // when the run's live score first rose from zero
 	runEndMs    int64 // when the run ended
 	peakMs      int64 // when the peak score occurred (screenshot moment)
+	driftRunId  int64 // driver_drift_run row this capture belongs to (0 = unknown)
 }
 
 type captureManager struct {
@@ -229,7 +230,7 @@ func (m *captureManager) run(req captureRequest) {
 		}
 		if m.grabFrameFromFile(clipPath, offset, filepath.Join(dir, shot)) {
 			caption := fmt.Sprintf("Drift spike — %s pts", groupThousands(req.score))
-			if err := Dba.insertDriverMedia(guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta); err != nil {
+			if err := Dba.insertDriverMedia(guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta, req.driftRunId); err != nil {
 				log.Print("driver capture: insert screenshot: ", err)
 			}
 		}
@@ -240,7 +241,7 @@ func (m *captureManager) run(req captureRequest) {
 		if trackName != "" {
 			caption += " · " + trackName
 		}
-		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), durS, req.score, req.delta); err != nil {
+		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), durS, req.score, req.delta, req.driftRunId); err != nil {
 			log.Print("driver capture: insert clip: ", err)
 		}
 	} else {
@@ -396,8 +397,8 @@ WHERE enabled = 1 AND stream_capture_url IS NOT NULL AND TRIM(stream_capture_url
 	return out, rows.Err()
 }
 
-func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, capturedAt int64, durationS, triggerScore, triggerDelta int) error {
-	var dur, ts, td sql.NullInt64
+func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, capturedAt int64, durationS, triggerScore, triggerDelta int, driftRunId int64) error {
+	var dur, ts, td, runId sql.NullInt64
 	if durationS > 0 {
 		dur = sql.NullInt64{Int64: int64(durationS), Valid: true}
 	}
@@ -406,10 +407,14 @@ func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, captured
 		ts = sql.NullInt64{Int64: int64(triggerScore), Valid: true}
 		td = sql.NullInt64{Int64: int64(triggerDelta), Valid: true}
 	}
+	// Manual/snapshot media pass 0 -> store NULL (not tied to a scored run).
+	if driftRunId > 0 {
+		runId = sql.NullInt64{Int64: driftRunId, Valid: true}
+	}
 	_, err := dba.db.Exec(`
-INSERT INTO driver_media (driver_guid, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		guid, kind, path, caption, capturedAt, dur, ts, td)
+INSERT INTO driver_media (driver_guid, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, drift_run_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		guid, kind, path, caption, capturedAt, dur, ts, td, runId)
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -630,7 +635,7 @@ func (m *captureManager) assembleManual(mark *manualMark) {
 	}
 	// duration 0: the mm:ss badge is for short auto-clips; manual clips can run
 	// long, so leave it off (matches the prior manual-recording behaviour).
-	if err := Dba.insertDriverMedia(guid, "clip", file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0); err != nil {
+	if err := Dba.insertDriverMedia(guid, "clip", file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0, 0); err != nil {
 		log.Print("driver capture: insert manual clip: ", err)
 	}
 	m.prune(guid, dir)
@@ -657,7 +662,7 @@ func (m *captureManager) takeSnapshot(guid string) (string, error) {
 		return "", errors.New("no buffered video yet — the stream may be down or still starting")
 	}
 	// trigger 0 -> NULL -> no spike badge (this is an operator snapshot).
-	if err := Dba.insertDriverMedia(guid, "screenshot", file, "Snapshot", time.Now().UnixMilli(), 0, 0, 0); err != nil {
+	if err := Dba.insertDriverMedia(guid, "screenshot", file, "Snapshot", time.Now().UnixMilli(), 0, 0, 0, 0); err != nil {
 		return "", err
 	}
 	m.prune(guid, dir)

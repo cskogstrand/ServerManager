@@ -147,6 +147,11 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("driver_stream", "stream_capture_url", "TEXT"); err != nil {
 		log.Fatal("Error applying database migration for driver_stream.stream_capture_url: ", err)
 	}
+	// Links an auto-captured clip/screenshot to the drift run that triggered it,
+	// so the leaderboard relates a score to its video exactly (no time-matching).
+	if err := dba.ensureColumn("driver_media", "drift_run_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_media.drift_run_id: ", err)
+	}
 	for col, def := range map[string]string{
 		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
 		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",

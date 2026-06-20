@@ -345,7 +345,8 @@ CREATE TABLE IF NOT EXISTS driver_media (
   captured_at INTEGER NOT NULL,
   duration_s INTEGER,
   trigger_score INTEGER,
-  trigger_delta INTEGER
+  trigger_delta INTEGER,
+  drift_run_id INTEGER
 );
 
 

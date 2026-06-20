@@ -10,6 +10,7 @@ const router = createRouter({
     { path: "/server/:id", name: "server-detail", component: () => import("@/pages/ServerDetail.vue") },
     { path: "/server/:id/broadcast", name: "server-broadcast", component: () => import("@/pages/Broadcast.vue"), meta: { bare: true } },
     { path: "/broadcast", name: "broadcast-auto", component: () => import("@/pages/Broadcast.vue"), meta: { bare: true } },
+    { path: "/leaderboard", name: "leaderboard", component: () => import("@/pages/Leaderboard.vue"), meta: { bare: true } },
     { path: "/events", name: "events", component: () => import("@/pages/Events.vue") },
     { path: "/queue", name: "queue", component: () => import("@/pages/Queue.vue") },
     { path: "/drivers", name: "drivers", component: () => import("@/pages/DriverStats.vue") },

@@ -84,6 +84,7 @@ const allSections = [
       { to: "/events", label: "Race Setups", icon: "events" },
       { to: "/queue", label: "Run Plan", icon: "queue" },
       { to: "/drivers", label: "Driver Stats", icon: "trophy" },
+      { to: "/leaderboard", label: "Leaderboard", icon: "flag" },
     ],
   },
   {
@@ -126,9 +127,11 @@ const navSections = computed(() =>
 
 // Bottom-tab nav (mobile): the four daily-operations items; the fifth slot is a
 // hamburger that opens a drawer with every remaining (role-visible) item.
+// Capped at four so the grid stays 4 tabs + hamburger — extra Operate items
+// (e.g. Leaderboard) are reachable from the "More" drawer.
 const operate = allSections[0].items as readonly NavItem[];
 const mobileNav = computed<NavItem[]>(() =>
-  (operate as NavItem[]).filter(canSee), // Dashboard, Events, Queue, Driver Stats
+  (operate as NavItem[]).filter(canSee).slice(0, 4), // Dashboard, Events, Queue, Driver Stats
 );
 
 // Mobile "more" drawer: all nav sections, closed on navigation.

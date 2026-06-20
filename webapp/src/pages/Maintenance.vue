@@ -75,7 +75,7 @@ async function restore() {
   <PageHeader title="Backup & Restore" subtitle="Download a full backup, or restore a database from a previous backup." icon="content" />
 
   <div class="grid items-start gap-5 md:grid-cols-2">
-    <Card title="Backup">
+    <Card title="Backup" class="min-w-0">
       <p class="mb-3 text-sm text-muted">Download the data you'd want to keep. The database holds everything except imported content files.</p>
       <div class="space-y-2">
         <a
@@ -94,7 +94,7 @@ async function restore() {
       </div>
     </Card>
 
-    <Card title="Restore database">
+    <Card title="Restore database" class="min-w-0">
       <p class="mb-3 text-sm text-muted">
         Upload an <span class="font-mono">smdata.db</span> backup. It is staged and applied on the next restart;
         the current database is kept as <span class="font-mono">smdata.db.prev</span>.
@@ -102,7 +102,7 @@ async function restore() {
       <input
         type="file"
         accept=".db,.sqlite,.sqlite3"
-        class="mb-3 w-full text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text"
+        class="mb-3 w-full min-w-0 text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text"
         @change="onFile"
       />
       <p

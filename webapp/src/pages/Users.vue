@@ -102,8 +102,38 @@ onMounted(() => guard(load));
   <PageHeader title="Users & Roles" subtitle="Manage who can sign in and what they can do." icon="users" />
 
   <div class="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
-    <Card title="Users">
-      <div class="overflow-x-auto">
+    <Card title="Users" class="min-w-0">
+      <!-- Mobile: stacked cards -->
+      <ul class="space-y-2 sm:hidden">
+        <li v-for="u in users" :key="u.name" class="rounded-md border border-line bg-surface-2/50 p-3">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <span class="min-w-0 truncate font-medium">
+              {{ u.name }}
+              <span v-if="u.name === auth.user?.name" class="text-xs text-dim">(you)</span>
+            </span>
+            <Button
+              v-if="u.name !== auth.user?.name"
+              variant="ghost"
+              size="sm"
+              aria-label="Delete user"
+              :disabled="busy"
+              @click="removeUser(u)"
+            >
+              <Icon name="trash" :size="14" />
+            </Button>
+          </div>
+          <Select
+            :model-value="u.role"
+            class="mb-2 w-full"
+            :options="roleOptions"
+            @update:model-value="(r) => setRole(u, String(r))"
+          />
+          <Button variant="dark" size="sm" class="w-full" :disabled="busy" @click="resetPassword(u)">Reset password</Button>
+        </li>
+      </ul>
+
+      <!-- sm+: table -->
+      <div class="hidden overflow-x-auto sm:block">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-line text-left text-xs tracking-wide text-muted uppercase">

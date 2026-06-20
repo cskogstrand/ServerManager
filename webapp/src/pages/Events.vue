@@ -394,6 +394,12 @@ onMounted(() =>
 
   <!-- Builder -->
   <Sheet :open="builderOpen" :title="editing?.id ? 'Edit race setup' : 'New race setup'" @close="builderOpen = false">
+    <FormRow v-if="editing" label="Group" hint="Which group this setup belongs to.">
+      <Select
+        v-model="editingGroupId"
+        :options="groups.map((g) => ({ value: g.id ?? 0, label: g.name ?? '' }))"
+      />
+    </FormRow>
     <RaceSetupEditor v-if="editing" v-model="editing" :instance-id="server.instanceList[0]?.id ?? null" />
     <template #footer>
       <span v-if="!raceSetupValid(editing)" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>

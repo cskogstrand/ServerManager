@@ -62,19 +62,40 @@ function totalSlots(): number {
       <div
         v-for="(entry, i) in form.entries"
         :key="i"
-        class="mb-3 flex flex-wrap items-start gap-3 rounded-md border border-line bg-surface-2/50 p-3"
+        class="mb-3 flex flex-col gap-3 rounded-md border border-line bg-surface-2/50 p-3 sm:flex-row sm:flex-wrap sm:items-start"
       >
-        <img
-          v-if="previewUrl(entry)"
-          :src="previewUrl(entry)"
-          alt=""
-          class="h-16 w-28 rounded-sm border border-line object-cover"
-        />
-        <div v-else class="flex h-16 w-28 items-center justify-center rounded-sm border border-line text-xs text-dim">
-          no preview
+        <!-- Preview + actions share one row on mobile; split apart at sm -->
+        <div class="flex items-start justify-between gap-3 sm:contents">
+          <img
+            v-if="previewUrl(entry)"
+            :src="previewUrl(entry)"
+            alt=""
+            class="h-16 w-28 rounded-sm border border-line object-cover"
+          />
+          <div v-else class="flex h-16 w-28 items-center justify-center rounded-sm border border-line text-xs text-dim">
+            no preview
+          </div>
+
+          <div class="flex gap-1 sm:order-last sm:flex-col">
+            <Button variant="dark" size="sm" :disabled="i === 0" aria-label="Move up" @click="move(i, -1)">
+              <Icon name="arrowUp" :size="14" />
+            </Button>
+            <Button
+              variant="dark"
+              size="sm"
+              :disabled="i === (form.entries?.length ?? 0) - 1"
+              aria-label="Move down"
+              @click="move(i, 1)"
+            >
+              <Icon name="arrowDown" :size="14" />
+            </Button>
+            <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeEntry(i)">
+              <Icon name="x" :size="14" />
+            </Button>
+          </div>
         </div>
 
-        <div class="grid min-w-0 flex-1 gap-x-4 sm:grid-cols-[2fr_2fr_auto]">
+        <div class="grid w-full min-w-0 gap-x-4 sm:w-auto sm:flex-1 sm:grid-cols-[2fr_2fr_auto]">
           <FormRow label="Car">
             <Combobox
               v-model="entry.cache_car_key"
@@ -98,24 +119,6 @@ function totalSlots(): number {
           <FormRow label="Cars" hint="Grid slots for this entry">
             <Input v-model="entry.count" type="number" :min="1" :max="64" class="w-20" />
           </FormRow>
-        </div>
-
-        <div class="flex gap-1 sm:flex-col">
-          <Button variant="dark" size="sm" :disabled="i === 0" aria-label="Move up" @click="move(i, -1)">
-            <Icon name="arrowUp" :size="14" />
-          </Button>
-          <Button
-            variant="dark"
-            size="sm"
-            :disabled="i === (form.entries?.length ?? 0) - 1"
-            aria-label="Move down"
-            @click="move(i, 1)"
-          >
-            <Icon name="arrowDown" :size="14" />
-          </Button>
-          <Button variant="ghost" size="sm" aria-label="Remove entry" @click="removeEntry(i)">
-            <Icon name="x" :size="14" />
-          </Button>
         </div>
       </div>
 

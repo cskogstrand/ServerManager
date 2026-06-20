@@ -360,9 +360,9 @@ async function deleteMedia(m: MediaItem) {
               <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best drift</div>
               <div class="font-mono text-lg font-bold tabular-nums text-accent"><CountUp :value="driver.best_drift" /></div>
             </div>
-            <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
+            <div class="col-span-2 rounded-md border border-line bg-surface/70 px-3 py-2">
               <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Fastest lap</div>
-              <div class="font-mono text-lg font-bold tabular-nums text-text">{{ driver.best_lap_ms ? lapTime(driver.best_lap_ms) : "—" }}</div>
+              <div class="truncate font-mono text-lg font-bold tabular-nums text-text">{{ driver.best_lap_ms ? lapTime(driver.best_lap_ms) : "—" }}</div>
             </div>
             <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
               <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Laps</div>
@@ -379,7 +379,7 @@ async function deleteMedia(m: MediaItem) {
           </div>
           <div class="mt-2 flex items-center gap-3 rounded-md border border-line bg-surface/70 px-3 py-2 text-accent">
             <span class="text-[10px] font-bold tracking-wide text-dim uppercase">Drift trend</span>
-            <Sparkline :values="driver.drift_trend" :width="300" :height="34" class="ml-auto" />
+            <Sparkline :values="driver.drift_trend" :width="300" :height="34" class="ml-auto h-auto min-w-0 max-w-full" />
           </div>
         </div>
       </div>
@@ -449,14 +449,14 @@ async function deleteMedia(m: MediaItem) {
 
     <!-- FAVOURITES -->
     <div class="mt-4 grid gap-4 md:grid-cols-2">
-      <Card>
+      <Card class="min-w-0">
         <template #header>
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="star" :size="15" class="text-warn" /> Favourite car
           </h2>
         </template>
-        <div v-if="driver.favourite_car" class="flex items-center gap-4">
-          <div class="grid h-20 w-32 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2">
+        <div v-if="driver.favourite_car" class="flex items-center gap-3 sm:gap-4">
+          <div class="grid h-16 w-24 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32">
             <img
               v-if="carImgOk"
               :src="carImgUrl"
@@ -466,7 +466,7 @@ async function deleteMedia(m: MediaItem) {
             />
             <Icon v-else name="car" :size="28" class="text-dim" />
           </div>
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <div class="truncate text-base font-bold text-text">{{ driver.favourite_car.name }}</div>
             <div v-if="driver.favourite_car.skin" class="truncate text-xs text-muted">Livery · {{ driver.favourite_car.skin }}</div>
             <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-driven car</div>
@@ -475,19 +475,19 @@ async function deleteMedia(m: MediaItem) {
         <p v-else class="text-sm text-muted">No car data yet.</p>
       </Card>
 
-      <Card>
+      <Card class="min-w-0">
         <template #header>
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="mapPin" :size="15" class="text-accent" /> Favourite track
           </h2>
         </template>
-        <div v-if="driver.favourite_track" class="flex items-center gap-4">
+        <div v-if="driver.favourite_track" class="flex items-center gap-3 sm:gap-4">
           <TrackImage
             :track-key="driver.favourite_track.key"
             :config="driver.favourite_track.config"
-            class="h-20 w-32 shrink-0 rounded-md border border-line bg-surface-2"
+            class="h-16 w-24 shrink-0 rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32"
           />
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <div class="truncate text-base font-bold text-text">{{ driver.favourite_track.name }}</div>
             <div v-if="driver.favourite_track.country" class="truncate text-xs text-muted">{{ driver.favourite_track.country }}</div>
             <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-raced layout</div>
@@ -499,7 +499,7 @@ async function deleteMedia(m: MediaItem) {
 
     <!-- HISTORY + STREAM -->
     <div class="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_380px]">
-      <Card>
+      <Card class="min-w-0">
         <template #header>
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="activity" :size="15" /> Recent sessions
@@ -510,7 +510,7 @@ async function deleteMedia(m: MediaItem) {
           <li
             v-for="(r, i) in driver.results"
             :key="r.session_id"
-            class="reveal flex items-center gap-3 border-b border-line/60 py-2.5 last:border-0"
+            class="reveal flex min-w-0 items-center gap-3 border-b border-line/60 py-2.5 last:border-0"
             :style="{ animationDelay: Math.min(i, 12) * 35 + 'ms' }"
           >
             <span
@@ -539,7 +539,7 @@ async function deleteMedia(m: MediaItem) {
         <p v-else class="py-6 text-center text-sm text-muted">No sessions recorded yet.</p>
       </Card>
 
-      <Card>
+      <Card class="min-w-0">
         <template #header>
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="broadcast" :size="15" :class="streamLive ? 'text-ok' : 'text-dim'" /> Live stream
@@ -665,11 +665,13 @@ async function deleteMedia(m: MediaItem) {
                 <span v-if="m.duration_s" class="pointer-events-none absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
                   {{ fmtClipDuration(m.duration_s) }}
                 </span>
-                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
-              <div class="px-2.5 py-1.5">
-                <div class="truncate text-xs font-semibold text-text">{{ m.caption }}</div>
-                <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
+              <div class="flex items-center gap-2 px-2.5 py-1.5">
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-xs font-semibold text-text">{{ m.caption }}</div>
+                  <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
+                </div>
+                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
             </article>
           </div>
@@ -706,11 +708,13 @@ async function deleteMedia(m: MediaItem) {
                 >
                   <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
                 </span>
-                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
-              <div class="px-2.5 py-1.5">
-                <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>
-                <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
+              <div class="flex items-center gap-2 px-2.5 py-1.5">
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>
+                  <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
+                </div>
+                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
               </div>
             </article>
           </div>

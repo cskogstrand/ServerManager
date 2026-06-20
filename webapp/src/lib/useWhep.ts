@@ -68,7 +68,14 @@ export function useWhep() {
         body: pc.localDescription!.sdp,
         signal: abort.signal,
       });
-      if (res.status !== 201) throw new Error(`WHEP POST returned ${res.status}`);
+      if (res.status !== 201) {
+        // Non-201 isn't an exception — handle it the same way the catch does
+        // (set error, free resources) without throwing only to catch locally.
+        state.value = "error";
+        error.value = `WHEP POST returned ${res.status}`;
+        await disconnect();
+        return;
+      }
 
       const loc = res.headers.get("Location");
       if (loc) resourceUrl = new URL(loc, endpoint).toString();

@@ -67,8 +67,7 @@ const filtered = computed(() => {
   return setups.value.filter((s) => {
     if (groupFilter.value !== "all" && s.group_id !== groupFilter.value) return false;
     if (runFilter.value === "repeating" && !isRepeating(s)) return false;
-    if (q && !`${s.name} ${s.track_name} ${s.class_name} ${s.group_name}`.toLowerCase().includes(q)) return false;
-    return true;
+    return !q || `${s.name} ${s.track_name} ${s.class_name} ${s.group_name}`.toLowerCase().includes(q);
   });
 });
 

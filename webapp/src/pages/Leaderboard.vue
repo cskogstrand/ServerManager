@@ -59,16 +59,6 @@ function toggleFullscreen() {
 </template>
 
 <style scoped>
-/* Distinctive broadcast display face for big numerals/timers; body text stays
-   on the app's Plus Jakarta Sans for cohesion. */
-@import url("https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&display=swap");
-
-.numerals {
-  font-family: "Saira Condensed", "Plus Jakarta Sans", sans-serif;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-}
-
 /* Blueprint grid + depth glow behind the stage. */
 .bcast-bg {
   background-color: var(--color-bg);

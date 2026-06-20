@@ -81,6 +81,8 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const localAvatar = ref<string | null>(null);
 const avatarSrc = computed(() => localAvatar.value ?? driver.value?.avatar_url ?? null);
 
+const previewFallbackMsg = "Showing a local preview — saving will work once the updated server is running.";
+
 function pickPhoto() {
   fileInput.value?.click();
 }
@@ -100,10 +102,10 @@ async function onPickFile(e: Event) {
       headers: { "X-CSRF-Token": csrfToken() },
       body: fd,
     });
-    if (!res.ok) throw new Error(String(res.status));
-    toast.success("Driver photo updated.");
+    if (res.ok) toast.success("Driver photo updated.");
+    else toast.info(previewFallbackMsg);
   } catch {
-    toast.info("Showing a local preview — saving will work once the updated server is running.");
+    toast.info(previewFallbackMsg);
   }
 }
 
@@ -356,7 +358,7 @@ async function deleteMedia(m: MediaItem) {
         </div>
 
         <!-- KPIs + trend -->
-        <div class="md:ml-auto md:max-w-[500px] md:flex-1">
+        <div class="md:ml-auto md:max-w-125 md:flex-1">
           <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-5">
             <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
               <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best drift</div>

@@ -1654,7 +1654,7 @@ onBeforeUnmount(() => {
           @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="mt-3 flex flex-wrap items-center gap-2">
-          <span v-if="carViewer.car?.brand" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          <span v-if="carViewer?.car?.brand" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
             {{ carViewer.car.brand }}
           </span>
           <span v-if="carViewer.car?.class" class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent">

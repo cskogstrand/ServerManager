@@ -7,7 +7,7 @@
 import { api, ApiError } from "@/lib/api";
 import { lapTime } from "@/lib/raceTelemetry";
 import { useContentStore } from "@/stores/content";
-import type { CarRef, DriverDetail, DriverResult, DriverSummary, MediaItem, TrackRef } from "@/types/driverStats";
+import type { CarRef, DriverDetail, DriverResult, DriverSummary, MediaItem, ScoreEntry, TrackRef } from "@/types/driverStats";
 
 // ---- formatting helpers -----------------------------------------------------
 
@@ -94,6 +94,60 @@ export async function listDrivers(): Promise<DriverSummary[]> {
     }
     throw e;
   }
+}
+
+// Flat leaderboard feed: every drift run and timed-lap session across all
+// drivers (not collapsed per driver). Falls back to flattening the mock driver
+// results when the endpoint isn't built (404/501).
+export async function listScores(): Promise<ScoreEntry[]> {
+  try {
+    const res = await api.get<{ scores: ScoreEntry[] }>("/api/scores");
+    return res.scores ?? [];
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      await ensureDummyContent();
+      return mockScores();
+    }
+    throw e;
+  }
+}
+
+// Flatten the mock driver details into individual score rows — one per drift
+// run, one per session that set a timed lap.
+function mockScores(): ScoreEntry[] {
+  const out: ScoreEntry[] = [];
+  for (const d of MOCK) {
+    for (const r of d.results) {
+      if (r.kind === "drift") {
+        out.push({
+          id: `d-${d.guid}-${r.session_id}`,
+          guid: d.guid,
+          driver: d.name,
+          kind: "drift",
+          date: r.date,
+          track: r.track,
+          car: r.car,
+          online: d.online,
+          drift_score: r.drift_score ?? 0,
+        });
+      } else if ((r.best_lap_ms ?? 0) > 0) {
+        out.push({
+          id: `l-${d.guid}-${r.session_id}`,
+          guid: d.guid,
+          driver: d.name,
+          kind: "lap",
+          date: r.date,
+          track: r.track,
+          car: r.car,
+          online: d.online,
+          best_lap_ms: r.best_lap_ms ?? 0,
+          position: r.position ?? null,
+          entrants: r.entrants ?? null,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export async function getDriver(guid: string): Promise<DriverDetail | null> {

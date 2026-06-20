@@ -133,6 +133,11 @@ Match the JSON shapes in `webapp/src/types/driverStats.ts` exactly.
 - `GET /api/drivers/:guid` → `DriverDetail` (summary + `results[]` newest-first +
   `media[]` + `stream`). Join `driver_stream` for the embed URL; reuse `streamHealth()`
   (already in `api.go`) for `stream.status`.
+- `GET /api/scores` → `{ scores: ScoreEntry[] }` (`buildScores` in `driverstats.go`).
+  The flat leaderboard feed: one row per `driver_drift_run` (kind `drift`) and per
+  `driver_session` with `best_lap_ms > 0` (kind `lap`), across all drivers — NOT
+  collapsed per driver. Drives the `/leaderboard` page + the Broadcast auto-follow
+  no-players board, which filter it by discipline / track / car / recency.
 - `POST /api/drivers/:guid/avatar` (operate role) → multipart image; store under the
   media dir, set `driver.avatar_path`; return `{ avatar_url }`. The detail page already
   has the upload affordance wired to a local preview — point it here.

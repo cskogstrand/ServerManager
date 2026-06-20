@@ -108,6 +108,26 @@ type driverDetail struct {
 	Stream  *streamRef     `json:"stream"`
 }
 
+// scoreEntry is one ranked result in the all-servers leaderboard: a single
+// drift run (kind "drift") or a session's best timed lap (kind "lap"). Unlike
+// driverSummary it is NOT collapsed per driver — every run/lap is its own row,
+// so a driver can appear many times. Shape mirrors ScoreEntry in
+// webapp/src/types/driverStats.ts.
+type scoreEntry struct {
+	Id         string   `json:"id"`
+	Guid       string   `json:"guid"`
+	Driver     string   `json:"driver"`
+	Kind       string   `json:"kind"`
+	Date       int64    `json:"date"`
+	Track      trackRef `json:"track"`
+	Car        carRef   `json:"car"`
+	Online     bool     `json:"online"`
+	DriftScore *int     `json:"drift_score,omitempty"`
+	BestLapMs  *int     `json:"best_lap_ms,omitempty"`
+	Position   *int     `json:"position,omitempty"`
+	Entrants   *int     `json:"entrants,omitempty"`
+}
+
 // ---- internal row shapes ----------------------------------------------------
 
 type driverRow struct {
@@ -139,6 +159,18 @@ type dsDriftRow struct {
 	guid    string
 	score   int
 	endedAt int64
+}
+
+// dsDriftFullRow carries the track/car a drift run was set on, for the flat
+// leaderboard feed (the trend query only needs guid/score/time).
+type dsDriftFullRow struct {
+	id          int64
+	guid        string
+	trackKey    string
+	trackConfig string
+	carKey      string
+	score       int
+	endedAt     int64
 }
 
 // dsDriftInsert is the payload captured under Instance.mu and written after the
@@ -405,6 +437,35 @@ func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
 			return nil, tracerr.Wrap(err)
 		}
 		out = append(out, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	return out, nil
+}
+
+// queryAllDriftRunsFull returns every drift run with its track/car, highest
+// score first, for the flat leaderboard.
+func (dba Dbaccess) queryAllDriftRunsFull() ([]dsDriftFullRow, error) {
+	rows, err := dba.db.Query(`
+SELECT id, driver_guid, track_key, track_config, car_key, score, ended_at
+FROM driver_drift_run ORDER BY score DESC`)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	out := make([]dsDriftFullRow, 0)
+	for rows.Next() {
+		var r dsDriftFullRow
+		var trackKey, trackConfig, carKey sql.NullString
+		if err := rows.Scan(&r.id, &r.guid, &trackKey, &trackConfig, &carKey, &r.score, &r.endedAt); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		r.trackKey = trackKey.String
+		r.trackConfig = trackConfig.String
+		r.carKey = carKey.String
+		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, tracerr.Wrap(err)
@@ -716,6 +777,87 @@ func buildDriverSummaries() ([]driverSummary, error) {
 	return out, nil
 }
 
+// buildScores assembles the flat leaderboard: one row per drift run and one per
+// timed-lap session, across all drivers. Names/tracks/cars are resolved through
+// the cache maps; rows are flagged online from the live set.
+func buildScores() ([]scoreEntry, error) {
+	drivers, err := Dba.selectDrivers()
+	if err != nil {
+		return nil, err
+	}
+	drifts, err := Dba.queryAllDriftRunsFull()
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := Dba.querySessions("")
+	if err != nil {
+		return nil, err
+	}
+	carNames, err := Dba.selectCarNameMap()
+	if err != nil {
+		return nil, err
+	}
+	trackInfo, err := Dba.selectTrackInfoMap()
+	if err != nil {
+		return nil, err
+	}
+
+	nameByGuid := make(map[string]string, len(drivers))
+	for _, d := range drivers {
+		nameByGuid[d.guid] = d.name
+	}
+	live := liveDriversByGuid()
+	driverName := func(guid string) string {
+		if n := nameByGuid[guid]; n != "" {
+			return n
+		}
+		return guid
+	}
+
+	out := make([]scoreEntry, 0, len(drifts)+len(sessions))
+	for _, r := range drifts {
+		sc := r.score
+		out = append(out, scoreEntry{
+			Id:         "d" + strconv.FormatInt(r.id, 10),
+			Guid:       r.guid,
+			Driver:     driverName(r.guid),
+			Kind:       "drift",
+			Date:       r.endedAt,
+			Track:      resolveTrack(r.trackKey, r.trackConfig, trackInfo),
+			Car:        resolveCar(r.carKey, "", carNames),
+			Online:     live[r.guid],
+			DriftScore: &sc,
+		})
+	}
+	for _, s := range sessions {
+		if s.bestLapMs <= 0 {
+			continue
+		}
+		bl := s.bestLapMs
+		e := scoreEntry{
+			Id:        "l" + strconv.FormatInt(s.id, 10),
+			Guid:      s.guid,
+			Driver:    driverName(s.guid),
+			Kind:      "lap",
+			Date:      s.endedAt,
+			Track:     resolveTrack(s.trackKey, s.trackConfig, trackInfo),
+			Car:       resolveCar(s.carKey, s.skinKey, carNames),
+			Online:    live[s.guid],
+			BestLapMs: &bl,
+		}
+		if s.finishPos.Valid {
+			p := int(s.finishPos.Int64)
+			e.Position = &p
+		}
+		if s.entrants.Valid {
+			en := int(s.entrants.Int64)
+			e.Entrants = &en
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
 func streamForGuid(guid string) *streamRef {
 	m, err := Dba.selectDriverStreamsByGuids([]string{guid})
 	if err != nil {
@@ -782,6 +924,15 @@ func apiDriversList(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"drivers": list})
+}
+
+func apiScoresList(c *gin.Context) {
+	list, err := buildScores()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"scores": list})
 }
 
 func apiDriverGet(c *gin.Context) {

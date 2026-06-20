@@ -330,6 +330,7 @@ func main() {
 		api.GET("/streams/capture-status", apiCaptureStatus)
 
 		api.GET("/drivers", apiDriversList)
+		api.GET("/scores", apiScoresList)
 		api.GET("/drivers/:guid", apiDriverGet)
 		api.GET("/drivers/:guid/avatar", apiDriverAvatar)
 		api.POST("/drivers/:guid/avatar", apiDriverAvatarUpload)

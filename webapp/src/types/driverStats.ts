@@ -93,3 +93,21 @@ export interface DriverDetail extends DriverSummary {
   media: MediaItem[];
   stream?: StreamRef | null;
 }
+
+// One ranked row in the all-servers leaderboard: a single drift run
+// (kind "drift") or a session's best timed lap (kind "lap"). NOT collapsed per
+// driver — every run/lap is its own entry, so a driver can appear many times.
+export interface ScoreEntry {
+  id: string;
+  guid: string;
+  driver: string;
+  kind: "drift" | "lap";
+  date: number; // epoch ms
+  track: TrackRef;
+  car: CarRef;
+  online: boolean;
+  drift_score?: number | null; // kind "drift"
+  best_lap_ms?: number | null; // kind "lap"
+  position?: number | null; // race finish, when known
+  entrants?: number | null;
+}

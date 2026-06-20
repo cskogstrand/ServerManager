@@ -110,4 +110,5 @@ export interface ScoreEntry {
   best_lap_ms?: number | null; // kind "lap"
   position?: number | null; // race finish, when known
   entrants?: number | null;
+  clip?: MediaItem | null; // highlight clip captured on this drift run, if any
 }

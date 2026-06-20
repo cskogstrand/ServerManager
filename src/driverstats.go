@@ -121,11 +121,12 @@ type scoreEntry struct {
 	Date       int64    `json:"date"`
 	Track      trackRef `json:"track"`
 	Car        carRef   `json:"car"`
-	Online     bool     `json:"online"`
-	DriftScore *int     `json:"drift_score,omitempty"`
-	BestLapMs  *int     `json:"best_lap_ms,omitempty"`
-	Position   *int     `json:"position,omitempty"`
-	Entrants   *int     `json:"entrants,omitempty"`
+	Online     bool       `json:"online"`
+	DriftScore *int       `json:"drift_score,omitempty"`
+	BestLapMs  *int       `json:"best_lap_ms,omitempty"`
+	Position   *int       `json:"position,omitempty"`
+	Entrants   *int       `json:"entrants,omitempty"`
+	Clip       *mediaItem `json:"clip,omitempty"` // highlight clip captured on this drift run, if any
 }
 
 // ---- internal row shapes ----------------------------------------------------
@@ -473,6 +474,49 @@ FROM driver_drift_run ORDER BY score DESC`)
 	return out, nil
 }
 
+// queryAllClips returns every clip-kind media item, grouped by driver guid and
+// sorted oldest-first, for relating drift runs to their highlight video.
+func (dba Dbaccess) queryAllClips() (map[string][]mediaItem, error) {
+	rows, err := dba.db.Query(`
+SELECT driver_guid, id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta
+FROM driver_media WHERE kind = 'clip' ORDER BY captured_at ASC`)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	out := map[string][]mediaItem{}
+	for rows.Next() {
+		var guid, kind, path string
+		var id int64
+		var caption sql.NullString
+		var capturedAt int64
+		var durationS, triggerScore, triggerDelta sql.NullInt64
+		if err := rows.Scan(&guid, &id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		m := mediaItem{
+			Id:         strconv.FormatInt(id, 10),
+			Kind:       kind,
+			Url:        "/api/drivers/" + url.PathEscape(guid) + "/media/" + filepath.Base(path),
+			Caption:    caption.String,
+			CapturedAt: capturedAt,
+		}
+		if durationS.Valid {
+			v := int(durationS.Int64)
+			m.DurationS = &v
+		}
+		if triggerScore.Valid || triggerDelta.Valid {
+			m.Trigger = &mediaTrigger{DriftScore: int(triggerScore.Int64), Delta: int(triggerDelta.Int64)}
+		}
+		out[guid] = append(out[guid], m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	return out, nil
+}
+
 func (dba Dbaccess) selectDriverMedia(guid string) ([]mediaItem, error) {
 	rows, err := dba.db.Query(`
 SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta
@@ -777,6 +821,30 @@ func buildDriverSummaries() ([]driverSummary, error) {
 	return out, nil
 }
 
+// clipForRun pairs a drift run with its highlight clip. Capture fires at run
+// end (driverDrift → Captures.onDriftRunEnd), so the clip whose captured_at is
+// nearest the run's ended_at — within a tolerance — is that run's video. clips
+// must be sorted by captured_at. Returns nil when nothing lands in the window.
+func clipForRun(clips []mediaItem, endedAt int64) *mediaItem {
+	const windowMs = 180_000 // 3 min — well beyond the run-end → file-written lag
+	best := -1
+	var bestDelta int64 = windowMs + 1
+	for i := range clips {
+		d := endedAt - clips[i].CapturedAt
+		if d < 0 {
+			d = -d
+		}
+		if d <= windowMs && d < bestDelta {
+			best, bestDelta = i, d
+		}
+	}
+	if best < 0 {
+		return nil
+	}
+	c := clips[best]
+	return &c
+}
+
 // buildScores assembles the flat leaderboard: one row per drift run and one per
 // timed-lap session, across all drivers. Names/tracks/cars are resolved through
 // the cache maps; rows are flagged online from the live set.
@@ -798,6 +866,10 @@ func buildScores() ([]scoreEntry, error) {
 		return nil, err
 	}
 	trackInfo, err := Dba.selectTrackInfoMap()
+	if err != nil {
+		return nil, err
+	}
+	clipsByGuid, err := Dba.queryAllClips()
 	if err != nil {
 		return nil, err
 	}
@@ -827,6 +899,7 @@ func buildScores() ([]scoreEntry, error) {
 			Car:        resolveCar(r.carKey, "", carNames),
 			Online:     live[r.guid],
 			DriftScore: &sc,
+			Clip:       clipForRun(clipsByGuid[r.guid], r.endedAt),
 		})
 	}
 	for _, s := range sessions {

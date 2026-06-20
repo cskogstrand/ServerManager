@@ -117,6 +117,10 @@ export async function listScores(): Promise<ScoreEntry[]> {
 function mockScores(): ScoreEntry[] {
   const out: ScoreEntry[] = [];
   for (const d of MOCK) {
+    // No capture timestamps in mock, so relate the driver's best clip to their
+    // highest drift run — enough to exercise the video button in mock mode.
+    const topClip = bestDriftClip(d);
+    const maxDrift = Math.max(0, ...d.results.filter((r) => r.kind === "drift").map((r) => r.drift_score ?? 0));
     for (const r of d.results) {
       if (r.kind === "drift") {
         out.push({
@@ -129,6 +133,7 @@ function mockScores(): ScoreEntry[] {
           car: r.car,
           online: d.online,
           drift_score: r.drift_score ?? 0,
+          clip: topClip && (r.drift_score ?? 0) === maxDrift ? topClip : null,
         });
       } else if ((r.best_lap_ms ?? 0) > 0) {
         out.push({

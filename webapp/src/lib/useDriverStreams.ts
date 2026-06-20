@@ -24,10 +24,25 @@ export interface StreamChannel {
   title: string;
   subtitle?: string;
   url: string;
+  // How the theater plays `url`: a native WHEP <video> (MediaMTX WebRTC) or a
+  // sandboxed iframe embed page. Detected from the URL shape; absent ⇒ iframe.
+  kind?: "iframe" | "whep";
   health: StreamHealthStatus;
   // Whether the driver is currently connected to the server. The theater plays
   // the embed for online channels and shows an "offline" placeholder otherwise.
   online: boolean;
+}
+
+// A WHEP endpoint is played natively; everything else falls back to an iframe
+// embed page. MediaMTX serves WHEP at `…/<path>/whep`, so the path suffix is a
+// reliable discriminator (query string / auth params are ignored).
+function isWhepUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname.replace(/\/+$/, "").endsWith("/whep");
+  } catch {
+    return /\/whep(\?|#|$)/.test(url);
+  }
 }
 
 export function useDriverStreams() {
@@ -105,6 +120,7 @@ export function useDriverStreams() {
           title: name,
           subtitle: d?.name && s.display_name && d.name !== s.display_name ? d.name : undefined,
           url: s.stream_embed_url!,
+          kind: isWhepUrl(s.stream_embed_url) ? "whep" : "iframe",
           health: online ? healthForGuid(guid) : "offline",
           online,
         } satisfies StreamChannel;

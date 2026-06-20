@@ -5,6 +5,7 @@
 // above the broadcast overlay and side sheets so it works from every surface.
 import { computed, ref, watch } from "vue";
 import Icon from "@/components/ui/Icon.vue";
+import WhepPlayer from "@/components/WhepPlayer.vue";
 import type { StreamChannel, StreamHealthStatus } from "@/lib/useDriverStreams";
 
 const props = defineProps<{
@@ -72,8 +73,16 @@ function healthDot(h: StreamHealthStatus): string {
 
         <!-- Player -->
         <div class="flex min-h-0 flex-1 items-center justify-center px-4">
+          <!-- Native WHEP player (MediaMTX WebRTC): low-latency real <video> -->
+          <div
+            v-if="active && active.online && active.kind === 'whep'"
+            class="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-lg border border-line shadow-2xl"
+          >
+            <WhepPlayer :key="active.key" :url="active.url" />
+          </div>
+          <!-- Iframe embed fallback (external player pages) -->
           <iframe
-            v-if="active && active.online"
+            v-else-if="active && active.online"
             :key="active.key"
             :src="active.url"
             :title="active.title"

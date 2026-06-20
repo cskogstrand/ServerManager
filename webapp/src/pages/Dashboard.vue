@@ -100,6 +100,15 @@ async function refreshAll() {
 // --- Readiness-driven next actions for idle instances ---
 // can_start reflects global setup health (install path, content, presets, config,
 // at least one race setup, no port clash). queue_pending is per instance.
+// Live tooltip for the broadcast button: which server it opens (busiest by
+// players), or the all-servers leaderboard when nobody is online.
+const broadcastHint = computed(() => {
+  const live = server.instanceList.filter((i) => i.running && i.players > 0);
+  if (!live.length) return "No players online — opens the all-servers leaderboard";
+  const busiest = live.reduce((best, i) => (i.players > best.players ? i : best));
+  return `Following ${busiest.name} (${busiest.players} player${busiest.players === 1 ? "" : "s"})`;
+});
+
 const canStart = computed(() => summary.value?.can_start ?? false);
 const firstBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "");
 
@@ -256,6 +265,12 @@ onMounted(async () => {
     icon="dashboard"
   >
     <template #actions>
+      <RouterLink :to="{ name: 'broadcast-auto' }">
+        <Button variant="dark" size="sm" :title="broadcastHint">
+          <Icon name="broadcast" :size="15" />
+          Go to broadcast
+        </Button>
+      </RouterLink>
       <span
         v-if="publicIp()"
         class="inline-flex min-h-8 items-center gap-2 rounded-md border border-line bg-surface px-2.5 font-mono text-xs text-dim"

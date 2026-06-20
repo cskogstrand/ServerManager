@@ -24,6 +24,8 @@ import {
 } from "@/lib/raceTelemetry";
 import {type StreamChannel, useDriverStreams} from "@/lib/useDriverStreams";
 import {useBroadcastDemo} from "@/lib/broadcastDemo";
+import {listDrivers, fmtScore} from "@/lib/driversApi";
+import type {DriverSummary} from "@/types/driverStats";
 import {useDriverCapture, fmtClipDuration} from "@/lib/useDriverCapture";
 import {useAuthStore} from "@/stores/auth";
 import {useToastStore} from "@/stores/toast";
@@ -59,9 +61,52 @@ const auth = useAuthStore();
 const toast = useToastStore();
 const cap = useDriverCapture();
 
-const instanceId = computed(() => Number(route.params.id));
+// Auto mode (route /broadcast, no :id): follow the live action instead of one
+// fixed instance — broadcast whichever running server has the most players, and
+// hand off automatically when another server overtakes it. When nobody is
+// online anywhere we drop to an all-servers leaderboard (below).
+const autoMode = computed(() => route.name === "broadcast-auto");
+
+// Busiest running server: most players, ties broken by lowest id (instanceList
+// is id-sorted, and reduce keeps the incumbent on a tie). Undefined = empty.
+const busiest = computed<InstanceState | undefined>(() => {
+  const live = server.instanceList.filter((i) => i.running && i.players > 0);
+  if (!live.length) return undefined;
+  return live.reduce((best, i) => (i.players > best.players ? i : best));
+});
+
+const instanceId = computed(() =>
+    autoMode.value ? (busiest.value?.id ?? -1) : Number(route.params.id),
+);
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
-const exitTo = computed(() => `/server/${instanceId.value}`);
+const exitTo = computed(() => (autoMode.value ? "/" : `/server/${instanceId.value}`));
+
+// All-servers leaderboard: shown only in auto mode when no server has players.
+// Drift bests and best laps aggregated across every driver the backend knows.
+const aggregate = computed(() => autoMode.value && !busiest.value);
+const allDrivers = ref<DriverSummary[]>([]);
+const leaderLoaded = ref(false);
+async function loadLeaderboard() {
+  try {
+    allDrivers.value = await listDrivers();
+  } catch {
+    allDrivers.value = [];
+  } finally {
+    leaderLoaded.value = true;
+  }
+}
+const topDrift = computed(() =>
+    [...allDrivers.value]
+        .filter((d) => d.best_drift > 0)
+        .sort((a, b) => b.best_drift - a.best_drift)
+        .slice(0, 12),
+);
+const topLap = computed(() =>
+    [...allDrivers.value]
+        .filter((d) => d.best_lap_ms > 0)
+        .sort((a, b) => a.best_lap_ms - b.best_lap_ms)
+        .slice(0, 12),
+);
 
 const detail = ref<StatusPayload | null>(null);
 const mapMeta = ref<TrackMapMeta | null>(null);
@@ -179,9 +224,11 @@ const mapImageUrl = computed(() =>
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
-  // Fit the left column: cap width so the derived height never exceeds the
-  // available stage height (viewport minus the top strap + padding).
-  return {aspectRatio: String(ratio), width: `min(100%, calc((100vh - 6rem) * ${ratio}))`, margin: "auto"};
+  // Fit the column: cap width so the derived height never exceeds the height
+  // budget (--map-h). That budget is the full stage on desktop, but a small
+  // slice on mobile where the map sits stacked above the cards — keeps the
+  // map from overflowing the stage in the y direction.
+  return {aspectRatio: String(ratio), width: `min(100%, calc(var(--map-h) * ${ratio}))`, margin: "auto"};
 }
 
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
@@ -282,7 +329,7 @@ async function recordCar(guid: string | undefined) {
 }
 
 async function fetchStatus() {
-  if (debug.value) return;
+  if (debug.value || instanceId.value <= 0) return;
   try {
     const payload = await api.get<StatusPayload & StatusResponse>(
         `/api/server/status?instance=${instanceId.value}`,
@@ -312,6 +359,27 @@ async function fetchMapMeta() {
 watch(activeTrack, (next, prev) => {
   if (next?.key !== prev?.key || next?.config !== prev?.config) void fetchMapMeta();
 });
+
+// Auto mode handoff: when the followed instance changes (a server overtakes the
+// current one, or the last players leave) drop pinned focus and re-pull the new
+// server's status + map. The store already feeds live drivers/positions.
+watch(instanceId, (id, prev) => {
+  if (id === prev) return;
+  pinnedCarId.value = null;
+  if (id > 0) {
+    void fetchStatus();
+    void fetchMapMeta();
+  }
+});
+
+// Refresh the leaderboard whenever we enter (or re-enter) the no-players view.
+watch(
+    aggregate,
+    (on) => {
+      if (on) void loadLeaderboard();
+    },
+    {immediate: true},
+);
 
 // Fullscreen helps on a dedicated broadcast screen; best-effort only.
 function toggleFullscreen() {
@@ -370,8 +438,8 @@ onBeforeUnmount(() => {
     <div class="bcast-vignette pointer-events-none absolute inset-0"/>
 
     <!-- ░░ Top strap ░░ -->
-    <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-4 px-5">
-      <div class="flex items-center gap-2.5">
+    <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 sm:gap-4 sm:px-5">
+      <div class="flex min-w-0 items-center gap-2.5">
         <span
             class="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-black tracking-[0.2em]"
             :class="debug ? 'bg-accent text-bg' : running ? 'bg-danger text-bg' : 'bg-surface-3 text-dim'"
@@ -379,19 +447,29 @@ onBeforeUnmount(() => {
           <span v-if="running" class="live-dot size-1.5 rounded-full bg-bg"/>
           {{ debug ? "DEMO" : running ? "LIVE" : "OFFLINE" }}
         </span>
-        <div class="leading-tight">
-          <div class="text-sm font-extrabold tracking-tight">{{
-              debug ? "Demo Server" : (inst?.name ?? "Server")
+        <span
+            v-if="autoMode"
+            class="hidden items-center gap-1 rounded-sm bg-accent-dim px-1.5 py-1 text-[10px] font-black tracking-[0.2em] text-accent sm:inline-flex"
+            title="Auto-following the busiest server"
+        >
+          <Icon name="repeat" :size="12"/>
+          AUTO
+        </span>
+        <div class="min-w-0 leading-tight">
+          <div class="truncate text-sm font-extrabold tracking-tight">{{
+              debug ? "Demo Server" : aggregate ? "All Servers" : (inst?.name ?? "Server")
             }}
           </div>
           <div class="font-mono text-[11px] text-dim">
-            {{ debug ? "demo feed" : `:${inst?.tcp_port ?? ""}` }} · {{ drivers.length }} cars
+            <template v-if="debug">demo feed · {{ drivers.length }} cars</template>
+            <template v-else-if="aggregate">leaderboard · no players online</template>
+            <template v-else>:{{ inst?.tcp_port ?? "" }} · {{ drivers.length }} cars</template>
           </div>
         </div>
       </div>
 
       <!-- Session clock -->
-      <div v-if="clock" class="mx-auto flex items-center gap-5">
+      <div v-if="clock" class="mx-auto hidden items-center gap-5 sm:flex">
         <div class="text-right leading-none">
           <div class="text-[11px] font-bold tracking-[0.25em] text-accent uppercase">{{ clock.type }}</div>
           <div class="font-mono text-[10px] text-dim">Session {{ clock.index }} / {{ clock.count }}</div>
@@ -404,11 +482,11 @@ onBeforeUnmount(() => {
           <div class="font-mono text-[10px] tracking-wide text-dim uppercase">{{ clock.lapsLabel }}</div>
         </div>
       </div>
-      <div v-else class="mx-auto numerals text-3xl text-dim tracking-tight">— STANDBY —</div>
+      <div v-else class="mx-auto hidden numerals text-3xl text-dim tracking-tight sm:block">— STANDBY —</div>
 
       <!-- Track + conditions -->
-      <div class="flex items-center gap-4">
-        <div class="text-right leading-tight">
+      <div class="ml-auto flex items-center gap-2 sm:gap-4">
+        <div class="hidden text-right leading-tight md:block">
           <div class="max-w-[18ch] truncate text-sm font-bold">
             {{ detail?.current_event?.track || activeTrack?.key || "—" }}
           </div>
@@ -421,13 +499,13 @@ onBeforeUnmount(() => {
             v-if="detail?.current_event?.weather_key"
             :src="weatherImageUrl(detail.current_event.weather_key)"
             alt=""
-            class="size-9 rounded-full border border-line object-cover"
+            class="hidden size-9 rounded-full border border-line object-cover sm:block"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex items-center gap-1.5">
           <span
               v-if="streamChannels.length"
-              class="inline-flex h-9 items-center gap-1.5 rounded-md border border-line bg-surface/70 px-2.5 text-xs font-semibold text-muted"
+              class="hidden h-9 items-center gap-1.5 rounded-md border border-line bg-surface/70 px-2.5 text-xs font-semibold text-muted sm:inline-flex"
               title="Driver streams online / total"
           >
             <Icon name="broadcast" :size="16"/>
@@ -436,7 +514,7 @@ onBeforeUnmount(() => {
           <button
               v-if="debug"
               type="button"
-              class="grid size-9 place-items-center rounded-md border border-accent/60 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
+              class="grid size-8 place-items-center sm:size-9 rounded-md border border-accent/60 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
               title="Reshuffle demo grid"
               @click="demo.regenerate()"
           >
@@ -444,7 +522,7 @@ onBeforeUnmount(() => {
           </button>
           <button
               type="button"
-              class="grid size-9 place-items-center rounded-md border transition-colors"
+              class="grid size-8 place-items-center sm:size-9 rounded-md border transition-colors"
               :class="
               debug
                 ? 'border-accent/60 bg-accent-dim text-accent'
@@ -457,7 +535,7 @@ onBeforeUnmount(() => {
           </button>
           <button
               type="button"
-              class="grid size-9 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
+              class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
               title="Toggle fullscreen"
               @click="toggleFullscreen"
           >
@@ -465,7 +543,7 @@ onBeforeUnmount(() => {
           </button>
           <RouterLink
               :to="exitTo"
-              class="grid size-9 place-items-center rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
+              class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
               title="Exit broadcast"
           >
             <Icon name="x" :size="16"/>
@@ -475,9 +553,12 @@ onBeforeUnmount(() => {
     </header>
 
     <!-- ░░ Two-column stage: map (1/2) + driver cards (1/2) ░░ -->
-    <div class="absolute inset-x-0 bottom-0 top-16 z-10 flex gap-4 px-4 pb-4">
+    <div
+        v-if="!aggregate"
+        class="absolute inset-x-0 bottom-0 top-16 z-10 flex flex-col gap-3 px-3 pb-3 lg:flex-row lg:gap-4 lg:px-4 lg:pb-4"
+    >
       <section
-          class="relative flex w-1/2 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm">
+          class="relative flex w-full min-h-0 shrink-0 basis-2/5 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm lg:w-1/2 lg:basis-auto">
         <div
             v-if="activeTrack && effectiveMapMeta && mapImageOk"
             class="bcast-map relative"
@@ -556,7 +637,7 @@ onBeforeUnmount(() => {
         </Transition>
       </section>
 
-      <section class="min-w-0 flex-1 overflow-hidden">
+      <section class="w-full min-w-0 flex-1 overflow-hidden">
         <TransitionGroup
             v-if="driverCards.length"
             tag="div"
@@ -566,7 +647,7 @@ onBeforeUnmount(() => {
           <article
               v-for="card in driverCards"
               :key="card.row.car_id"
-              class="tower-card flex h-[calc(50%-0.375rem)] shrink-0 cursor-pointer overflow-hidden rounded-xl border bg-surface/60 shadow-sm backdrop-blur-md transition-all duration-200"
+              class="tower-card flex h-auto shrink-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-surface/60 shadow-sm backdrop-blur-md transition-all duration-200 lg:h-[calc(50%-0.375rem)] lg:flex-row"
               :class="
           focusRow?.car_id === card.row.car_id
             ? 'border-accent bg-surface-2/80 ring-1 ring-accent/30'
@@ -577,7 +658,7 @@ onBeforeUnmount(() => {
               @click="focusCar(card.row.car_id)"
           >
             <!-- Metrics side -->
-            <div class="flex min-w-0 shrink-0 flex-col gap-3 p-4 xl:w-72">
+            <div class="flex w-full min-w-0 shrink-0 flex-col gap-3 p-4 lg:w-auto xl:w-72">
               <!-- Identity: position · driver + car -->
               <header class="flex items-center gap-3">
                 <span
@@ -586,8 +667,15 @@ onBeforeUnmount(() => {
                 >
                   {{ card.row.position }}
                 </span>
+                <img
+                    :src="carImageUrl(card.row.carModel, card.row.skin)"
+                    alt=""
+                    class="h-10 w-16 shrink-0 rounded border border-line bg-surface-4 object-cover lg:hidden"
+                    @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+                />
                 <div class="min-w-0 flex-1">
                   <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
+                  <p class="truncate font-mono text-xs tracking-tight text-dim lg:hidden">{{ carName(card.row.carModel) }}</p>
                 </div>
                 <!-- Driver-detail link (any role); capture controls live over the stream -->
                 <RouterLink
@@ -621,8 +709,9 @@ onBeforeUnmount(() => {
                       :style="{ width: `${rpmPct(card.row.pos)}%` }"
                   />
                 </div>
-                <!-- Car name + livery, below the RPM bar where there is room -->
-                <div class="mt-3 flex flex-col gap-1.5">
+                <!-- Car name + livery, below the RPM bar where there is room.
+                     On mobile this moves inline into the name header. -->
+                <div class="mt-3 hidden flex-col gap-1.5 lg:flex">
                   <p class="truncate text-center font-mono text-xs tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
                   <img
                       :src="carImageUrl(card.row.carModel, card.row.skin)"
@@ -635,9 +724,12 @@ onBeforeUnmount(() => {
 
               <!-- Drift servers swap the Gap/Lap racing rows for the live drift
                    score; everyone else keeps the standings + lap times. -->
-              <footer class="flex flex-col gap-1.5 border-t border-line/60 pt-3">
+              <footer
+                  class="border-t border-line/60 pt-3"
+                  :class="isDrift ? 'grid grid-cols-3 gap-2 lg:flex lg:flex-col lg:gap-1.5' : 'flex flex-col gap-1.5'"
+              >
                 <template v-if="isDrift">
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Live</span>
                     <span
                         class="numerals text-lg font-semibold tabular-nums"
@@ -646,7 +738,7 @@ onBeforeUnmount(() => {
                       {{ card.row.driftLive ? card.row.driftLive.toLocaleString() : "—" }}
                     </span>
                   </div>
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Best</span>
                     <span
                         class="numerals text-lg font-semibold tabular-nums"
@@ -655,7 +747,7 @@ onBeforeUnmount(() => {
                       {{ card.row.driftBest ? card.row.driftBest.toLocaleString() : "—" }}
                     </span>
                   </div>
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Last</span>
                     <span
                         class="numerals text-lg font-medium tabular-nums"
@@ -701,7 +793,7 @@ onBeforeUnmount(() => {
               </footer>
             </div>
 
-            <div class="relative min-h-0 flex-1 border-t border-line bg-bg xl:border-l xl:border-t-0">
+            <div class="relative aspect-video w-full min-h-0 flex-1 border-t border-line bg-bg lg:aspect-auto lg:w-auto xl:border-l xl:border-t-0">
               <!-- Capture controls (operate role): top-left over the stream -->
               <div
                 v-if="auth.canOperate && guidForCar(card.row.car_id)"
@@ -778,6 +870,74 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
+
+    <!-- ░░ All-servers leaderboard: auto mode, nobody online ░░ -->
+    <div
+        v-else
+        class="absolute inset-x-0 bottom-0 top-16 z-10 flex flex-col gap-3 overflow-y-auto px-3 pb-3 lg:flex-row lg:gap-4 lg:px-4 lg:pb-4"
+    >
+      <!-- Top drift -->
+      <section class="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm">
+        <header class="flex items-center gap-2 border-b border-line/60 px-4 py-3">
+          <Icon name="broadcast" :size="16" class="text-accent"/>
+          <h2 class="numerals text-lg tracking-tight">Top Drift</h2>
+          <span class="ml-auto font-mono text-[11px] tracking-wider text-dim uppercase">all servers</span>
+        </header>
+        <ol class="flex-1 overflow-y-auto p-2">
+          <li
+              v-for="(d, i) in topDrift"
+              :key="d.guid"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5"
+              :class="i === 0 ? 'bg-accent-glow/5' : i % 2 ? 'bg-surface/30' : ''"
+          >
+            <span
+                class="numerals grid size-8 shrink-0 place-items-center rounded-lg text-base font-bold tabular-nums"
+                :class="i === 0 ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+            >{{ i + 1 }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-bold">{{ d.name }}</div>
+              <div class="truncate font-mono text-[11px] text-dim">{{ d.favourite_track?.name || d.favourite_car?.name || "—" }}</div>
+            </div>
+            <span class="numerals text-xl font-semibold tabular-nums text-accent">{{ fmtScore(d.best_drift) }}</span>
+            <span class="font-mono text-[10px] tracking-wider text-dim uppercase">pts</span>
+          </li>
+          <li v-if="!topDrift.length" class="px-3 py-6 text-center font-mono text-xs text-dim">
+            {{ leaderLoaded ? "No drift scores recorded yet." : "Loading…" }}
+          </li>
+        </ol>
+      </section>
+
+      <!-- Best laps -->
+      <section class="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm">
+        <header class="flex items-center gap-2 border-b border-line/60 px-4 py-3">
+          <Icon name="activity" :size="16" class="text-ok"/>
+          <h2 class="numerals text-lg tracking-tight">Best Laps</h2>
+          <span class="ml-auto font-mono text-[11px] tracking-wider text-dim uppercase">all servers</span>
+        </header>
+        <ol class="flex-1 overflow-y-auto p-2">
+          <li
+              v-for="(d, i) in topLap"
+              :key="d.guid"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5"
+              :class="i === 0 ? 'bg-accent-glow/5' : i % 2 ? 'bg-surface/30' : ''"
+          >
+            <span
+                class="numerals grid size-8 shrink-0 place-items-center rounded-lg text-base font-bold tabular-nums"
+                :class="i === 0 ? 'bg-ok text-bg' : 'bg-surface-3 text-muted'"
+            >{{ i + 1 }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-bold">{{ d.name }}</div>
+              <div class="truncate font-mono text-[11px] text-dim">{{ d.favourite_track?.name || d.favourite_car?.name || "—" }}</div>
+            </div>
+            <span class="numerals text-xl font-semibold tabular-nums text-ok">{{ lapTime(d.best_lap_ms) }}</span>
+          </li>
+          <li v-if="!topLap.length" class="px-3 py-6 text-center font-mono text-xs text-dim">
+            {{ leaderLoaded ? "No lap times recorded yet." : "Loading…" }}
+          </li>
+        </ol>
+      </section>
+    </div>
+
     <StreamTheater
         :open="theaterOpen"
         :channels="streamChannels"
@@ -837,6 +997,18 @@ onBeforeUnmount(() => {
   }
   to {
     background-position-y: 200px;
+  }
+}
+
+/* Map height budget: a small slice on mobile (map stacked above cards),
+   the full stage minus the top strap on desktop. mapWrapStyle() derives the
+   map width from this so the layout never overflows vertically. */
+.bcast {
+  --map-h: 36vh;
+}
+@media (min-width: 1024px) {
+  .bcast {
+    --map-h: calc(100vh - 6rem);
   }
 }
 

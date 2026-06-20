@@ -4,6 +4,7 @@
 // full screen — the parent owns the StreamTheater and handles the `watch` event
 // with the channel key. Used on the dashboard, server detail and broadcast.
 import Icon from "@/components/ui/Icon.vue";
+import WhepPlayer from "@/components/WhepPlayer.vue";
 import type { StreamChannel, StreamHealthStatus } from "@/lib/useDriverStreams";
 
 withDefaults(
@@ -30,8 +31,9 @@ function healthDot(h: StreamHealthStatus): string {
       class="overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
     >
       <div class="relative aspect-video bg-bg">
+        <WhepPlayer v-if="ch.online && ch.kind === 'whep'" :key="ch.key" :url="ch.url" minimal />
         <iframe
-          v-if="ch.online"
+          v-else-if="ch.online"
           :src="ch.url"
           :title="ch.title"
           class="size-full border-0"

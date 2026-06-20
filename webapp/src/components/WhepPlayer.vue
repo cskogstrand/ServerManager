@@ -6,7 +6,9 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Icon from "@/components/ui/Icon.vue";
 import { useWhep } from "@/lib/useWhep";
 
-const props = defineProps<{ url: string }>();
+const props = withDefaults(defineProps<{ url: string; minimal?: boolean }>(), {
+  minimal: false,
+});
 const emit = defineEmits<{ playing: []; error: [message: string] }>();
 
 const video = ref<HTMLVideoElement | null>(null);
@@ -69,9 +71,9 @@ function toggleMute() {
       </div>
     </div>
 
-    <!-- Mute toggle (shown once playing) -->
+    <!-- Mute toggle (shown once playing; suppressed on minimal grid tiles) -->
     <button
-      v-if="state === 'playing'"
+      v-if="state === 'playing' && !minimal"
       type="button"
       class="absolute bottom-3 right-3 rounded-md border border-line bg-black/50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted backdrop-blur transition-colors hover:border-line-hi hover:text-text"
       :aria-label="muted ? 'Unmute' : 'Mute'"

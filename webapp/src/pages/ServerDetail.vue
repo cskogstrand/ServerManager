@@ -18,11 +18,12 @@ import {
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
 import { computeRunningOrder, type TimingRow } from "@/lib/raceTelemetry";
-import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
+import { isWhepUrl, useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
+import WhepPlayer from "@/components/WhepPlayer.vue";
 import Sheet from "@/components/ui/Sheet.vue";
 import Modal from "@/components/ui/Modal.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
@@ -204,6 +205,7 @@ const streamChannels = computed<StreamChannel[]>(() => {
       title: `${inst.value.name} spectator`,
       subtitle: "Fixed spectator cam",
       url: inst.value.stream_embed_url,
+      kind: isWhepUrl(inst.value.stream_embed_url) ? "whep" : "iframe",
       health: "unknown",
       online: true,
     });
@@ -1470,7 +1472,11 @@ onBeforeUnmount(() => {
           Watch
         </Button>
       </template>
+      <div v-if="isWhepUrl(inst.stream_embed_url)" class="aspect-video w-full overflow-hidden rounded-md border border-line">
+        <WhepPlayer :url="inst.stream_embed_url" />
+      </div>
       <iframe
+        v-else
         :src="inst.stream_embed_url"
         :title="`${inst.name} spectator stream`"
         class="aspect-video w-full rounded-md border border-line bg-bg"

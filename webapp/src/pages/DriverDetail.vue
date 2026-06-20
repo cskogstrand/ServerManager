@@ -23,6 +23,8 @@ import Sparkline from "@/components/ui/Sparkline.vue";
 import CountUp from "@/components/ui/CountUp.vue";
 import TrackImage from "@/components/TrackImage.vue";
 import MediaActions from "@/components/MediaActions.vue";
+import WhepPlayer from "@/components/WhepPlayer.vue";
+import { isWhepUrl } from "@/lib/useDriverStreams";
 
 const route = useRoute();
 const toast = useToastStore();
@@ -593,8 +595,14 @@ async function deleteMedia(m: MediaItem) {
             {{ isRecording ? "Stop recording" : "Record now" }}
           </Button>
         </template>
+        <div
+          v-if="streamLive && isWhepUrl(driver.stream!.embed_url)"
+          class="aspect-video w-full overflow-hidden rounded-md border border-line"
+        >
+          <WhepPlayer :url="driver.stream!.embed_url" />
+        </div>
         <iframe
-          v-if="streamLive"
+          v-else-if="streamLive"
           :src="driver.stream!.embed_url"
           class="aspect-video w-full rounded-md border border-line"
           allow="autoplay; encrypted-media; picture-in-picture"

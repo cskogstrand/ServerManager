@@ -35,8 +35,10 @@ export interface StreamChannel {
 
 // A WHEP endpoint is played natively; everything else falls back to an iframe
 // embed page. MediaMTX serves WHEP at `…/<path>/whep`, so the path suffix is a
-// reliable discriminator (query string / auth params are ignored).
-function isWhepUrl(url: string | undefined): boolean {
+// reliable discriminator (query string / auth params are ignored). Exported so
+// surfaces that build channels inline (spectator card, driver page) can pick
+// the right player too.
+export function isWhepUrl(url: string | undefined | null): boolean {
   if (!url) return false;
   try {
     return new URL(url).pathname.replace(/\/+$/, "").endsWith("/whep");

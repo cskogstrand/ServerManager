@@ -31,6 +31,7 @@ import {useAuthStore} from "@/stores/auth";
 import {useToastStore} from "@/stores/toast";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
+import WhepPlayer from "@/components/WhepPlayer.vue";
 
 interface CurrentEvent {
   name: string;
@@ -844,8 +845,11 @@ onBeforeUnmount(() => {
                   title="Rolling buffer recording — drift-run clips cut from this"
                 />
               </div>
+              <div v-if="card.channel?.online && card.channel.kind === 'whep'" class="absolute inset-0">
+                <WhepPlayer :key="card.channel.key" :url="card.channel.url" minimal />
+              </div>
               <iframe
-                  v-if="card.channel?.online"
+                  v-else-if="card.channel?.online"
                   :src="card.channel.url"
                   :title="card.row.name"
                   class="absolute inset-0 size-full border-0"

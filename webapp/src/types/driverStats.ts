@@ -81,6 +81,9 @@ export interface DriverSummary {
   favourite_track?: TrackRef | null;
   last_result: DriverResult | null;
   drift_trend: number[]; // recent drift-run scores, oldest → newest (sparkline)
+  // Highlight clip auto-captured on this driver's best drift run, if any. Lets
+  // the leaderboard link straight to the video without fetching full detail.
+  best_drift_clip?: MediaItem | null;
   // Live overlay, filled from the SSE store — not the stats endpoint.
   live_drift?: number;
 }

@@ -138,9 +138,17 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
+// The highlight clip from a driver's best drift run — the clip whose trigger
+// score is highest. Surfaced on the leaderboard so a score can link to video.
+function bestDriftClip(d: DriverDetail): MediaItem | null {
+  const clips = d.media.filter((m) => m.kind === "clip");
+  if (!clips.length) return null;
+  return clips.reduce((best, m) => ((m.trigger?.drift_score ?? 0) > (best.trigger?.drift_score ?? 0) ? m : best));
+}
+
 function toSummary(d: DriverDetail): DriverSummary {
   const { results: _r, media: _m, stream: _s, ...summary } = d;
-  return summary;
+  return { ...summary, best_drift_clip: bestDriftClip(d) };
 }
 
 // Content keys are plausible AC mod folders; thumbnails degrade gracefully when

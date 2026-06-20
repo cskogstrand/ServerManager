@@ -25,7 +25,7 @@ import {
 import {type StreamChannel, useDriverStreams} from "@/lib/useDriverStreams";
 import {useBroadcastDemo} from "@/lib/broadcastDemo";
 import {listDrivers, fmtScore} from "@/lib/driversApi";
-import type {DriverSummary} from "@/types/driverStats";
+import type {DriverSummary, MediaItem} from "@/types/driverStats";
 import {useDriverCapture, fmtClipDuration} from "@/lib/useDriverCapture";
 import {useAuthStore} from "@/stores/auth";
 import {useToastStore} from "@/stores/toast";
@@ -107,6 +107,24 @@ const topLap = computed(() =>
         .sort((a, b) => a.best_lap_ms - b.best_lap_ms)
         .slice(0, 12),
 );
+
+// --- Highlight-clip popup (leaderboard) -------------------------------------
+// A drift score with a linked clip opens it in a modal with a download button.
+// Real captures resolve to a served file; mock items ("#") show a placeholder.
+const clip = ref<MediaItem | null>(null);
+function isRealMedia(m: MediaItem | null | undefined): boolean {
+  return !!m?.url && m.url !== "#";
+}
+function downloadClip(m: MediaItem | null) {
+  if (!isRealMedia(m)) return;
+  const href = m!.url + (m!.url.includes("?") ? "&" : "?") + "download=1";
+  const a = document.createElement("a");
+  a.href = href;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 const detail = ref<StatusPayload | null>(null);
 const mapMeta = ref<TrackMapMeta | null>(null);
@@ -900,6 +918,15 @@ onBeforeUnmount(() => {
             </div>
             <span class="numerals text-xl font-semibold tabular-nums text-accent">{{ fmtScore(d.best_drift) }}</span>
             <span class="font-mono text-[10px] tracking-wider text-dim uppercase">pts</span>
+            <button
+                v-if="d.best_drift_clip"
+                type="button"
+                class="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent"
+                title="Watch the highlight clip from this run"
+                @click="clip = d.best_drift_clip ?? null"
+            >
+              <Icon name="film" :size="15"/>
+            </button>
           </li>
           <li v-if="!topDrift.length" class="px-3 py-6 text-center font-mono text-xs text-dim">
             {{ leaderLoaded ? "No drift scores recorded yet." : "Loading…" }}
@@ -937,6 +964,59 @@ onBeforeUnmount(() => {
         </ol>
       </section>
     </div>
+
+    <!-- ░░ Highlight-clip popup ░░ -->
+    <Transition name="fade">
+      <div
+          v-if="clip"
+          class="fixed inset-0 z-[60] grid place-items-center bg-bg/80 p-4 backdrop-blur-sm"
+          @click.self="clip = null"
+      >
+        <div class="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
+          <header class="flex items-center gap-3 border-b border-line/60 px-4 py-3">
+            <Icon name="film" :size="16" class="text-accent"/>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-bold">{{ clip.caption || "Highlight clip" }}</div>
+              <div v-if="clip.trigger" class="font-mono text-[11px] text-dim">
+                {{ fmtScore(clip.trigger.drift_score) }} pts · +{{ fmtScore(clip.trigger.delta) }}
+                <span v-if="clip.trigger.track"> · {{ clip.trigger.track }}</span>
+              </div>
+            </div>
+            <button
+                type="button"
+                class="grid size-8 shrink-0 place-items-center rounded-md border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
+                title="Download clip"
+                :disabled="!isRealMedia(clip)"
+                @click="downloadClip(clip)"
+            >
+              <Icon name="download" :size="15"/>
+            </button>
+            <button
+                type="button"
+                class="grid size-8 shrink-0 place-items-center rounded-md border border-line bg-surface-2/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
+                title="Close"
+                @click="clip = null"
+            >
+              <Icon name="x" :size="15"/>
+            </button>
+          </header>
+          <video
+              v-if="isRealMedia(clip)"
+              :src="clip.url"
+              class="aspect-video w-full bg-black"
+              controls
+              autoplay
+              playsinline
+          />
+          <div v-else class="grid aspect-video w-full place-items-center bg-bg text-center">
+            <div class="flex flex-col items-center gap-2 text-dim">
+              <Icon name="film" :size="32"/>
+              <span class="font-mono text-[11px] tracking-wider uppercase">Clip preview unavailable</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <StreamTheater
         :open="theaterOpen"

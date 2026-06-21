@@ -276,11 +276,11 @@ func (dba Dbaccess) driftRunIdsForGuest(id int) ([]int64, error) {
 	return out, tracerr.Wrap(rows.Err())
 }
 
-// buildGuestSummaries returns Driver Stats rows for every roster guest that has
-// at least one attributed result, aggregated from the sessions/drift runs tagged
-// to them. They share the GUID driver summary shape but carry IsGuest + GuestId
-// so the UI badges them and links to their profile. carNames/trackInfo are passed
-// in so the caller's cache maps are reused.
+// buildGuestSummaries returns a Driver Stats row for every roster guest,
+// aggregated from the sessions/drift runs tagged to them (zeroed when none yet).
+// They share the GUID driver summary shape but carry IsGuest + GuestId so the UI
+// badges them and links to their profile. carNames/trackInfo are passed in so the
+// caller's cache maps are reused.
 func buildGuestSummaries(carNames map[string]string, trackInfo map[string]trackMeta) ([]driverSummary, error) {
 	guests, err := Dba.selectGuestDrivers()
 	if err != nil {
@@ -296,11 +296,8 @@ func buildGuestSummaries(carNames map[string]string, trackInfo map[string]trackM
 		if err != nil {
 			return nil, err
 		}
-		// A guest with nothing attributed yet has no stats — leave them to the
-		// roster page rather than show an empty leaderboard row.
-		if len(sessions) == 0 && len(drifts) == 0 {
-			continue
-		}
+		// Every roster guest is listed, even with no attributed results yet (their
+		// stats simply read zero until a run/lap lands under them).
 		dr := driverRow{name: g.Name, firstSeen: g.CreatedAt, lastSeen: g.CreatedAt}
 		sum := summaryFor(dr, sessions, drifts, carNames, trackInfo)
 		sum.Guid = ""

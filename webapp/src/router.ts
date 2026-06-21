@@ -15,6 +15,7 @@ const router = createRouter({
     { path: "/queue", name: "queue", component: () => import("@/pages/Queue.vue") },
     { path: "/drivers", name: "drivers", component: () => import("@/pages/DriverStats.vue") },
     { path: "/drivers/:guid", name: "driver-detail", component: () => import("@/pages/DriverDetail.vue") },
+    { path: "/extra-drivers", name: "extra-drivers", component: () => import("@/pages/ExtraDrivers.vue"), meta: { operate: true } },
     { path: "/content", name: "content", component: () => import("@/pages/Content.vue") },
     { path: "/presets/difficulty", name: "preset-difficulty", component: () => import("@/pages/PresetDifficulty.vue"), meta: { admin: true } },
     { path: "/presets/sessions", name: "preset-sessions", component: () => import("@/pages/PresetSession.vue"), meta: { admin: true } },

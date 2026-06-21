@@ -34,6 +34,9 @@ export interface DriverState {
   drift_live?: number;
   drift_last?: number;
   drift_best?: number;
+  // Roster extra-driver assigned to this car (0/undefined = none). When set, the
+  // car's completed runs are recorded under that person's name.
+  extra_driver_id?: number;
 }
 
 export interface CarPositionState {

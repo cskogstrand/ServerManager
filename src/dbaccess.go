@@ -152,6 +152,13 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("driver_media", "drift_run_id", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for driver_media.drift_run_id: ", err)
 	}
+	// Per-row attribution override to an extra_driver (shared-account support).
+	if err := dba.ensureColumn("driver_drift_run", "extra_driver_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_drift_run.extra_driver_id: ", err)
+	}
+	if err := dba.ensureColumn("driver_session", "extra_driver_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_session.extra_driver_id: ", err)
+	}
 	for col, def := range map[string]string{
 		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
 		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",

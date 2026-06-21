@@ -111,4 +111,8 @@ export interface ScoreEntry {
   position?: number | null; // race finish, when known
   entrants?: number | null;
   clip?: MediaItem | null; // highlight clip captured on this drift run, if any
+  // Set when this row is attributed to an extra driver (a real person sharing
+  // the account's GUID): `driver` above is then that person's name. Lets the
+  // leaderboard editor preselect the current assignment.
+  extra_driver_id?: number | null;
 }

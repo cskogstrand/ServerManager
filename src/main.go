@@ -339,6 +339,15 @@ func main() {
 		api.POST("/drivers/:guid/snapshot", apiDriverSnapshot)
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
 		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)
+
+		// Extra drivers: shared-account roster, per-row leaderboard reassignment,
+		// and tagging a live car so its results log under the right person.
+		api.GET("/extra-drivers", apiExtraDriversList)
+		api.POST("/extra-drivers", apiExtraDriverCreate)
+		api.PUT("/extra-drivers/:id", apiExtraDriverUpdate)
+		api.DELETE("/extra-drivers/:id", apiExtraDriverDelete)
+		api.POST("/scores/:id/assign", apiScoreAssign)
+		api.POST("/server/assign-driver", apiLiveDriverAssign)
 	}
 
 	// Everything that is not /api or /static is the SPA

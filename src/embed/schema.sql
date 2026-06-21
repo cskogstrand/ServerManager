@@ -318,7 +318,10 @@ CREATE TABLE IF NOT EXISTS driver_session (
   best_lap_ms INTEGER NOT NULL DEFAULT 0,
   finish_pos INTEGER,
   entrants INTEGER,
-  drift_best INTEGER NOT NULL DEFAULT 0
+  drift_best INTEGER NOT NULL DEFAULT 0,
+  -- Optional override: attribute this row to an extra_driver (see below) instead
+  -- of the GUID's own name in leaderboards. NULL = use the driver's name.
+  extra_driver_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS driver_drift_run (
@@ -329,7 +332,20 @@ CREATE TABLE IF NOT EXISTS driver_drift_run (
   track_config TEXT,
   car_key TEXT,
   score INTEGER NOT NULL,
-  ended_at INTEGER NOT NULL
+  ended_at INTEGER NOT NULL,
+  -- See driver_session.extra_driver_id. NULL = use the driver's own name.
+  extra_driver_id INTEGER
+);
+
+-- Extra drivers: a roster of real people who may share one Assetto Corsa
+-- account (GUID). A leaderboard row (drift run / timed lap) or a live, connected
+-- car can be attributed to one of these instead of the GUID's own name, so
+-- "who actually drove" is recorded even when several people use one account.
+CREATE TABLE IF NOT EXISTS extra_driver (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  notes TEXT,
+  created_at INTEGER NOT NULL
 );
 
 -- Auto-captured stream highlights (screenshots/clips on big drift spikes). The

@@ -88,6 +88,17 @@ function rankClass(i: number): string {
   return "border-line bg-surface-2 text-dim";
 }
 
+// Guests share an empty guid, so rows key off a guest-scoped id and link to the
+// guest profile instead of a GUID driver detail.
+function rowKey(d: DriverSummary): string {
+  return d.is_guest ? `g${d.guest_id}` : d.guid;
+}
+function rowTo(d: DriverSummary) {
+  return d.is_guest
+    ? { name: "guest-driver-detail", params: { id: d.guest_id } }
+    : { name: "driver-detail", params: { guid: d.guid } };
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -217,8 +228,8 @@ onMounted(load);
       <!-- Mobile: taller stacked card -->
       <RouterLink
         v-for="(d, i) in filtered"
-        :key="`m-${d.guid}`"
-        :to="{ name: 'driver-detail', params: { guid: d.guid } }"
+        :key="`m-${rowKey(d)}`"
+        :to="rowTo(d)"
         class="reveal group flex flex-col gap-2.5 rounded-md border border-line bg-surface-2/40 px-3 py-3 transition-colors hover:border-line-hi hover:bg-surface-2 sm:hidden"
         :style="{ animationDelay: Math.min(i, 12) * 35 + 'ms' }"
       >
@@ -229,10 +240,17 @@ onMounted(load);
           >
             {{ i + 1 }}
           </span>
-          <DriverAvatar :name="d.name" :guid="d.guid" :src="d.avatar_url" :size="38" />
+          <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="38" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="truncate text-sm font-bold text-text group-hover:text-accent">{{ d.name }}</span>
+              <span
+                v-if="d.is_guest"
+                class="inline-flex shrink-0 items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-1.5 py-px text-[10px] font-bold tracking-wide text-warn uppercase"
+                title="Guest driver"
+              >
+                <Icon name="users" :size="10" /> Guest
+              </span>
               <span
                 v-if="d.online"
                 class="inline-flex shrink-0 items-center gap-1 rounded-full border border-ok/40 bg-ok-glow px-1.5 py-px text-[10px] font-bold tracking-wide text-ok uppercase"
@@ -271,8 +289,8 @@ onMounted(load);
 
       <RouterLink
         v-for="(d, i) in filtered"
-        :key="d.guid"
-        :to="{ name: 'driver-detail', params: { guid: d.guid } }"
+        :key="rowKey(d)"
+        :to="rowTo(d)"
         class="reveal group hidden items-center gap-3 rounded-md border border-line bg-surface-2/40 px-3 py-2.5 transition-all duration-200 hover:translate-x-0.5 hover:border-line-hi hover:bg-surface-2 sm:flex sm:gap-4 sm:px-4"
         :style="{ animationDelay: Math.min(i, 12) * 35 + 'ms' }"
       >
@@ -283,11 +301,18 @@ onMounted(load);
           {{ i + 1 }}
         </span>
 
-        <DriverAvatar :name="d.name" :guid="d.guid" :src="d.avatar_url" :size="42" />
+        <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="42" />
 
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="truncate text-sm font-bold text-text group-hover:text-accent">{{ d.name }}</span>
+            <span
+              v-if="d.is_guest"
+              class="inline-flex shrink-0 items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-1.5 py-px text-[10px] font-bold tracking-wide text-warn uppercase"
+              title="Guest driver"
+            >
+              <Icon name="users" :size="10" /> Guest
+            </span>
             <span
               v-if="d.online"
               class="inline-flex shrink-0 items-center gap-1 rounded-full border border-ok/40 bg-ok-glow px-1.5 py-px text-[10px] font-bold tracking-wide text-ok uppercase"
@@ -300,7 +325,7 @@ onMounted(load);
             <span class="truncate">
               <Icon name="car" :size="12" class="-mt-px mr-1 inline text-dim" />{{ d.favourite_car?.name ?? "—" }}
             </span>
-            <span class="hidden font-mono text-[11px] text-dim/80 sm:inline">{{ shortGuid(d.guid) }}</span>
+            <span v-if="!d.is_guest" class="hidden font-mono text-[11px] text-dim/80 sm:inline">{{ shortGuid(d.guid) }}</span>
           </div>
         </div>
 

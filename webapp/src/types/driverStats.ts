@@ -86,6 +86,10 @@ export interface DriverSummary {
   best_drift_clip?: MediaItem | null;
   // Live overlay, filled from the SSE store — not the stats endpoint.
   live_drift?: number;
+  // Set for roster guest drivers listed alongside GUID drivers: `guid` is then
+  // empty and `guest_id` points at the guest's profile (/guest-drivers/:id).
+  is_guest?: boolean;
+  guest_id?: number;
 }
 
 export interface DriverDetail extends DriverSummary {

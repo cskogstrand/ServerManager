@@ -276,6 +276,45 @@ func (dba Dbaccess) driftRunIdsForGuest(id int) ([]int64, error) {
 	return out, tracerr.Wrap(rows.Err())
 }
 
+// buildGuestSummaries returns Driver Stats rows for every roster guest that has
+// at least one attributed result, aggregated from the sessions/drift runs tagged
+// to them. They share the GUID driver summary shape but carry IsGuest + GuestId
+// so the UI badges them and links to their profile. carNames/trackInfo are passed
+// in so the caller's cache maps are reused.
+func buildGuestSummaries(carNames map[string]string, trackInfo map[string]trackMeta) ([]driverSummary, error) {
+	guests, err := Dba.selectGuestDrivers()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]driverSummary, 0, len(guests))
+	for _, g := range guests {
+		sessions, err := Dba.querySessionsForGuest(int(g.Id))
+		if err != nil {
+			return nil, err
+		}
+		drifts, err := Dba.queryDriftRunsForGuest(int(g.Id))
+		if err != nil {
+			return nil, err
+		}
+		// A guest with nothing attributed yet has no stats — leave them to the
+		// roster page rather than show an empty leaderboard row.
+		if len(sessions) == 0 && len(drifts) == 0 {
+			continue
+		}
+		dr := driverRow{name: g.Name, firstSeen: g.CreatedAt, lastSeen: g.CreatedAt}
+		sum := summaryFor(dr, sessions, drifts, carNames, trackInfo)
+		sum.Guid = ""
+		sum.AvatarUrl = g.AvatarUrl
+		sum.IsGuest = true
+		sum.GuestId = int(g.Id)
+		if len(sessions) > 0 && sessions[0].endedAt > sum.LastSeen {
+			sum.LastSeen = sessions[0].endedAt
+		}
+		out = append(out, sum)
+	}
+	return out, nil
+}
+
 // getGuestDriverDetail aggregates one guest's attributed results into the same
 // summary shape used for GUID drivers, plus the guest's own roster fields and a
 // highlight reel built from clips attached to their attributed drift runs.

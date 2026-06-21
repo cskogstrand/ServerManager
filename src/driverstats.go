@@ -99,6 +99,10 @@ type driverSummary struct {
 	FavouriteTrack *trackRef     `json:"favourite_track,omitempty"`
 	LastResult     *driverResult `json:"last_result"`
 	DriftTrend     []int         `json:"drift_trend"`
+	// Set for roster guest drivers listed alongside GUID drivers: Guid is then
+	// empty and GuestId points at the guest's profile (/guest-drivers/:id).
+	IsGuest bool `json:"is_guest,omitempty"`
+	GuestId int  `json:"guest_id,omitempty"`
 }
 
 type driverDetail struct {
@@ -846,6 +850,13 @@ func buildDriverSummaries() ([]driverSummary, error) {
 		}
 		out = append(out, sum)
 	}
+	// Roster guests with attributed results appear in the same list, flagged so
+	// the UI can badge them and link to their profile instead of a GUID.
+	guestSums, err := buildGuestSummaries(carNames, trackInfo)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, guestSums...)
 	return out, nil
 }
 

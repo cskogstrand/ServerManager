@@ -184,6 +184,18 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("driver_media", "connection_id", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for driver_media.connection_id: ", err)
 	}
+	// Indexes on the just-added connection_id columns. These live here, not in
+	// schema.sql, because schema.sql is executed before the ensureColumn calls
+	// above — on an existing database the column wouldn't exist yet there.
+	for _, idx := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_driver_session_conn ON driver_session (connection_id)",
+		"CREATE INDEX IF NOT EXISTS idx_driver_drift_run_conn ON driver_drift_run (connection_id)",
+		"CREATE INDEX IF NOT EXISTS idx_driver_media_conn ON driver_media (connection_id)",
+	} {
+		if _, err := dba.db.Exec(idx); err != nil {
+			log.Fatal("Error creating driver connection_id index: ", err)
+		}
+	}
 	for col, def := range map[string]string{
 		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
 		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",

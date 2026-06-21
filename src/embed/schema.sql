@@ -424,15 +424,15 @@ CREATE TABLE IF NOT EXISTS driver_session_tag (
 -- INDEXES
 
 CREATE INDEX IF NOT EXISTS idx_driver_session_guid ON driver_session (driver_guid);
-CREATE INDEX IF NOT EXISTS idx_driver_session_conn ON driver_session (connection_id);
 CREATE INDEX IF NOT EXISTS idx_driver_drift_run_guid ON driver_drift_run (driver_guid);
-CREATE INDEX IF NOT EXISTS idx_driver_drift_run_conn ON driver_drift_run (connection_id);
 CREATE INDEX IF NOT EXISTS idx_driver_media_guid ON driver_media (driver_guid);
-CREATE INDEX IF NOT EXISTS idx_driver_media_conn ON driver_media (connection_id);
 CREATE INDEX IF NOT EXISTS idx_driver_connection_guid ON driver_connection (driver_guid);
 CREATE INDEX IF NOT EXISTS idx_driver_lap_conn ON driver_lap (connection_id);
 CREATE INDEX IF NOT EXISTS idx_session_tag_tag ON driver_session_tag (tag);
 CREATE INDEX IF NOT EXISTS idx_session_tag_conn ON driver_session_tag (connection_id);
+-- NOTE: indexes on driver_session/driver_drift_run/driver_media.connection_id are
+-- created in dbaccess.go AFTER the ensureColumn migrations add that column —
+-- this file runs before those ALTERs, so the column may not exist here yet.
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_track_key_config
 ON cache_track (key, config);

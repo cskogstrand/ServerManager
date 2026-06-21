@@ -107,9 +107,71 @@ type driverSummary struct {
 
 type driverDetail struct {
 	driverSummary
-	Results []driverResult `json:"results"`
-	Media   []mediaItem    `json:"media"`
-	Stream  *streamRef     `json:"stream"`
+	Results  []driverResult  `json:"results"`
+	Media    []mediaItem     `json:"media"`
+	Stream   *streamRef      `json:"stream"`
+	// session_history, not "sessions": driverSummary already marshals a "sessions"
+	// count, and two fields with the same JSON tag would collide.
+	Sessions []driverSession `json:"session_history"`
+}
+
+// sessionLap is one timed lap inside a session (connection). is_best flags the
+// session's fastest lap so the UI can highlight it.
+type sessionLap struct {
+	Lap       int  `json:"lap"`
+	LaptimeMs int  `json:"laptime_ms"`
+	Cuts      int  `json:"cuts"`
+	IsBest    bool `json:"is_best,omitempty"`
+}
+
+// driftRunItem is one completed drift run inside a session, with the highlight
+// clip captured on it when one exists.
+type driftRunItem struct {
+	Id      string     `json:"id"`
+	Score   int        `json:"score"`
+	EndedAt int64      `json:"ended_at"`
+	Clip    *mediaItem `json:"clip,omitempty"`
+}
+
+// driverSession is one connection (connect→disconnect) — the user-facing
+// "session". It groups the AC-session segments, per-lap times, drift runs and
+// captured media of a single stint, plus searchable tags. left_at is null while
+// the driver is still connected. Shape mirrors DriverSession in
+// webapp/src/types/driverStats.ts.
+type driverSession struct {
+	Id        string         `json:"id"`
+	JoinedAt  int64          `json:"joined_at"`
+	LeftAt    *int64         `json:"left_at"`
+	Online    bool           `json:"online"`
+	Track     trackRef       `json:"track"`
+	Car       carRef         `json:"car"`
+	Tags      []string       `json:"tags"`
+	BestLapMs *int           `json:"best_lap_ms"`
+	LapsTotal int            `json:"laps_total"`
+	BestDrift *int           `json:"best_drift"`
+	Segments  []driverResult `json:"segments"`
+	Laps      []sessionLap   `json:"laps"`
+	DriftRuns []driftRunItem `json:"drift_runs"`
+	Media     []mediaItem    `json:"media"`
+}
+
+// sessionSearchRow is one hit in the global session search (/api/driver-sessions):
+// a connection matched by tag/name/track, with enough to render a result card and
+// deep-link to /drivers/:guid?session=:id.
+type sessionSearchRow struct {
+	Id        string   `json:"id"`
+	Guid      string   `json:"guid"`
+	Driver    string   `json:"driver"`
+	AvatarUrl *string  `json:"avatar_url,omitempty"`
+	JoinedAt  int64    `json:"joined_at"`
+	LeftAt    *int64   `json:"left_at"`
+	Online    bool     `json:"online"`
+	Track     trackRef `json:"track"`
+	Car       carRef   `json:"car"`
+	Tags      []string `json:"tags"`
+	Laps      int      `json:"laps"`
+	BestLapMs *int     `json:"best_lap_ms,omitempty"`
+	BestDrift *int     `json:"best_drift,omitempty"`
 }
 
 // scoreEntry is one ranked result in the all-servers leaderboard: a single
@@ -166,12 +228,17 @@ type dsSessionRow struct {
 	// guestDriverId attributes this row to a guest_driver instead of the GUID's
 	// own name in the leaderboard. 0 = none.
 	guestDriverId int
+	// connectionId is the driver_connection (session) this segment belongs to.
+	// 0 = legacy row written before connections existed.
+	connectionId int64
 }
 
 type dsDriftRow struct {
-	guid    string
-	score   int
-	endedAt int64
+	id           int64
+	guid         string
+	score        int
+	endedAt      int64
+	connectionId int64
 }
 
 // dsDriftFullRow carries the track/car a drift run was set on, for the flat
@@ -199,6 +266,32 @@ type dsDriftInsert struct {
 	// guestDriverId snapshots the car's live guest-driver assignment so the run
 	// is attributed to the right person in the leaderboard. 0 = none.
 	guestDriverId int
+	// connectionId is the driver_connection (session) this run happened in.
+	connectionId int64
+}
+
+// dsConnInsert opens a driver_connection (session) row when a driver joins.
+type dsConnInsert struct {
+	guid        string
+	carKey      string
+	skinKey     string
+	trackKey    string
+	trackConfig string
+	joinedAt    int64
+}
+
+// dsLapInsert is one completed lap, attributed to its connection.
+type dsLapInsert struct {
+	connectionId int64
+	guid         string
+	sessionType  int
+	trackKey     string
+	trackConfig  string
+	carKey       string
+	lapNumber    int
+	laptimeMs    int
+	cuts         int
+	recordedAt   int64
 }
 
 type trackMeta struct {
@@ -228,6 +321,7 @@ func sessionRowFromDriverLocked(d *DriverState, now int64) dsSessionRow {
 		bestLapMs:     int(d.BestLapMs),
 		driftBest:     d.DriftBest,
 		guestDriverId: d.GuestDriverId,
+		connectionId:  d.connectionId,
 	}
 }
 
@@ -322,6 +416,27 @@ func liveDriversByGuid() map[string]bool {
 	return out
 }
 
+// liveConnectionIdForGuid returns the open connection id of the given guid if
+// they are connected to any running instance right now, else 0. Manual captures
+// (record/snapshot) use it to file their media under the live session.
+func liveConnectionIdForGuid(guid string) int64 {
+	if guid == "" {
+		return 0
+	}
+	for _, inst := range Instances.All() {
+		inst.mu.Lock()
+		for _, d := range inst.drivers {
+			if d.Connected && d.Guid == guid && d.connectionId > 0 {
+				id := d.connectionId
+				inst.mu.Unlock()
+				return id
+			}
+		}
+		inst.mu.Unlock()
+	}
+	return 0
+}
+
 // ---- DB access --------------------------------------------------------------
 
 func (dba Dbaccess) recordDriverSeen(guid, name string, now int64) error {
@@ -339,10 +454,10 @@ func (dba Dbaccess) insertDriverSession(instanceId int, r dsSessionRow) error {
 	_, err := dba.db.Exec(`
 INSERT INTO driver_session
   (driver_guid, instance_id, session_type, car_key, skin_key, track_key, track_config,
-   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id, connection_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.guid, instanceId, r.sessionType, r.carKey, r.skinKey, r.trackKey, r.trackConfig,
-		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.guestDriverId))
+		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.guestDriverId), nullableConnId(r.connectionId))
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -354,9 +469,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 // auto-capture can tag the resulting media with it (0 on error).
 func (dba Dbaccess) insertDriftRun(instanceId int, r dsDriftInsert) (int64, error) {
 	res, err := dba.db.Exec(`
-INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, guest_driver_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.guestDriverId))
+INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, guest_driver_id, connection_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.guestDriverId), nullableConnId(r.connectionId))
 	if err != nil {
 		return 0, tracerr.Wrap(err)
 	}
@@ -366,6 +481,53 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		return 0, tracerr.Wrap(err)
 	}
 	return id, nil
+}
+
+// nullableConnId maps a 0 connection id to SQL NULL (legacy/anonymous rows).
+func nullableConnId(id int64) any {
+	if id <= 0 {
+		return nil
+	}
+	return id
+}
+
+// openDriverConnection writes a new open driver_connection (session) row and
+// returns its id. left_at stays NULL until the driver disconnects.
+func (dba Dbaccess) openDriverConnection(instanceId int, r dsConnInsert) (int64, error) {
+	res, err := dba.db.Exec(`
+INSERT INTO driver_connection (driver_guid, instance_id, joined_at, car_key, skin_key, track_key, track_config)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		r.guid, instanceId, r.joinedAt, r.carKey, r.skinKey, r.trackKey, r.trackConfig)
+	if err != nil {
+		return 0, tracerr.Wrap(err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, tracerr.Wrap(err)
+	}
+	return id, nil
+}
+
+// closeDriverConnection stamps left_at on a connection when the driver leaves
+// (or the instance clears). Idempotent: only the first close wins.
+func (dba Dbaccess) closeDriverConnection(id, now int64) error {
+	_, err := dba.db.Exec(`UPDATE driver_connection SET left_at = ? WHERE id = ? AND left_at IS NULL`, now, id)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
+func (dba Dbaccess) insertDriverLap(instanceId int, r dsLapInsert) error {
+	_, err := dba.db.Exec(`
+INSERT INTO driver_lap
+  (connection_id, driver_guid, instance_id, session_type, track_key, track_config, car_key, lap_number, laptime_ms, cuts, recorded_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.connectionId, r.guid, instanceId, r.sessionType, r.trackKey, r.trackConfig, r.carKey, r.lapNumber, r.laptimeMs, r.cuts, r.recordedAt)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
 }
 
 func (dba Dbaccess) selectDrivers() ([]driverRow, error) {
@@ -405,7 +567,7 @@ func (dba Dbaccess) selectDriver(guid string) (driverRow, bool, error) {
 // querySessions returns sessions newest-first. Pass "" for all drivers.
 func (dba Dbaccess) querySessions(guid string) ([]dsSessionRow, error) {
 	q := `SELECT id, driver_guid, session_type, car_key, skin_key, track_key, track_config,
-       started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id
+       started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id, connection_id
 FROM driver_session`
 	var rows *sql.Rows
 	var err error
@@ -423,9 +585,9 @@ FROM driver_session`
 	for rows.Next() {
 		var s dsSessionRow
 		var carKey, skinKey, trackKey, trackConfig sql.NullString
-		var guestDriverId sql.NullInt64
+		var guestDriverId, connectionId sql.NullInt64
 		if err := rows.Scan(&s.id, &s.guid, &s.sessionType, &carKey, &skinKey, &trackKey, &trackConfig,
-			&s.startedAt, &s.endedAt, &s.laps, &s.bestLapMs, &s.finishPos, &s.entrants, &s.driftBest, &guestDriverId); err != nil {
+			&s.startedAt, &s.endedAt, &s.laps, &s.bestLapMs, &s.finishPos, &s.entrants, &s.driftBest, &guestDriverId, &connectionId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		s.carKey = carKey.String
@@ -433,6 +595,7 @@ FROM driver_session`
 		s.trackKey = trackKey.String
 		s.trackConfig = trackConfig.String
 		s.guestDriverId = int(guestDriverId.Int64)
+		s.connectionId = connectionId.Int64
 		out = append(out, s)
 	}
 	if err := rows.Err(); err != nil {
@@ -443,7 +606,7 @@ FROM driver_session`
 
 // queryDriftRuns returns runs oldest-first (for the trend sparkline). Pass "" for all.
 func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
-	q := `SELECT driver_guid, score, ended_at FROM driver_drift_run`
+	q := `SELECT id, driver_guid, score, ended_at, connection_id FROM driver_drift_run`
 	var rows *sql.Rows
 	var err error
 	if guid != "" {
@@ -459,9 +622,11 @@ func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
 	out := make([]dsDriftRow, 0)
 	for rows.Next() {
 		var d dsDriftRow
-		if err := rows.Scan(&d.guid, &d.score, &d.endedAt); err != nil {
+		var connectionId sql.NullInt64
+		if err := rows.Scan(&d.id, &d.guid, &d.score, &d.endedAt, &connectionId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
+		d.connectionId = connectionId.Int64
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {
@@ -499,6 +664,263 @@ FROM driver_drift_run ORDER BY score DESC`)
 		return nil, tracerr.Wrap(err)
 	}
 	return out, nil
+}
+
+// ---- connections / laps / tags (session grouping) --------------------------
+
+type dsConnRow struct {
+	id          int64
+	joinedAt    int64
+	leftAt      sql.NullInt64
+	carKey      string
+	skinKey     string
+	trackKey    string
+	trackConfig string
+}
+
+// queryConnections returns a driver's connections (sessions) newest-first.
+func (dba Dbaccess) queryConnections(guid string) ([]dsConnRow, error) {
+	rows, err := dba.db.Query(`
+SELECT id, joined_at, left_at, car_key, skin_key, track_key, track_config
+FROM driver_connection WHERE driver_guid = ? ORDER BY joined_at DESC`, guid)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := make([]dsConnRow, 0)
+	for rows.Next() {
+		var c dsConnRow
+		var carKey, skinKey, trackKey, trackConfig sql.NullString
+		if err := rows.Scan(&c.id, &c.joinedAt, &c.leftAt, &carKey, &skinKey, &trackKey, &trackConfig); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		c.carKey = carKey.String
+		c.skinKey = skinKey.String
+		c.trackKey = trackKey.String
+		c.trackConfig = trackConfig.String
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// searchConnRow is one connection enriched for the global search list: driver
+// name/avatar plus per-connection roll-ups (laps, best lap, best drift, tags).
+type searchConnRow struct {
+	id          int64
+	guid        string
+	name        string
+	avatarPath  string
+	joinedAt    int64
+	leftAt      sql.NullInt64
+	carKey      string
+	skinKey     string
+	trackKey    string
+	trackConfig string
+	laps        int
+	bestLapMs   int
+	bestDrift   int
+	tags        []string
+}
+
+// queryConnectionsForSearch returns connections matching an optional tag
+// (contains match) and/or free-text query (driver name or track), newest first.
+// Roll-ups come from the per-lap / drift-run / tag tables via subqueries.
+func (dba Dbaccess) queryConnectionsForSearch(tag, q string, limit int) ([]searchConnRow, error) {
+	query := `
+SELECT c.id, c.driver_guid, COALESCE(d.name, c.driver_guid) AS dname, d.avatar_path,
+       c.joined_at, c.left_at, c.car_key, c.skin_key, c.track_key, c.track_config,
+       (SELECT COUNT(*) FROM driver_lap l WHERE l.connection_id = c.id) AS laps,
+       (SELECT MIN(laptime_ms) FROM driver_lap l WHERE l.connection_id = c.id AND l.laptime_ms > 0) AS best_lap,
+       (SELECT MAX(score) FROM driver_drift_run r WHERE r.connection_id = c.id) AS best_drift,
+       (SELECT GROUP_CONCAT(t.tag, char(31)) FROM driver_session_tag t WHERE t.connection_id = c.id) AS tags
+FROM driver_connection c
+LEFT JOIN driver d ON d.guid = c.driver_guid`
+	conds := []string{}
+	args := []any{}
+	if s := strings.TrimSpace(tag); s != "" {
+		conds = append(conds, `EXISTS (SELECT 1 FROM driver_session_tag t WHERE t.connection_id = c.id AND t.tag LIKE ?)`)
+		args = append(args, "%"+s+"%")
+	}
+	if s := strings.TrimSpace(q); s != "" {
+		conds = append(conds, `(COALESCE(d.name, c.driver_guid) LIKE ? OR c.track_key LIKE ?)`)
+		args = append(args, "%"+s+"%", "%"+s+"%")
+	}
+	if len(conds) > 0 {
+		query += " WHERE " + strings.Join(conds, " AND ")
+	}
+	query += " ORDER BY c.joined_at DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := dba.db.Query(query, args...)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := make([]searchConnRow, 0)
+	for rows.Next() {
+		var r searchConnRow
+		var avatar, carKey, skinKey, trackKey, trackConfig, tags sql.NullString
+		var bestLap, bestDrift sql.NullInt64
+		if err := rows.Scan(&r.id, &r.guid, &r.name, &avatar, &r.joinedAt, &r.leftAt,
+			&carKey, &skinKey, &trackKey, &trackConfig, &r.laps, &bestLap, &bestDrift, &tags); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		r.avatarPath = avatar.String
+		r.carKey = carKey.String
+		r.skinKey = skinKey.String
+		r.trackKey = trackKey.String
+		r.trackConfig = trackConfig.String
+		r.bestLapMs = int(bestLap.Int64)
+		r.bestDrift = int(bestDrift.Int64)
+		if tags.Valid && tags.String != "" {
+			r.tags = strings.Split(tags.String, "\x1f")
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// queryLapsByConnection returns a driver's laps grouped by connection id, each
+// group ordered by lap number.
+func (dba Dbaccess) queryLapsByConnection(guid string) (map[int64][]sessionLap, error) {
+	rows, err := dba.db.Query(`
+SELECT connection_id, lap_number, laptime_ms, cuts
+FROM driver_lap WHERE driver_guid = ? ORDER BY connection_id, lap_number ASC`, guid)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := map[int64][]sessionLap{}
+	for rows.Next() {
+		var connId int64
+		var l sessionLap
+		if err := rows.Scan(&connId, &l.Lap, &l.LaptimeMs, &l.Cuts); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		out[connId] = append(out[connId], l)
+	}
+	return out, rows.Err()
+}
+
+// queryTagsByConnection returns the tags of all a driver's connections, keyed by
+// connection id (oldest tag first).
+func (dba Dbaccess) queryTagsByConnection(guid string) (map[int64][]string, error) {
+	rows, err := dba.db.Query(`
+SELECT t.connection_id, t.tag
+FROM driver_session_tag t JOIN driver_connection c ON c.id = t.connection_id
+WHERE c.driver_guid = ? ORDER BY t.created_at ASC`, guid)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := map[int64][]string{}
+	for rows.Next() {
+		var connId int64
+		var tag string
+		if err := rows.Scan(&connId, &tag); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		out[connId] = append(out[connId], tag)
+	}
+	return out, rows.Err()
+}
+
+// connectionGuid returns the driver_guid that owns a connection, so tag writes
+// can be scoped to the URL's :guid (ownership check). ok is false if no such row.
+func (dba Dbaccess) connectionGuid(id int64) (string, bool, error) {
+	var guid string
+	err := dba.db.QueryRow(`SELECT driver_guid FROM driver_connection WHERE id = ?`, id).Scan(&guid)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, tracerr.Wrap(err)
+	}
+	return guid, true, nil
+}
+
+// addSessionTag adds a tag to a connection (no-op if it already has it).
+func (dba Dbaccess) addSessionTag(connId int64, tag string, now int64) error {
+	_, err := dba.db.Exec(`
+INSERT INTO driver_session_tag (connection_id, tag, created_at) VALUES (?, ?, ?)
+ON CONFLICT(connection_id, tag) DO NOTHING`, connId, tag, now)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
+// removeSessionTag drops one tag from a connection.
+func (dba Dbaccess) removeSessionTag(connId int64, tag string) error {
+	_, err := dba.db.Exec(`DELETE FROM driver_session_tag WHERE connection_id = ? AND tag = ?`, connId, tag)
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
+// tagsForConnection returns one connection's tags (oldest first).
+func (dba Dbaccess) tagsForConnection(connId int64) ([]string, error) {
+	rows, err := dba.db.Query(`SELECT tag FROM driver_session_tag WHERE connection_id = ? ORDER BY created_at ASC`, connId)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// mediaWithConn pairs a media item with the connection it was captured in, so
+// getDriverDetail can build the flat reel and the per-session groups in one read.
+type mediaWithConn struct {
+	item   mediaItem
+	connId int64
+}
+
+// queryDriverMediaRows returns a driver's media newest-first, each tagged with
+// its connection id (0 when unknown/legacy).
+func (dba Dbaccess) queryDriverMediaRows(guid string) ([]mediaWithConn, error) {
+	rows, err := dba.db.Query(`
+SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, connection_id
+FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	out := make([]mediaWithConn, 0)
+	for rows.Next() {
+		var id int64
+		var kind, path string
+		var caption sql.NullString
+		var capturedAt int64
+		var durationS, triggerScore, triggerDelta, connId sql.NullInt64
+		if err := rows.Scan(&id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta, &connId); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		m := mediaItem{
+			Id:         strconv.FormatInt(id, 10),
+			Kind:       kind,
+			Url:        "/api/drivers/" + url.PathEscape(guid) + "/media/" + filepath.Base(path),
+			Caption:    caption.String,
+			CapturedAt: capturedAt,
+		}
+		if durationS.Valid {
+			v := int(durationS.Int64)
+			m.DurationS = &v
+		}
+		if triggerScore.Valid || triggerDelta.Valid {
+			m.Trigger = &mediaTrigger{DriftScore: int(triggerScore.Int64), Delta: int(triggerDelta.Int64)}
+		}
+		out = append(out, mediaWithConn{item: m, connId: connId.Int64})
+	}
+	return out, rows.Err()
 }
 
 // clipsByRun returns clip-kind media keyed by the drift_run_id that triggered
@@ -1019,13 +1441,266 @@ func getDriverDetail(guid string) (*driverDetail, error) {
 	for _, s := range sessions {
 		det.Results = append(det.Results, resultFromSession(s, carNames, trackInfo))
 	}
-	media, err := Dba.selectDriverMedia(guid)
+
+	// Session (connection) grouping: the connect→disconnect view of this driver's
+	// activity, with per-lap times, drift runs + clips, media and tags.
+	conns, err := Dba.queryConnections(guid)
 	if err != nil {
 		return nil, err
 	}
-	det.Media = media
+	lapsByConn, err := Dba.queryLapsByConnection(guid)
+	if err != nil {
+		return nil, err
+	}
+	tagsByConn, err := Dba.queryTagsByConnection(guid)
+	if err != nil {
+		return nil, err
+	}
+	mediaRows, err := Dba.queryDriverMediaRows(guid)
+	if err != nil {
+		return nil, err
+	}
+	clipByRun, err := Dba.clipsByRun()
+	if err != nil {
+		return nil, err
+	}
+	det.Media = make([]mediaItem, 0, len(mediaRows))
+	for _, mw := range mediaRows {
+		det.Media = append(det.Media, mw.item)
+	}
+	det.Sessions = assembleSessions(conns, sessions, drifts, lapsByConn, tagsByConn, mediaRows, clipByRun, carNames, trackInfo, sum.Online)
 	det.Stream = streamForGuid(guid)
 	return det, nil
+}
+
+// assembleSessions groups a driver's segments, laps, drift runs and media under
+// the connections (sessions) they happened in, newest connection first. Activity
+// that predates connections (NULL connection_id) is surfaced as one trailing
+// "ungrouped" session (id "0") so nothing is lost on existing databases.
+func assembleSessions(
+	conns []dsConnRow,
+	sessions []dsSessionRow,
+	drifts []dsDriftRow,
+	lapsByConn map[int64][]sessionLap,
+	tagsByConn map[int64][]string,
+	mediaRows []mediaWithConn,
+	clipByRun map[int64]mediaItem,
+	carNames map[string]string,
+	trackInfo map[string]trackMeta,
+	online bool,
+) []driverSession {
+	segByConn := map[int64][]dsSessionRow{}
+	for _, s := range sessions {
+		segByConn[s.connectionId] = append(segByConn[s.connectionId], s)
+	}
+	driftByConn := map[int64][]dsDriftRow{}
+	for _, d := range drifts {
+		driftByConn[d.connectionId] = append(driftByConn[d.connectionId], d)
+	}
+	mediaByConn := map[int64][]mediaItem{}
+	for _, mw := range mediaRows {
+		mediaByConn[mw.connId] = append(mediaByConn[mw.connId], mw.item)
+	}
+
+	out := make([]driverSession, 0, len(conns)+1)
+	for _, c := range conns {
+		out = append(out, buildSession(c.id, c.joinedAt, c.leftAt, c.carKey, c.skinKey, c.trackKey, c.trackConfig,
+			segByConn[c.id], driftByConn[c.id], lapsByConn[c.id], tagsByConn[c.id], mediaByConn[c.id],
+			clipByRun, carNames, trackInfo, online))
+	}
+
+	// Trailing "ungrouped" bucket for legacy rows whose connection_id is NULL/0.
+	if len(segByConn[0]) > 0 || len(driftByConn[0]) > 0 || len(mediaByConn[0]) > 0 {
+		segs, drifts0, media0 := segByConn[0], driftByConn[0], mediaByConn[0]
+		var minT, maxT int64
+		upd := func(t int64) {
+			if t == 0 {
+				return
+			}
+			if minT == 0 || t < minT {
+				minT = t
+			}
+			if t > maxT {
+				maxT = t
+			}
+		}
+		for _, s := range segs {
+			upd(s.startedAt)
+			upd(s.endedAt)
+		}
+		for _, d := range drifts0 {
+			upd(d.endedAt)
+		}
+		for _, m := range media0 {
+			upd(m.CapturedAt)
+		}
+		tk, tc, ck, sk := "", "", "", ""
+		if len(segs) > 0 {
+			tk, tc, ck, sk = segs[0].trackKey, segs[0].trackConfig, segs[0].carKey, segs[0].skinKey
+		}
+		out = append(out, buildSession(0, minT, sql.NullInt64{Int64: maxT, Valid: maxT > 0}, ck, sk, tk, tc,
+			segs, drifts0, nil, nil, media0, clipByRun, carNames, trackInfo, false))
+	}
+	return out
+}
+
+// buildSession assembles one driverSession from the activity of a single
+// connection. segs/drifts may be in any order; they are sorted here (segments
+// chronologically practice→qualify→race, drift runs newest-first). online is
+// applied only while the connection is still open (left_at NULL).
+func buildSession(
+	id int64, joinedAt int64, leftAt sql.NullInt64,
+	carKey, skinKey, trackKey, trackConfig string,
+	segs []dsSessionRow, driftRows []dsDriftRow, laps []sessionLap, tags []string, media []mediaItem,
+	clipByRun map[int64]mediaItem,
+	carNames map[string]string, trackInfo map[string]trackMeta, online bool,
+) driverSession {
+	sort.SliceStable(segs, func(i, j int) bool { return segs[i].startedAt < segs[j].startedAt })
+	// Fall back to a segment's car/track if the connection never captured one.
+	if trackKey == "" && len(segs) > 0 {
+		trackKey, trackConfig = segs[0].trackKey, segs[0].trackConfig
+	}
+	if carKey == "" && len(segs) > 0 {
+		carKey, skinKey = segs[0].carKey, segs[0].skinKey
+	}
+
+	ds := driverSession{
+		Id:        strconv.FormatInt(id, 10),
+		JoinedAt:  joinedAt,
+		Track:     resolveTrack(trackKey, trackConfig, trackInfo),
+		Car:       resolveCar(carKey, skinKey, carNames),
+		Tags:      tags,
+		Segments:  make([]driverResult, 0, len(segs)),
+		Laps:      laps,
+		DriftRuns: make([]driftRunItem, 0, len(driftRows)),
+		Media:     media,
+	}
+	if ds.Tags == nil {
+		ds.Tags = []string{}
+	}
+	if ds.Laps == nil {
+		ds.Laps = []sessionLap{}
+	}
+	if ds.Media == nil {
+		ds.Media = []mediaItem{}
+	}
+	if leftAt.Valid {
+		v := leftAt.Int64
+		ds.LeftAt = &v
+	} else {
+		ds.Online = online // still connected → online if the driver is live now
+	}
+
+	lapsTotal := 0
+	bestLap := 0
+	for _, s := range segs {
+		ds.Segments = append(ds.Segments, resultFromSession(s, carNames, trackInfo))
+		lapsTotal += s.laps
+		if s.bestLapMs > 0 && (bestLap == 0 || s.bestLapMs < bestLap) {
+			bestLap = s.bestLapMs
+		}
+	}
+	for _, l := range ds.Laps {
+		if l.LaptimeMs > 0 && (bestLap == 0 || l.LaptimeMs < bestLap) {
+			bestLap = l.LaptimeMs
+		}
+	}
+	if len(segs) == 0 {
+		lapsTotal = len(ds.Laps)
+	}
+	if bestLap > 0 {
+		for i := range ds.Laps {
+			if ds.Laps[i].LaptimeMs == bestLap {
+				ds.Laps[i].IsBest = true
+				break
+			}
+		}
+		bl := bestLap
+		ds.BestLapMs = &bl
+	}
+	ds.LapsTotal = lapsTotal
+
+	sort.SliceStable(driftRows, func(i, j int) bool { return driftRows[i].endedAt > driftRows[j].endedAt })
+	bestDrift := 0
+	for _, s := range segs {
+		if s.driftBest > bestDrift {
+			bestDrift = s.driftBest
+		}
+	}
+	for _, r := range driftRows {
+		item := driftRunItem{Id: strconv.FormatInt(r.id, 10), Score: r.score, EndedAt: r.endedAt}
+		if clip, ok := clipByRun[r.id]; ok {
+			c := clip
+			item.Clip = &c
+		}
+		ds.DriftRuns = append(ds.DriftRuns, item)
+		if r.score > bestDrift {
+			bestDrift = r.score
+		}
+	}
+	if bestDrift > 0 {
+		bd := bestDrift
+		ds.BestDrift = &bd
+	}
+	return ds
+}
+
+// searchSessions returns connections matching a tag and/or a free-text query
+// (driver name or track key), newest first, capped at limit. Either filter may
+// be empty. Used by the global session search page.
+func searchSessions(tag, q string, limit int) ([]sessionSearchRow, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	carNames, err := Dba.selectCarNameMap()
+	if err != nil {
+		return nil, err
+	}
+	trackInfo, err := Dba.selectTrackInfoMap()
+	if err != nil {
+		return nil, err
+	}
+	conns, err := Dba.queryConnectionsForSearch(tag, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	live := liveDriversByGuid()
+	out := make([]sessionSearchRow, 0, len(conns))
+	for _, c := range conns {
+		row := sessionSearchRow{
+			Id:       strconv.FormatInt(c.id, 10),
+			Guid:     c.guid,
+			Driver:   c.name,
+			JoinedAt: c.joinedAt,
+			Track:    resolveTrack(c.trackKey, c.trackConfig, trackInfo),
+			Car:      resolveCar(c.carKey, c.skinKey, carNames),
+			Tags:     c.tags,
+			Laps:     c.laps,
+		}
+		if c.tags == nil {
+			row.Tags = []string{}
+		}
+		if c.leftAt.Valid {
+			v := c.leftAt.Int64
+			row.LeftAt = &v
+		} else {
+			row.Online = live[c.guid]
+		}
+		if c.avatarPath != "" {
+			u := "/api/drivers/" + url.PathEscape(c.guid) + "/avatar"
+			row.AvatarUrl = &u
+		}
+		if c.bestLapMs > 0 {
+			bl := c.bestLapMs
+			row.BestLapMs = &bl
+		}
+		if c.bestDrift > 0 {
+			bd := c.bestDrift
+			row.BestDrift = &bd
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
 // ---- HTTP handlers ----------------------------------------------------------
@@ -1064,6 +1739,103 @@ func apiDriverGet(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, det)
+}
+
+// resolveSessionConn parses the :id session param and confirms the connection
+// belongs to the URL's :guid. Returns the connection id, or writes the error
+// response and returns ok=false.
+func resolveSessionConn(c *gin.Context) (int64, bool) {
+	guid := strings.TrimSpace(c.Param("guid"))
+	connId, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if guid == "" || err != nil || connId <= 0 {
+		apiBadRequest(c, "Invalid session")
+		return 0, false
+	}
+	owner, found, err := Dba.connectionGuid(connId)
+	if err != nil {
+		apiDbError(c, err)
+		return 0, false
+	}
+	if !found || owner != guid {
+		apiNotFound(c)
+		return 0, false
+	}
+	return connId, true
+}
+
+type sessionTagRequest struct {
+	Tag string `json:"tag"`
+}
+
+// apiSessionTagAdd (POST /api/drivers/:guid/sessions/:id/tags) adds a tag to a
+// session and returns the session's full tag set.
+func apiSessionTagAdd(c *gin.Context) {
+	connId, ok := resolveSessionConn(c)
+	if !ok {
+		return
+	}
+	var req sessionTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid tag payload")
+		return
+	}
+	tag := strings.TrimSpace(req.Tag)
+	if tag == "" {
+		apiBadRequest(c, "A tag is required.")
+		return
+	}
+	if len(tag) > 40 {
+		apiBadRequest(c, "Tags are limited to 40 characters.")
+		return
+	}
+	if err := Dba.addSessionTag(connId, tag, time.Now().UnixMilli()); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	tags, err := Dba.tagsForConnection(connId)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"tags": tags})
+}
+
+// apiSessionTagRemove (DELETE /api/drivers/:guid/sessions/:id/tags?tag=) drops a
+// tag (passed as a query param so spaces/slashes are safe) and returns the rest.
+func apiSessionTagRemove(c *gin.Context) {
+	connId, ok := resolveSessionConn(c)
+	if !ok {
+		return
+	}
+	tag := strings.TrimSpace(c.Query("tag"))
+	if tag == "" {
+		apiBadRequest(c, "Invalid tag")
+		return
+	}
+	if err := Dba.removeSessionTag(connId, tag); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	tags, err := Dba.tagsForConnection(connId)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"tags": tags})
+}
+
+// apiDriverSessionSearch (GET /api/driver-sessions) finds sessions across all
+// drivers by tag and/or free-text (driver name or track).
+func apiDriverSessionSearch(c *gin.Context) {
+	tag := c.Query("tag")
+	q := c.Query("q")
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	list, err := searchSessions(tag, q, limit)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"sessions": list})
 }
 
 func mediaBaseDir() string {

@@ -171,6 +171,19 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("guest_driver", "avatar_path", "TEXT"); err != nil {
 		log.Fatal("Error applying database migration for guest_driver.avatar_path: ", err)
 	}
+	// Driver "sessions" = connections (connect→disconnect). The driver_connection,
+	// driver_lap and driver_session_tag tables are created by the schema above; the
+	// connection_id link columns are added to the pre-existing tables here so
+	// existing databases pick them up. NULL on rows written before connections.
+	if err := dba.ensureColumn("driver_session", "connection_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_session.connection_id: ", err)
+	}
+	if err := dba.ensureColumn("driver_drift_run", "connection_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_drift_run.connection_id: ", err)
+	}
+	if err := dba.ensureColumn("driver_media", "connection_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_media.connection_id: ", err)
+	}
 	for col, def := range map[string]string{
 		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
 		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",

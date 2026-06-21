@@ -321,7 +321,11 @@ CREATE TABLE IF NOT EXISTS driver_session (
   drift_best INTEGER NOT NULL DEFAULT 0,
   -- Optional override: attribute this row to a guest_driver (see below) instead
   -- of the GUID's own name in leaderboards. NULL = use the driver's name.
-  guest_driver_id INTEGER
+  guest_driver_id INTEGER,
+  -- The driver_connection (one connect→disconnect span) this AC-session segment
+  -- belongs to. A single connection can hold several segments (practice/qualify/
+  -- race). NULL on rows written before connections existed.
+  connection_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS driver_drift_run (
@@ -334,7 +338,9 @@ CREATE TABLE IF NOT EXISTS driver_drift_run (
   score INTEGER NOT NULL,
   ended_at INTEGER NOT NULL,
   -- See driver_session.guest_driver_id. NULL = use the driver's own name.
-  guest_driver_id INTEGER
+  guest_driver_id INTEGER,
+  -- driver_connection this run happened in (NULL on legacy rows).
+  connection_id INTEGER
 );
 
 -- Guest drivers: a roster of real people who may share one Assetto Corsa
@@ -363,7 +369,53 @@ CREATE TABLE IF NOT EXISTS driver_media (
   duration_s INTEGER,
   trigger_score INTEGER,
   trigger_delta INTEGER,
-  drift_run_id INTEGER
+  drift_run_id INTEGER,
+  -- driver_connection this capture happened in (NULL on legacy/manual rows).
+  connection_id INTEGER
+);
+
+-- A driver "session": one continuous connection, from connect to disconnect. It
+-- groups the per-AC-session driver_session segments, laps, drift runs and media
+-- that happened while the driver was connected, and can carry searchable tags.
+-- left_at is NULL while the driver is still connected.
+CREATE TABLE IF NOT EXISTS driver_connection (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  driver_guid TEXT NOT NULL,
+  instance_id INTEGER NOT NULL,
+  joined_at INTEGER NOT NULL,
+  left_at INTEGER,
+  car_key TEXT,
+  skin_key TEXT,
+  track_key TEXT,
+  track_config TEXT,
+  guest_driver_id INTEGER
+);
+
+-- One completed lap, attributed to the connection it was set in. session_type is
+-- the AC session (0 booking, 1 practice, 2 qualify, 3 race) at the time.
+CREATE TABLE IF NOT EXISTS driver_lap (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  connection_id INTEGER NOT NULL,
+  driver_guid TEXT NOT NULL,
+  instance_id INTEGER NOT NULL,
+  session_type INTEGER NOT NULL,
+  track_key TEXT,
+  track_config TEXT,
+  car_key TEXT,
+  lap_number INTEGER NOT NULL,
+  laptime_ms INTEGER NOT NULL,
+  cuts INTEGER NOT NULL DEFAULT 0,
+  recorded_at INTEGER NOT NULL
+);
+
+-- Free-text tags on a connection, so a session can be found again later. Several
+-- tags per connection; a tag is unique within its connection.
+CREATE TABLE IF NOT EXISTS driver_session_tag (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  connection_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(connection_id, tag)
 );
 
 
@@ -372,8 +424,15 @@ CREATE TABLE IF NOT EXISTS driver_media (
 -- INDEXES
 
 CREATE INDEX IF NOT EXISTS idx_driver_session_guid ON driver_session (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_session_conn ON driver_session (connection_id);
 CREATE INDEX IF NOT EXISTS idx_driver_drift_run_guid ON driver_drift_run (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_drift_run_conn ON driver_drift_run (connection_id);
 CREATE INDEX IF NOT EXISTS idx_driver_media_guid ON driver_media (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_media_conn ON driver_media (connection_id);
+CREATE INDEX IF NOT EXISTS idx_driver_connection_guid ON driver_connection (driver_guid);
+CREATE INDEX IF NOT EXISTS idx_driver_lap_conn ON driver_lap (connection_id);
+CREATE INDEX IF NOT EXISTS idx_session_tag_tag ON driver_session_tag (tag);
+CREATE INDEX IF NOT EXISTS idx_session_tag_conn ON driver_session_tag (connection_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_track_key_config
 ON cache_track (key, config);

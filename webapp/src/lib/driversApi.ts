@@ -7,7 +7,19 @@
 import { api, ApiError } from "@/lib/api";
 import { lapTime } from "@/lib/raceTelemetry";
 import { useContentStore } from "@/stores/content";
-import type { CarRef, DriverDetail, DriverResult, DriverSummary, MediaItem, ScoreEntry, TrackRef } from "@/types/driverStats";
+import type {
+  CarRef,
+  DriftRun,
+  DriverDetail,
+  DriverResult,
+  DriverSession,
+  DriverSummary,
+  MediaItem,
+  ScoreEntry,
+  SessionLap,
+  SessionSearchResult,
+  TrackRef,
+} from "@/types/driverStats";
 
 // ---- formatting helpers -----------------------------------------------------
 
@@ -167,6 +179,42 @@ export async function getDriver(guid: string): Promise<DriverDetail | null> {
   }
 }
 
+// Add a tag to a session (connection). Returns the session's full tag set.
+export async function addSessionTag(guid: string, sessionId: string, tag: string): Promise<string[]> {
+  const res = await api.post<{ tags: string[] }>(
+    `/api/drivers/${encodeURIComponent(guid)}/sessions/${encodeURIComponent(sessionId)}/tags`,
+    { tag },
+  );
+  return res.tags ?? [];
+}
+
+// Remove a tag from a session. Returns the remaining tags.
+export async function removeSessionTag(guid: string, sessionId: string, tag: string): Promise<string[]> {
+  const res = await api.delete<{ tags: string[] }>(
+    `/api/drivers/${encodeURIComponent(guid)}/sessions/${encodeURIComponent(sessionId)}/tags?tag=${encodeURIComponent(tag)}`,
+  );
+  return res.tags ?? [];
+}
+
+// Global session search: connections across all drivers, filtered by tag and/or
+// free text (driver name or track). Falls back to the mock sessions on 404/501.
+export async function searchSessions(opts: { tag?: string; q?: string } = {}): Promise<SessionSearchResult[]> {
+  const params = new URLSearchParams();
+  if (opts.tag) params.set("tag", opts.tag);
+  if (opts.q) params.set("q", opts.q);
+  const qs = params.toString();
+  try {
+    const res = await api.get<{ sessions: SessionSearchResult[] }>(`/api/driver-sessions${qs ? `?${qs}` : ""}`);
+    return res.sessions ?? [];
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      await ensureDummyContent();
+      return mockSessionSearch(opts);
+    }
+    throw e;
+  }
+}
+
 // The canned mock content keys usually aren't installed, so the favourite
 // car/track previews 404. Repoint the dummy driver at a real installed car +
 // track (random, first skin) so the image lookups actually resolve. Runs once;
@@ -206,7 +254,7 @@ function bestDriftClip(d: DriverDetail): MediaItem | null {
 }
 
 function toSummary(d: DriverDetail): DriverSummary {
-  const { results: _r, media: _m, stream: _s, ...summary } = d;
+  const { results: _r, media: _m, stream: _s, session_history: _sh, ...summary } = d;
   return { ...summary, best_drift_clip: bestDriftClip(d) };
 }
 
@@ -295,7 +343,9 @@ function spikeMedia(prefix: string, track: string): MediaItem[] {
   ];
 }
 
-const MOCK: DriverDetail[] = [
+type MockDriver = Omit<DriverDetail, "session_history">;
+
+const MOCK_RAW: MockDriver[] = [
   {
     guid: "76561198011223344",
     name: "Kazuya Mori",
@@ -487,3 +537,99 @@ const MOCK: DriverDetail[] = [
     stream: { embed_url: "", status: "not_configured" },
   },
 ];
+
+// Attach mock sessions (connection grouping) derived from each driver's results,
+// so the Driver Detail session cards render before the backend ships.
+const MOCK: DriverDetail[] = MOCK_RAW.map((d) => ({ ...d, session_history: buildMockSessions(d) }));
+
+// Group a driver's results into sessions of up to two segments, synthesising
+// per-lap times for timed segments and a drift run (with the driver's best clip)
+// for drift segments — enough to exercise every part of the session card.
+function buildMockSessions(d: MockDriver): DriverSession[] {
+  const out: DriverSession[] = [];
+  const clip = d.media.find((m) => m.kind === "clip") ?? null;
+  for (let i = 0; i < d.results.length; i += 2) {
+    const chunk = d.results.slice(i, i + 2);
+    const first = chunk[0];
+    const idx = out.length;
+    const dates = chunk.map((r) => r.date);
+    const left = idx === 0 && d.online ? null : Math.max(...dates);
+
+    const laps: SessionLap[] = [];
+    const driftRuns: DriftRun[] = [];
+    let bestLap = 0;
+    let bestDrift = 0;
+    for (const r of chunk) {
+      if (r.kind === "drift") {
+        const sc = r.drift_score ?? 0;
+        bestDrift = Math.max(bestDrift, sc);
+        driftRuns.push({ id: `${r.session_id}-run`, score: sc, ended_at: r.date, clip: null });
+      } else if ((r.best_lap_ms ?? 0) > 0) {
+        const bl = r.best_lap_ms as number;
+        bestLap = bestLap ? Math.min(bestLap, bl) : bl;
+        const n = Math.min(Math.max(r.laps ?? 5, 3), 9);
+        for (let L = 1; L <= n; L++) {
+          // Wobble deterministically around the best lap; the out-lap is slower.
+          const t = bl + Math.round((Math.sin(L * 1.7) + 1) * 700) + (L === 1 ? 2200 : 0);
+          laps.push({ lap: L, laptime_ms: t, cuts: L % 4 === 0 ? 1 : 0 });
+        }
+      }
+    }
+    if (bestLap && laps.length) {
+      const fastest = laps.reduce((b, x) => (x.laptime_ms < b.laptime_ms ? x : b), laps[0]);
+      fastest.laptime_ms = bestLap;
+      fastest.is_best = true;
+    }
+    if (clip && driftRuns.length) {
+      driftRuns.reduce((b, x) => (x.score > b.score ? x : b)).clip = clip;
+    }
+
+    out.push({
+      id: `sess-${d.guid}-${idx}`,
+      joined_at: Math.min(...dates) - 35 * MIN,
+      left_at: left,
+      online: left === null && d.online,
+      track: first.track,
+      car: first.car,
+      tags: idx === 0 ? ["tandem night", "comp run"] : [],
+      best_lap_ms: bestLap || null,
+      laps_total: laps.length || chunk.reduce((s, r) => s + (r.laps ?? 0), 0),
+      best_drift: bestDrift || null,
+      segments: chunk,
+      laps,
+      drift_runs: driftRuns,
+      media: idx === 0 ? d.media : [],
+    });
+  }
+  return out;
+}
+
+// Flatten the mock drivers' sessions into search results, filtered client-side by
+// tag / driver name / track to mirror the real /api/driver-sessions endpoint.
+function mockSessionSearch(opts: { tag?: string; q?: string }): SessionSearchResult[] {
+  const tag = opts.tag?.trim().toLowerCase() ?? "";
+  const q = opts.q?.trim().toLowerCase() ?? "";
+  const out: SessionSearchResult[] = [];
+  for (const d of MOCK) {
+    for (const s of d.session_history) {
+      if (tag && !s.tags.some((t) => t.toLowerCase().includes(tag))) continue;
+      if (q && !d.name.toLowerCase().includes(q) && !s.track.name.toLowerCase().includes(q)) continue;
+      out.push({
+        id: s.id,
+        guid: d.guid,
+        driver: d.name,
+        avatar_url: d.avatar_url ?? null,
+        joined_at: s.joined_at,
+        left_at: s.left_at,
+        online: s.online,
+        track: s.track,
+        car: s.car,
+        tags: s.tags,
+        laps: s.laps_total,
+        best_lap_ms: s.best_lap_ms ?? null,
+        best_drift: s.best_drift ?? null,
+      });
+    }
+  }
+  return out.sort((a, b) => b.joined_at - a.joined_at);
+}

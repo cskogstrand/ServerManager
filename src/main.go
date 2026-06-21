@@ -339,6 +339,10 @@ func main() {
 		api.POST("/drivers/:guid/snapshot", apiDriverSnapshot)
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
 		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)
+		// Session (connection) tags + global session search.
+		api.POST("/drivers/:guid/sessions/:id/tags", apiSessionTagAdd)
+		api.DELETE("/drivers/:guid/sessions/:id/tags", apiSessionTagRemove)
+		api.GET("/driver-sessions", apiDriverSessionSearch)
 
 		// Guest drivers: shared-account roster (with avatars + profile pages),
 		// per-row leaderboard reassignment, and tagging a live car so its results

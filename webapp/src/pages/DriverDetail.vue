@@ -3,9 +3,9 @@
 // (placeholder, uploadable) photo, headline KPIs, favourite car/track, a
 // session history that reads as drift scores or lap times, the driver's live
 // stream, and an auto-captured highlight reel of their biggest drift spikes.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { getDriver, describeResult, fmtDate, fmtScore, sessionKindLabel, shortGuid, timeAgo } from "@/lib/driversApi";
+import { getDriver, addSessionTag, removeSessionTag, fmtDate, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
 import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
 import { lapTime, sessionTypeLabel, computeRunningOrder } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
@@ -14,7 +14,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
 import type { DriverState, InstanceState } from "@/stores/server";
-import type { DriverDetail, DriverResult, MediaItem } from "@/types/driverStats";
+import type { DriverDetail, DriverSession, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
@@ -22,7 +22,7 @@ import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 import Sparkline from "@/components/ui/Sparkline.vue";
 import CountUp from "@/components/ui/CountUp.vue";
 import TrackImage from "@/components/TrackImage.vue";
-import MediaActions from "@/components/MediaActions.vue";
+import SessionCard from "@/components/SessionCard.vue";
 import WhepPlayer from "@/components/WhepPlayer.vue";
 import { isWhepUrl } from "@/lib/useDriverStreams";
 
@@ -187,9 +187,15 @@ async function pollForClip() {
 }
 
 // --- derived data ------------------------------------------------------------
-const screenshots = computed(() => driver.value?.media.filter((m) => m.kind === "screenshot") ?? []);
-const clips = computed(() => driver.value?.media.filter((m) => m.kind === "clip") ?? []);
 const streamLive = computed(() => !!driver.value?.stream && driver.value.stream.status === "live" && !!driver.value.stream.embed_url);
+
+// Deep-link target: /drivers/:guid?session=:id opens (and scrolls to) that
+// session. Otherwise the first (newest / live) session is open by default.
+const focusSessionId = computed(() => (typeof route.query.session === "string" ? route.query.session : ""));
+function sessionOpen(s: DriverSession, i: number): boolean {
+  if (focusSessionId.value) return s.id === focusSessionId.value;
+  return i === 0;
+}
 
 // Resolve the favourite car's preview against the cached car list — the same
 // source the Content car grid renders from — so the image matches (and carries
@@ -208,20 +214,6 @@ watch(carImgUrl, () => {
   carImgOk.value = true;
 });
 
-const tileTints = [
-  "linear-gradient(135deg, rgba(98,179,232,0.18), rgba(16,26,37,0.94))",
-  "linear-gradient(135deg, rgba(150,140,232,0.16), rgba(16,26,37,0.94))",
-  "linear-gradient(135deg, rgba(96,202,202,0.16), rgba(16,26,37,0.94))",
-];
-const tileStyle = (i: number) => ({ background: tileTints[i % tileTints.length] });
-
-function kindBadge(r: DriverResult): string {
-  if (r.kind === "drift") return "border-accent/40 bg-accent-dim text-accent";
-  if (r.kind === "race" && r.position === 1) return "border-warn/45 bg-warn-glow text-warn";
-  if (r.kind === "race") return "border-line-hi bg-surface-3 text-text";
-  return "border-line bg-surface-2 text-muted";
-}
-
 async function load() {
   loading.value = true;
   recording.value = false;
@@ -233,6 +225,11 @@ async function load() {
     driver.value = null;
   } finally {
     loading.value = false;
+  }
+  // Deep-link: scroll the focused session into view once it's rendered.
+  if (focusSessionId.value) {
+    await nextTick();
+    document.getElementById(`session-${focusSessionId.value}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
@@ -280,12 +277,54 @@ async function deleteMedia(m: MediaItem) {
     await api.delete(m.url);
     if (driver.value) {
       driver.value.media = driver.value.media.filter((x) => x.id !== m.id);
+      // Drop it from every session group + unlink any drift run that showed it.
+      for (const s of driver.value.session_history) {
+        s.media = s.media.filter((x) => x.id !== m.id);
+        for (const run of s.drift_runs) {
+          if (run.clip?.id === m.id) run.clip = null;
+        }
+      }
     }
     toast.success(`${label[0].toUpperCase()}${label.slice(1)} deleted.`);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     deleting.value.delete(m.id);
+  }
+}
+
+// --- session tags ------------------------------------------------------------
+// Optimistic: update the chip set immediately, reconcile with the server's
+// returned set. In mock/preview mode (endpoint 404/501) keep the optimistic
+// change so the UI stays usable.
+async function addTag(session: DriverSession, tag: string) {
+  if (session.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
+  const prev = session.tags.slice();
+  session.tags = [...session.tags, tag];
+  try {
+    session.tags = await addSessionTag(guid.value, session.id, tag);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      toast.info(previewFallbackMsg);
+      return;
+    }
+    session.tags = prev;
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+async function removeTag(session: DriverSession, tag: string) {
+  const prev = session.tags.slice();
+  session.tags = session.tags.filter((t) => t !== tag);
+  try {
+    session.tags = await removeSessionTag(guid.value, session.id, tag);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      toast.info(previewFallbackMsg);
+      return;
+    }
+    session.tags = prev;
+    toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 </script>
@@ -501,49 +540,52 @@ async function deleteMedia(m: MediaItem) {
       </Card>
     </div>
 
-    <!-- HISTORY + STREAM -->
+    <!-- SESSIONS + STREAM -->
     <div class="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_380px]">
-      <Card class="min-w-0">
-        <template #header>
+      <!-- Sessions: each connection (connect→disconnect) grouped together -->
+      <div class="min-w-0 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-            <Icon name="activity" :size="15" /> Recent sessions
+            <Icon name="activity" :size="15" /> Sessions
+            <span class="text-xs font-normal text-dim">connect → disconnect</span>
           </h2>
-          <span class="text-xs text-dim">drift & timed</span>
-        </template>
-        <ul v-if="driver.results.length" class="-my-1">
-          <li
-            v-for="(r, i) in driver.results"
-            :key="r.session_id"
-            class="reveal flex min-w-0 items-center gap-3 border-b border-line/60 py-2.5 last:border-0"
-            :style="{ animationDelay: Math.min(i, 12) * 35 + 'ms' }"
+          <RouterLink
+            :to="{ name: 'session-search' }"
+            class="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
           >
-            <span
-              class="grid w-16 shrink-0 place-items-center rounded-md border py-1 text-[10px] font-bold tracking-wide uppercase"
-              :class="kindBadge(r)"
-            >
-              {{ sessionKindLabel[r.kind] }}
-            </span>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-semibold text-text">{{ r.track.name }}</div>
-              <div class="truncate text-xs text-dim">
-                <Icon name="car" :size="12" class="-mt-px mr-1 inline" />{{ r.car.name }} · {{ fmtDate(r.date) }}
-              </div>
-            </div>
-            <div class="shrink-0 text-right">
-              <div
-                class="font-mono text-sm font-bold tabular-nums"
-                :class="describeResult(r).tone === 'warn' ? 'text-warn' : describeResult(r).tone === 'accent' ? 'text-accent' : 'text-text'"
-              >
-                {{ describeResult(r).primary }}
-              </div>
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">{{ describeResult(r).unit }}</div>
-            </div>
-          </li>
-        </ul>
-        <p v-else class="py-6 text-center text-sm text-muted">No sessions recorded yet.</p>
-      </Card>
+            <Icon name="search" :size="14" /> Search sessions
+          </RouterLink>
+        </div>
 
-      <Card class="min-w-0">
+        <SessionCard
+          v-for="(s, i) in driver.session_history"
+          :key="s.id"
+          :session="s"
+          :can-operate="auth.canOperate"
+          :default-open="sessionOpen(s, i)"
+          :deleting-ids="deleting"
+          :style="{ animationDelay: Math.min(i, 10) * 45 + 'ms' }"
+          @add-tag="(t) => addTag(s, t)"
+          @remove-tag="(t) => removeTag(s, t)"
+          @delete-media="deleteMedia"
+          @download-media="downloadMedia"
+        />
+
+        <Card v-if="!driver.session_history.length">
+          <div class="py-10 text-center">
+            <div class="mx-auto grid size-12 place-items-center rounded-lg border border-line bg-surface-2 text-dim">
+              <Icon name="activity" :size="22" />
+            </div>
+            <p class="mt-3 text-sm font-semibold text-text">No sessions yet</p>
+            <p class="mx-auto mt-0.5 max-w-md text-sm text-muted">
+              A session is one connection — from when this driver joins until they leave. Their laps, drift runs and
+              highlights will be grouped here.
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      <Card class="min-w-0 lg:sticky lg:top-4">
         <template #header>
           <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="broadcast" :size="15" :class="streamLive ? 'text-ok' : 'text-dim'" /> Live stream
@@ -627,121 +669,6 @@ async function deleteMedia(m: MediaItem) {
         </div>
       </Card>
     </div>
-
-    <!-- HIGHLIGHT REEL -->
-    <Card class="mt-4">
-      <template #header>
-        <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-          <Icon name="film" :size="15" class="text-accent" /> Stream highlights
-        </h2>
-        <span class="hidden text-xs text-dim sm:inline">auto-captured on big drift spikes</span>
-      </template>
-
-      <div v-if="driver.media.length" class="space-y-5">
-        <div v-if="clips.length">
-          <div class="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-wide text-dim uppercase">
-            <Icon name="film" :size="13" /> Clips <span class="text-dim/70">({{ clips.length }})</span>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <article
-              v-for="(m, i) in clips"
-              :key="m.id"
-              class="reveal group overflow-hidden rounded-md border border-line bg-surface-2/40"
-              :style="{ animationDelay: i * 40 + 'ms' }"
-            >
-              <div class="relative aspect-video overflow-hidden" :style="!isRealMedia(m) ? tileStyle(i) : undefined">
-                <video
-                  v-if="isRealMedia(m)"
-                  :src="m.url"
-                  class="size-full bg-black object-cover"
-                  preload="none"
-                  controls
-                  playsinline
-                />
-                <template v-else>
-                  <div class="scanlines" />
-                  <div class="absolute inset-0 grid place-items-center">
-                    <span class="grid size-11 place-items-center rounded-full border border-text/20 bg-bg/40 text-text/85 backdrop-blur-sm">
-                      <Icon name="play" :size="20" />
-                    </span>
-                  </div>
-                </template>
-                <span
-                  v-if="m.trigger"
-                  class="pointer-events-none absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
-                >
-                  <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
-                </span>
-                <span v-if="m.duration_s" class="pointer-events-none absolute top-2 right-2 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
-                  {{ fmtClipDuration(m.duration_s) }}
-                </span>
-              </div>
-              <div class="flex items-center gap-2 px-2.5 py-1.5">
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-xs font-semibold text-text">{{ m.caption }}</div>
-                  <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
-                </div>
-                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
-              </div>
-            </article>
-          </div>
-        </div>
-
-        <div v-if="screenshots.length">
-          <div class="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-wide text-dim uppercase">
-            <Icon name="camera" :size="13" /> Screenshots <span class="text-dim/70">({{ screenshots.length }})</span>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <article
-              v-for="(m, i) in screenshots"
-              :key="m.id"
-              class="reveal group overflow-hidden rounded-md border border-line bg-surface-2/40"
-              :style="{ animationDelay: i * 40 + 'ms' }"
-            >
-              <div class="relative aspect-video overflow-hidden" :style="!isRealMedia(m) ? tileStyle(i + 1) : undefined">
-                <img
-                  v-if="isRealMedia(m)"
-                  :src="m.url"
-                  alt=""
-                  loading="lazy"
-                  class="size-full bg-black object-cover"
-                />
-                <template v-else>
-                  <div class="scanlines" />
-                  <div class="absolute inset-0 grid place-items-center text-text/30">
-                    <Icon name="camera" :size="22" />
-                  </div>
-                </template>
-                <span
-                  v-if="m.trigger"
-                  class="pointer-events-none absolute top-2 left-2 inline-flex items-center gap-1 rounded-md border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
-                >
-                  <Icon name="arrowUp" :size="11" /> +{{ fmtScore(m.trigger.delta) }}
-                </span>
-              </div>
-              <div class="flex items-center gap-2 px-2.5 py-1.5">
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>
-                  <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
-                </div>
-                <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="auth.canOperate" :deleting="deleting.has(m.id)" @download="downloadMedia(m)" @delete="deleteMedia(m)" />
-              </div>
-            </article>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="py-10 text-center">
-        <div class="mx-auto grid size-12 place-items-center rounded-lg border border-line bg-surface-2 text-dim">
-          <Icon name="camera" :size="22" />
-        </div>
-        <p class="mt-3 text-sm font-semibold text-text">No highlights yet</p>
-        <p class="mx-auto mt-0.5 max-w-md text-sm text-muted">
-          Screenshots and clips are captured automatically from this driver's stream when they land a big drift
-          spike. Nothing has tripped the trigger yet.
-        </p>
-      </div>
-    </Card>
   </template>
 </template>
 

@@ -84,6 +84,7 @@ const allSections = [
       { to: "/events", label: "Race Setups", icon: "events" },
       { to: "/queue", label: "Run Plan", icon: "queue" },
       { to: "/drivers", label: "Driver Stats", icon: "trophy" },
+      { to: "/sessions", label: "Session Search", icon: "search" },
       { to: "/leaderboard", label: "Leaderboard", icon: "flag" },
       { to: "/guest-drivers", label: "Guest Drivers", icon: "users", operate: true },
     ],

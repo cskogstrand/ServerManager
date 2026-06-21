@@ -96,6 +96,67 @@ export interface DriverDetail extends DriverSummary {
   results: DriverResult[]; // newest first
   media: MediaItem[];
   stream?: StreamRef | null;
+  // Activity grouped by connection (connect→disconnect) — the user-facing
+  // "session" view. Newest connection first; the live one (if any) is first.
+  // (Named session_history to avoid clashing with the `sessions` count above.)
+  session_history: DriverSession[];
+}
+
+// One timed lap inside a session. is_best flags the session's fastest lap.
+export interface SessionLap {
+  lap: number;
+  laptime_ms: number;
+  cuts: number;
+  is_best?: boolean;
+}
+
+// One completed drift run inside a session, with the highlight clip captured on
+// it when one exists.
+export interface DriftRun {
+  id: string;
+  score: number;
+  ended_at: number; // epoch ms
+  clip?: MediaItem | null;
+}
+
+// A "session": one continuous connection from connect to disconnect. Groups the
+// AC-session segments (practice/qualify/race), per-lap times, drift runs and
+// captured media of a single stint, plus searchable tags. `left_at` is null
+// while the driver is still connected.
+export interface DriverSession {
+  id: string;
+  joined_at: number; // epoch ms
+  left_at: number | null; // null = still connected
+  online: boolean;
+  track: TrackRef;
+  car: CarRef;
+  tags: string[];
+  best_lap_ms?: number | null;
+  laps_total: number;
+  best_drift?: number | null;
+  segments: DriverResult[]; // per AC session, chronological
+  laps: SessionLap[];
+  drift_runs: DriftRun[];
+  media: MediaItem[];
+}
+
+// One hit in the global session search (GET /api/driver-sessions): a connection
+// matched by tag / driver name / track, enough to render a result card and
+// deep-link to /drivers/:guid?session=:id.
+export interface SessionSearchResult {
+  id: string;
+  guid: string;
+  driver: string;
+  avatar_url?: string | null;
+  joined_at: number;
+  left_at: number | null;
+  online: boolean;
+  track: TrackRef;
+  car: CarRef;
+  tags: string[];
+  laps: number;
+  best_lap_ms?: number | null;
+  best_drift?: number | null;
 }
 
 // One ranked row in the all-servers leaderboard: a single drift run

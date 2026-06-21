@@ -50,6 +50,12 @@ type DriverState struct {
 	sessConfig string
 	recorded   bool
 
+	// connectionId is the driver_connection (one connect→disconnect "session")
+	// this car belongs to, opened in driverJoin and kept across AC session resets
+	// (resetDriverLaps) so every lap, drift run, segment and capture in the stint
+	// groups under it. 0 for anonymous (empty GUID) cars. Closed on leave/clear.
+	connectionId int64
+
 	// Drift-run capture bookkeeping (not serialized). A clip is captured at the
 	// END of a drift run if its peak score cleared the trigger, subject to a
 	// per-session cap (captureCount) and per-driver cooldown (lastCaptureMs).
@@ -65,11 +71,7 @@ type DriverState struct {
 
 func (inst *Instance) driverJoin(nc NewConnection) {
 	now := time.Now().UnixMilli()
-	inst.mu.Lock()
-	if inst.drivers == nil {
-		inst.drivers = make(map[int]*DriverState)
-	}
-	inst.drivers[nc.carId] = &DriverState{
+	d := &DriverState{
 		CarId:      nc.carId,
 		Name:       nc.driverName,
 		Car:        nc.carModel,
@@ -81,11 +83,35 @@ func (inst *Instance) driverJoin(nc NewConnection) {
 		sessTrack:  inst.Status.Session.track,
 		sessConfig: inst.Status.Session.trackConfig,
 	}
+	inst.mu.Lock()
+	if inst.drivers == nil {
+		inst.drivers = make(map[int]*DriverState)
+	}
+	inst.drivers[nc.carId] = d
 	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
 	if nc.driverGuid != "" {
 		if err := Dba.recordDriverSeen(nc.driverGuid, nc.driverName, now); err != nil {
 			log.Print("driverstats: record driver: ", err)
+		}
+		// Open the connection (session) row for this stint and stamp its id back
+		// onto the live car so laps/drift runs/captures attach to it.
+		connId, err := Dba.openDriverConnection(inst.Id(), dsConnInsert{
+			guid:        d.Guid,
+			carKey:      d.Car,
+			skinKey:     d.Skin,
+			trackKey:    d.sessTrack,
+			trackConfig: d.sessConfig,
+			joinedAt:    now,
+		})
+		if err != nil {
+			log.Print("driverstats: open connection: ", err)
+		} else {
+			inst.mu.Lock()
+			if cur := inst.drivers[nc.carId]; cur == d {
+				cur.connectionId = connId
+			}
+			inst.mu.Unlock()
 		}
 	}
 	Captures.nudge() // a connect may arm a rolling-buffer recorder
@@ -96,7 +122,9 @@ func (inst *Instance) driverLeave(carId int) {
 	now := time.Now().UnixMilli()
 	inst.mu.Lock()
 	var row *dsSessionRow
+	var connId int64
 	if d := inst.drivers[carId]; d != nil {
+		connId = d.connectionId
 		if !d.recorded && d.Guid != "" && (d.Laps > 0 || d.DriftBest > 0) {
 			r := sessionRowFromDriverLocked(d, now)
 			d.recorded = true
@@ -110,22 +138,51 @@ func (inst *Instance) driverLeave(carId int) {
 	if row != nil {
 		persistFinishedSessions(inst.Id(), []dsSessionRow{*row})
 	}
+	if connId > 0 {
+		if err := Dba.closeDriverConnection(connId, now); err != nil {
+			log.Print("driverstats: close connection: ", err)
+		}
+	}
 	inst.removeCarPosition(carId)
 	Captures.nudge() // a disconnect may retire a rolling-buffer recorder
 	inst.publishDrivers()
 }
 
 func (inst *Instance) driverLap(lc LapCompleted) {
+	now := time.Now().UnixMilli()
 	inst.mu.Lock()
+	var lap *dsLapInsert
 	if d := inst.drivers[lc.carId]; d != nil {
 		d.Laps++
 		d.LastLapMs = lc.laptime
 		if lc.laptime > 0 && (d.BestLapMs == 0 || lc.laptime < d.BestLapMs) {
 			d.BestLapMs = lc.laptime
 		}
+		// Persist the individual lap under this connection so the detail page can
+		// list per-lap times grouped by session. Skip anonymous cars and the
+		// 0ms "lap" AC sometimes reports.
+		if d.Guid != "" && d.connectionId > 0 && lc.laptime > 0 {
+			lap = &dsLapInsert{
+				connectionId: d.connectionId,
+				guid:         d.Guid,
+				sessionType:  d.sessType,
+				trackKey:     d.sessTrack,
+				trackConfig:  d.sessConfig,
+				carKey:       d.Car,
+				lapNumber:    d.Laps,
+				laptimeMs:    int(lc.laptime),
+				cuts:         lc.cuts,
+				recordedAt:   now,
+			}
+		}
 	}
 	inst.tel.lastDriverAt = time.Now()
 	inst.mu.Unlock()
+	if lap != nil {
+		if err := Dba.insertDriverLap(inst.Id(), *lap); err != nil {
+			log.Print("driverstats: insert lap: ", err)
+		}
+	}
 	inst.publishDrivers()
 }
 
@@ -223,15 +280,16 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 				d.captureCount++
 				d.lastCaptureMs = now
 				capReq = &captureRequest{
-					guid:        d.Guid,
-					driverName:  d.Name,
-					trackKey:    d.sessTrack,
-					trackConfig: d.sessConfig,
-					score:       d.driftRunPeak,
-					delta:       d.driftRunPeak - d.driftRunBaseline,
-					runStartMs:  d.driftRunStartMs,
-					runEndMs:    now,
-					peakMs:      d.driftRunPeakMs,
+					guid:         d.Guid,
+					driverName:   d.Name,
+					trackKey:     d.sessTrack,
+					trackConfig:  d.sessConfig,
+					score:        d.driftRunPeak,
+					delta:        d.driftRunPeak - d.driftRunBaseline,
+					runStartMs:   d.driftRunStartMs,
+					runEndMs:     now,
+					peakMs:       d.driftRunPeakMs,
+					connectionId: d.connectionId,
 				}
 			}
 			d.DriftLast = score
@@ -255,6 +313,7 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 					score:         score,
 					endedAt:       now,
 					guestDriverId: d.GuestDriverId,
+					connectionId:  d.connectionId,
 				}
 			}
 		}
@@ -339,10 +398,22 @@ func (inst *Instance) clearDrivers() {
 	// Fallback: record any session not already captured by end-of-session, so a
 	// stop/track-change without a clean ACSP_END_SESSION still leaves history.
 	rows := inst.collectFinishedSessionsLocked(now)
+	// Close every still-open connection: the drivers are about to be dropped.
+	connIds := make([]int64, 0, len(inst.drivers))
+	for _, d := range inst.drivers {
+		if d.connectionId > 0 {
+			connIds = append(connIds, d.connectionId)
+		}
+	}
 	inst.drivers = make(map[int]*DriverState)
 	inst.driftScorers = make(map[int]*driftScorer)
 	inst.mu.Unlock()
 	persistFinishedSessions(inst.Id(), rows)
+	for _, id := range connIds {
+		if err := Dba.closeDriverConnection(id, now); err != nil {
+			log.Print("driverstats: close connection: ", err)
+		}
+	}
 	inst.clearPositions()
 	inst.publishDrivers()
 }

@@ -15,6 +15,7 @@ const router = createRouter({
     { path: "/queue", name: "queue", component: () => import("@/pages/Queue.vue") },
     { path: "/drivers", name: "drivers", component: () => import("@/pages/DriverStats.vue") },
     { path: "/drivers/:guid", name: "driver-detail", component: () => import("@/pages/DriverDetail.vue") },
+    { path: "/sessions", name: "session-search", component: () => import("@/pages/SessionSearch.vue") },
     { path: "/guest-drivers", name: "guest-drivers", component: () => import("@/pages/GuestDrivers.vue"), meta: { operate: true } },
     { path: "/guest-drivers/:id", name: "guest-driver-detail", component: () => import("@/pages/GuestDriverDetail.vue") },
     { path: "/content", name: "content", component: () => import("@/pages/Content.vue") },

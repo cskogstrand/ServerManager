@@ -127,10 +127,11 @@ type scoreEntry struct {
 	Position   *int       `json:"position,omitempty"`
 	Entrants   *int       `json:"entrants,omitempty"`
 	Clip       *mediaItem `json:"clip,omitempty"` // highlight clip captured on this drift run, if any
-	// ExtraDriverId is set when this row is attributed to an extra_driver (a real
+	// GuestDriverId is set when this row is attributed to a guest_driver (a real
 	// person sharing the account's GUID) — Driver above is then that person's
-	// name. Lets the leaderboard editor preselect the current assignment.
-	ExtraDriverId *int `json:"extra_driver_id,omitempty"`
+	// name. Lets the leaderboard editor preselect the current assignment and link
+	// the row to the guest's profile.
+	GuestDriverId *int `json:"guest_driver_id,omitempty"`
 }
 
 // ---- internal row shapes ----------------------------------------------------
@@ -158,9 +159,9 @@ type dsSessionRow struct {
 	finishPos   sql.NullInt64
 	entrants    sql.NullInt64
 	driftBest   int
-	// extraDriverId attributes this row to an extra_driver instead of the GUID's
+	// guestDriverId attributes this row to a guest_driver instead of the GUID's
 	// own name in the leaderboard. 0 = none.
-	extraDriverId int
+	guestDriverId int
 }
 
 type dsDriftRow struct {
@@ -179,7 +180,7 @@ type dsDriftFullRow struct {
 	carKey        string
 	score         int
 	endedAt       int64
-	extraDriverId int
+	guestDriverId int
 }
 
 // dsDriftInsert is the payload captured under Instance.mu and written after the
@@ -191,9 +192,9 @@ type dsDriftInsert struct {
 	carKey      string
 	score       int
 	endedAt     int64
-	// extraDriverId snapshots the car's live extra-driver assignment so the run
+	// guestDriverId snapshots the car's live guest-driver assignment so the run
 	// is attributed to the right person in the leaderboard. 0 = none.
-	extraDriverId int
+	guestDriverId int
 }
 
 type trackMeta struct {
@@ -222,7 +223,7 @@ func sessionRowFromDriverLocked(d *DriverState, now int64) dsSessionRow {
 		laps:          d.Laps,
 		bestLapMs:     int(d.BestLapMs),
 		driftBest:     d.DriftBest,
-		extraDriverId: d.ExtraDriverId,
+		guestDriverId: d.GuestDriverId,
 	}
 }
 
@@ -334,10 +335,10 @@ func (dba Dbaccess) insertDriverSession(instanceId int, r dsSessionRow) error {
 	_, err := dba.db.Exec(`
 INSERT INTO driver_session
   (driver_guid, instance_id, session_type, car_key, skin_key, track_key, track_config,
-   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, extra_driver_id)
+   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.guid, instanceId, r.sessionType, r.carKey, r.skinKey, r.trackKey, r.trackConfig,
-		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.extraDriverId))
+		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.guestDriverId))
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -349,9 +350,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 // auto-capture can tag the resulting media with it (0 on error).
 func (dba Dbaccess) insertDriftRun(instanceId int, r dsDriftInsert) (int64, error) {
 	res, err := dba.db.Exec(`
-INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, extra_driver_id)
+INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, guest_driver_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.extraDriverId))
+		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.guestDriverId))
 	if err != nil {
 		return 0, tracerr.Wrap(err)
 	}
@@ -400,7 +401,7 @@ func (dba Dbaccess) selectDriver(guid string) (driverRow, bool, error) {
 // querySessions returns sessions newest-first. Pass "" for all drivers.
 func (dba Dbaccess) querySessions(guid string) ([]dsSessionRow, error) {
 	q := `SELECT id, driver_guid, session_type, car_key, skin_key, track_key, track_config,
-       started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, extra_driver_id
+       started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id
 FROM driver_session`
 	var rows *sql.Rows
 	var err error
@@ -418,16 +419,16 @@ FROM driver_session`
 	for rows.Next() {
 		var s dsSessionRow
 		var carKey, skinKey, trackKey, trackConfig sql.NullString
-		var extraDriverId sql.NullInt64
+		var guestDriverId sql.NullInt64
 		if err := rows.Scan(&s.id, &s.guid, &s.sessionType, &carKey, &skinKey, &trackKey, &trackConfig,
-			&s.startedAt, &s.endedAt, &s.laps, &s.bestLapMs, &s.finishPos, &s.entrants, &s.driftBest, &extraDriverId); err != nil {
+			&s.startedAt, &s.endedAt, &s.laps, &s.bestLapMs, &s.finishPos, &s.entrants, &s.driftBest, &guestDriverId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		s.carKey = carKey.String
 		s.skinKey = skinKey.String
 		s.trackKey = trackKey.String
 		s.trackConfig = trackConfig.String
-		s.extraDriverId = int(extraDriverId.Int64)
+		s.guestDriverId = int(guestDriverId.Int64)
 		out = append(out, s)
 	}
 	if err := rows.Err(); err != nil {
@@ -469,7 +470,7 @@ func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
 // score first, for the flat leaderboard.
 func (dba Dbaccess) queryAllDriftRunsFull() ([]dsDriftFullRow, error) {
 	rows, err := dba.db.Query(`
-SELECT id, driver_guid, track_key, track_config, car_key, score, ended_at, extra_driver_id
+SELECT id, driver_guid, track_key, track_config, car_key, score, ended_at, guest_driver_id
 FROM driver_drift_run ORDER BY score DESC`)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
@@ -480,14 +481,14 @@ FROM driver_drift_run ORDER BY score DESC`)
 	for rows.Next() {
 		var r dsDriftFullRow
 		var trackKey, trackConfig, carKey sql.NullString
-		var extraDriverId sql.NullInt64
-		if err := rows.Scan(&r.id, &r.guid, &trackKey, &trackConfig, &carKey, &r.score, &r.endedAt, &extraDriverId); err != nil {
+		var guestDriverId sql.NullInt64
+		if err := rows.Scan(&r.id, &r.guid, &trackKey, &trackConfig, &carKey, &r.score, &r.endedAt, &guestDriverId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		r.trackKey = trackKey.String
 		r.trackConfig = trackConfig.String
 		r.carKey = carKey.String
-		r.extraDriverId = int(extraDriverId.Int64)
+		r.guestDriverId = int(guestDriverId.Int64)
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -881,9 +882,9 @@ func buildScores() ([]scoreEntry, error) {
 	for _, d := range drivers {
 		nameByGuid[d.guid] = d.name
 	}
-	// Extra-driver name overrides: a row stamped with an extra_driver_id shows
+	// Guest-driver name overrides: a row stamped with a guest_driver_id shows
 	// that person's name instead of the GUID's own.
-	extraNames, err := Dba.selectExtraDriverNames()
+	guestNames, err := Dba.selectGuestDriverNames()
 	if err != nil {
 		return nil, err
 	}
@@ -894,12 +895,12 @@ func buildScores() ([]scoreEntry, error) {
 		}
 		return guid
 	}
-	// displayName resolves the leaderboard name for a row: the extra driver if
+	// displayName resolves the leaderboard name for a row: the guest driver if
 	// one is assigned and still exists, else the GUID's own name.
-	displayName := func(guid string, extraDriverId int) (string, *int) {
-		if extraDriverId > 0 {
-			if n := extraNames[extraDriverId]; n != "" {
-				id := extraDriverId
+	displayName := func(guid string, guestDriverId int) (string, *int) {
+		if guestDriverId > 0 {
+			if n := guestNames[guestDriverId]; n != "" {
+				id := guestDriverId
 				return n, &id
 			}
 		}
@@ -909,12 +910,12 @@ func buildScores() ([]scoreEntry, error) {
 	out := make([]scoreEntry, 0, len(drifts)+len(sessions))
 	for _, r := range drifts {
 		sc := r.score
-		name, edid := displayName(r.guid, r.extraDriverId)
+		name, gdid := displayName(r.guid, r.guestDriverId)
 		e := scoreEntry{
 			Id:            "d" + strconv.FormatInt(r.id, 10),
 			Guid:          r.guid,
 			Driver:        name,
-			ExtraDriverId: edid,
+			GuestDriverId: gdid,
 			Kind:          "drift",
 			Date:          r.endedAt,
 			Track:         resolveTrack(r.trackKey, r.trackConfig, trackInfo),
@@ -933,12 +934,12 @@ func buildScores() ([]scoreEntry, error) {
 			continue
 		}
 		bl := s.bestLapMs
-		name, edid := displayName(s.guid, s.extraDriverId)
+		name, gdid := displayName(s.guid, s.guestDriverId)
 		e := scoreEntry{
 			Id:            "l" + strconv.FormatInt(s.id, 10),
 			Guid:          s.guid,
 			Driver:        name,
-			ExtraDriverId: edid,
+			GuestDriverId: gdid,
 			Kind:          "lap",
 			Date:          s.endedAt,
 			Track:         resolveTrack(s.trackKey, s.trackConfig, trackInfo),

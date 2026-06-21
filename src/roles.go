@@ -72,8 +72,8 @@ func stewardCanMutate(path string) bool {
 	case strings.HasPrefix(p, "/drivers/") && strings.Contains(p, "/media/"):
 		// Deleting a highlight clip/screenshot is an operate-time action.
 		return true
-	case p == "/extra-drivers" || strings.HasPrefix(p, "/extra-drivers/"):
-		// Managing the shared-account roster is an operate-time concern.
+	case p == "/guest-drivers" || strings.HasPrefix(p, "/guest-drivers/"):
+		// Managing the shared-account roster (incl. avatar upload) is operate-time.
 		return true
 	case strings.HasPrefix(p, "/scores/") && strings.HasSuffix(p, "/assign"):
 		// Re-attributing a leaderboard row to the right person is operate-time.

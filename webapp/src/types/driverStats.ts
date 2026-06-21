@@ -111,8 +111,20 @@ export interface ScoreEntry {
   position?: number | null; // race finish, when known
   entrants?: number | null;
   clip?: MediaItem | null; // highlight clip captured on this drift run, if any
-  // Set when this row is attributed to an extra driver (a real person sharing
+  // Set when this row is attributed to a guest driver (a real person sharing
   // the account's GUID): `driver` above is then that person's name. Lets the
-  // leaderboard editor preselect the current assignment.
-  extra_driver_id?: number | null;
+  // leaderboard editor preselect the current assignment and link the row to the
+  // guest's profile.
+  guest_driver_id?: number | null;
+}
+
+// Profile served at GET /api/guest-drivers/:id. Reuses the GUID driver summary
+// fields (KPIs, favourites, trend) so the guest detail page can mirror the GUID
+// one, plus guest-only fields. Guests have no GUID (`guid` is "") and no stream.
+export interface GuestDriverDetail extends DriverSummary {
+  is_guest: true;
+  notes?: string;
+  created_at: number; // epoch ms — when the guest was added to the roster
+  results: DriverResult[]; // newest first
+  media: MediaItem[]; // highlight clips from their attributed drift runs
 }

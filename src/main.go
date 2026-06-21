@@ -340,12 +340,16 @@ func main() {
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
 		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)
 
-		// Extra drivers: shared-account roster, per-row leaderboard reassignment,
-		// and tagging a live car so its results log under the right person.
-		api.GET("/extra-drivers", apiExtraDriversList)
-		api.POST("/extra-drivers", apiExtraDriverCreate)
-		api.PUT("/extra-drivers/:id", apiExtraDriverUpdate)
-		api.DELETE("/extra-drivers/:id", apiExtraDriverDelete)
+		// Guest drivers: shared-account roster (with avatars + profile pages),
+		// per-row leaderboard reassignment, and tagging a live car so its results
+		// log under the right person.
+		api.GET("/guest-drivers", apiGuestDriversList)
+		api.POST("/guest-drivers", apiGuestDriverCreate)
+		api.GET("/guest-drivers/:id", apiGuestDriverGet)
+		api.PUT("/guest-drivers/:id", apiGuestDriverUpdate)
+		api.DELETE("/guest-drivers/:id", apiGuestDriverDelete)
+		api.GET("/guest-drivers/:id/avatar", apiGuestDriverAvatar)
+		api.POST("/guest-drivers/:id/avatar", apiGuestDriverAvatarUpload)
 		api.POST("/scores/:id/assign", apiScoreAssign)
 		api.POST("/server/assign-driver", apiLiveDriverAssign)
 	}

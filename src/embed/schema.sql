@@ -319,9 +319,9 @@ CREATE TABLE IF NOT EXISTS driver_session (
   finish_pos INTEGER,
   entrants INTEGER,
   drift_best INTEGER NOT NULL DEFAULT 0,
-  -- Optional override: attribute this row to an extra_driver (see below) instead
+  -- Optional override: attribute this row to a guest_driver (see below) instead
   -- of the GUID's own name in leaderboards. NULL = use the driver's name.
-  extra_driver_id INTEGER
+  guest_driver_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS driver_drift_run (
@@ -333,18 +333,19 @@ CREATE TABLE IF NOT EXISTS driver_drift_run (
   car_key TEXT,
   score INTEGER NOT NULL,
   ended_at INTEGER NOT NULL,
-  -- See driver_session.extra_driver_id. NULL = use the driver's own name.
-  extra_driver_id INTEGER
+  -- See driver_session.guest_driver_id. NULL = use the driver's own name.
+  guest_driver_id INTEGER
 );
 
--- Extra drivers: a roster of real people who may share one Assetto Corsa
+-- Guest drivers: a roster of real people who may share one Assetto Corsa
 -- account (GUID). A leaderboard row (drift run / timed lap) or a live, connected
 -- car can be attributed to one of these instead of the GUID's own name, so
 -- "who actually drove" is recorded even when several people use one account.
-CREATE TABLE IF NOT EXISTS extra_driver (
+CREATE TABLE IF NOT EXISTS guest_driver (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   notes TEXT,
+  avatar_path TEXT,
   created_at INTEGER NOT NULL
 );
 

@@ -33,11 +33,11 @@ type DriverState struct {
 	DriftLast int `json:"drift_last"`
 	DriftBest int `json:"drift_best"`
 
-	// ExtraDriverId attributes this car to a roster "extra driver" (a real person
+	// GuestDriverId attributes this car to a roster "guest driver" (a real person
 	// sharing the account GUID) so completed runs/sessions are stored under that
 	// person's name in leaderboards. 0 = none (use the GUID's own name). Set live
 	// by an operator and snapshotted onto each run/session as it is recorded.
-	ExtraDriverId int `json:"extra_driver_id"`
+	GuestDriverId int `json:"guest_driver_id"`
 
 	// Persistence bookkeeping (not serialized): the session context captured
 	// when the driver joined or the session rolled over, used to write a
@@ -254,7 +254,7 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 					carKey:        d.Car,
 					score:         score,
 					endedAt:       now,
-					extraDriverId: d.ExtraDriverId,
+					guestDriverId: d.GuestDriverId,
 				}
 			}
 		}
@@ -362,30 +362,30 @@ func (inst *Instance) publishDrivers() {
 	Events.Publish("drivers", inst.Id(), map[string]any{"drivers": inst.driversSnapshot()})
 }
 
-// setExtraDriverForCar assigns (edid > 0) or clears (edid == 0) the extra-driver
+// setGuestDriverForCar assigns (gdid > 0) or clears (gdid == 0) the guest-driver
 // attribution for a connected car. Subsequent runs/sessions for that car are
-// recorded under the extra driver's name. Returns false if no such car.
-func (inst *Instance) setExtraDriverForCar(carId, edid int) bool {
+// recorded under the guest driver's name. Returns false if no such car.
+func (inst *Instance) setGuestDriverForCar(carId, gdid int) bool {
 	inst.mu.Lock()
 	d := inst.drivers[carId]
 	if d == nil {
 		inst.mu.Unlock()
 		return false
 	}
-	d.ExtraDriverId = edid
+	d.GuestDriverId = gdid
 	inst.mu.Unlock()
 	inst.publishDrivers()
 	return true
 }
 
-// clearExtraDriverAssignment drops a now-deleted extra driver from any live car
+// clearGuestDriverAssignment drops a now-deleted guest driver from any live car
 // so the roster stops pointing at a missing id.
-func (inst *Instance) clearExtraDriverAssignment(edid int) {
+func (inst *Instance) clearGuestDriverAssignment(gdid int) {
 	inst.mu.Lock()
 	changed := false
 	for _, d := range inst.drivers {
-		if d.ExtraDriverId == edid {
-			d.ExtraDriverId = 0
+		if d.GuestDriverId == gdid {
+			d.GuestDriverId = 0
 			changed = true
 		}
 	}

@@ -49,6 +49,12 @@ func (dba Dbaccess) basepath() (string, error) {
 }
 
 func (dba Dbaccess) applySchema(filePath string) {
+	// Rename the former "extra driver" concept to "guest driver" BEFORE the schema
+	// runs: the schema's CREATE TABLE IF NOT EXISTS guest_driver would otherwise
+	// make a fresh empty table alongside the old extra_driver data. Idempotent and
+	// a no-op on fresh installs (the old objects simply don't exist).
+	dba.migrateExtraDriverToGuest()
+
 	f, err := OpenAsset(filePath)
 	if err != nil {
 		log.Fatal("Could not open sql schema file: ", err)
@@ -152,12 +158,18 @@ func (dba Dbaccess) applySchema(filePath string) {
 	if err := dba.ensureColumn("driver_media", "drift_run_id", "INTEGER"); err != nil {
 		log.Fatal("Error applying database migration for driver_media.drift_run_id: ", err)
 	}
-	// Per-row attribution override to an extra_driver (shared-account support).
-	if err := dba.ensureColumn("driver_drift_run", "extra_driver_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_drift_run.extra_driver_id: ", err)
+	// Per-row attribution override to a guest_driver (shared-account support).
+	// On installs that predate this column entirely it is added here; installs
+	// that had the old extra_driver_id were renamed in migrateExtraDriverToGuest.
+	if err := dba.ensureColumn("driver_drift_run", "guest_driver_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_drift_run.guest_driver_id: ", err)
 	}
-	if err := dba.ensureColumn("driver_session", "extra_driver_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_session.extra_driver_id: ", err)
+	if err := dba.ensureColumn("driver_session", "guest_driver_id", "INTEGER"); err != nil {
+		log.Fatal("Error applying database migration for driver_session.guest_driver_id: ", err)
+	}
+	// Guest-driver avatar (added after the table was first introduced).
+	if err := dba.ensureColumn("guest_driver", "avatar_path", "TEXT"); err != nil {
+		log.Fatal("Error applying database migration for guest_driver.avatar_path: ", err)
 	}
 	for col, def := range map[string]string{
 		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
@@ -233,6 +245,53 @@ func (dba Dbaccess) ensureColumn(tablename string, columnName string, definition
 	}
 
 	return nil
+}
+
+// renameColumnIfNeeded renames oldCol to newCol on a table, but only when oldCol
+// still exists and newCol does not — so it runs exactly once and is a no-op on
+// fresh installs or after it has already been applied.
+func (dba Dbaccess) renameColumnIfNeeded(tablename, oldCol, newCol string) error {
+	hasOld, err := dba.columnExists(tablename, oldCol)
+	if err != nil {
+		return err
+	}
+	hasNew, err := dba.columnExists(tablename, newCol)
+	if err != nil {
+		return err
+	}
+	if !hasOld || hasNew {
+		return nil
+	}
+	if _, err := dba.db.Exec("ALTER TABLE " + tablename + " RENAME COLUMN " + oldCol + " TO " + newCol); err != nil {
+		return tracerr.Wrap(err)
+	}
+	return nil
+}
+
+// migrateExtraDriverToGuest renames the legacy "extra driver" objects to their
+// "guest driver" names on existing databases: the extra_driver table and the
+// extra_driver_id override columns. Each step is guarded so the whole thing is
+// idempotent and harmless on fresh installs (where nothing matches).
+func (dba Dbaccess) migrateExtraDriverToGuest() {
+	oldExists, err := dba.tableExists("extra_driver")
+	if err != nil {
+		log.Fatal("Error checking for legacy extra_driver table: ", err)
+	}
+	newExists, err := dba.tableExists("guest_driver")
+	if err != nil {
+		log.Fatal("Error checking for guest_driver table: ", err)
+	}
+	if oldExists > 0 && newExists == 0 {
+		if _, err := dba.db.Exec("ALTER TABLE extra_driver RENAME TO guest_driver"); err != nil {
+			log.Fatal("Error renaming extra_driver to guest_driver: ", err)
+		}
+	}
+	if err := dba.renameColumnIfNeeded("driver_session", "extra_driver_id", "guest_driver_id"); err != nil {
+		log.Fatal("Error renaming driver_session.extra_driver_id to guest_driver_id: ", err)
+	}
+	if err := dba.renameColumnIfNeeded("driver_drift_run", "extra_driver_id", "guest_driver_id"); err != nil {
+		log.Fatal("Error renaming driver_drift_run.extra_driver_id to guest_driver_id: ", err)
+	}
 }
 
 func (dba Dbaccess) selectDropDownList(filled bool, tableName string) ([]DropDownList, error) {

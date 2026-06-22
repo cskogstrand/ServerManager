@@ -401,28 +401,20 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 	}
 	defer os.Remove(listPath)
 
-	if m.concatCopy(listPath, outPath) || m.concatEncode(listPath, outPath) {
+	if m.concatEncode(listPath, outPath) {
 		return sel[0].startMs, true
 	}
 	return 0, false
 }
 
-func (m *captureManager) concatCopy(listPath, outPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), localFfmpegTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, m.ffmpeg,
-		"-nostdin", "-y", "-loglevel", "error",
-		"-f", "concat", "-safe", "0", "-i", listPath,
-		"-c", "copy", "-movflags", "+faststart",
-		outPath)
-	if out, err := cmd.CombinedOutput(); err == nil && fileNonEmpty(outPath) {
-		return true
-	} else if err != nil {
-		log.Printf("driver capture: clip concat copy failed, re-encoding: %v %s", err, strings.TrimSpace(string(out)))
-	}
-	return false
-}
-
+// concatEncode stitches the buffered TS segments into outPath, RE-ENCODING
+// rather than stream-copying. Copy is faster but the segmenter resets each
+// segment's timestamps to ~0, and concat-copying them back into one MP4 leaves
+// a non-monotonic DTS at every 2s join. Strict browser decoders (Chrome/FF MSE)
+// treat that as fatal and stall on the glitchy frame (QuickTime resyncs past
+// it). Re-encoding rebuilds a clean, monotonic, zero-based timeline.
+// ponytail: re-encode always — correctness over the copy fast-path that shipped
+// unplayable clips. Re-add a copy path only if it produces verified-monotonic ts.
 func (m *captureManager) concatEncode(listPath, outPath string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*localFfmpegTimeout)
 	defer cancel()

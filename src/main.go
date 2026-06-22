@@ -343,7 +343,7 @@ func main() {
 		api.POST("/drivers/:guid/sessions/:id/tags", apiSessionTagAdd)
 		api.DELETE("/drivers/:guid/sessions/:id/tags", apiSessionTagRemove)
 		api.POST("/drivers/:guid/sessions/:id/assign", apiSessionAssign)
-		api.DELETE("/drivers/:guid/sessions/:id", apiSessionDelete)
+		api.DELETE("/drivers/:guid/sessions/:id", apiDriverSessionDelete)
 		api.GET("/driver-sessions", apiDriverSessionSearch)
 
 		// Guest drivers: shared-account roster (with avatars + profile pages),

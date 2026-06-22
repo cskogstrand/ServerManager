@@ -1903,10 +1903,10 @@ func apiSessionTagRemove(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"tags": tags})
 }
 
-// apiSessionDelete (DELETE /api/drivers/:guid/sessions/:id) deletes a whole
-// session (connection): its segments, laps, drift runs, tags and captured media
-// rows + files on disk. No undo.
-func apiSessionDelete(c *gin.Context) {
+// apiDriverSessionDelete (DELETE /api/drivers/:guid/sessions/:id) deletes a
+// whole session (connection): its segments, laps, drift runs, tags and captured
+// media rows + files on disk. No undo.
+func apiDriverSessionDelete(c *gin.Context) {
 	connId, ok := resolveSessionConn(c)
 	if !ok {
 		return

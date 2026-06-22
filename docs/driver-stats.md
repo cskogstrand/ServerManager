@@ -146,11 +146,11 @@ Match the JSON shapes in `webapp/src/types/driverStats.ts` exactly.
   media dir, set `driver.avatar_path`; return `{ avatar_url }`. The detail page already
   has the upload affordance wired to a local preview — point it here.
 - `GET /api/drivers/:guid/media/:file` → serve a stored capture (auth-gated static).
-- `DELETE /api/drivers/:guid/sessions/:id` (operate role) → delete a whole
-  connection: its `driver_session` rows, `driver_lap` + `driver_drift_run`
-  children, and `driver_media` rows **plus the media files on disk**. Cascade in
-  the DB, unlink files. Frontend already calls this and removes the card
-  optimistically (preview toast on 404 until it lands).
+- ✅ `DELETE /api/drivers/:guid/sessions/:id` (operate role) → delete a whole
+  connection: its `driver_session`, `driver_lap`, `driver_drift_run`,
+  `driver_session_tag` and `driver_media` rows in one tx, **plus the media files
+  on disk** (no FK cascade on these tables, so each child is deleted explicitly).
+  `apiSessionDelete` / `Dba.deleteConnection` in `driverstats.go`.
 
 ## 4. Drift-spike auto-capture (screenshots + clips)
 

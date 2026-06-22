@@ -851,6 +851,54 @@ func (dba Dbaccess) connectionGuid(id int64) (string, bool, error) {
 	return guid, true, nil
 }
 
+// deleteConnection wipes a whole session (connection) and everything tied to
+// it — segments, laps, drift runs, media rows and tags — in one transaction. It
+// returns the media file basenames so the caller can unlink them from disk
+// (rows are gone regardless; a missing file isn't fatal). No FK cascade exists
+// on these tables, so each child is deleted explicitly.
+func (dba Dbaccess) deleteConnection(connId int64) ([]string, error) {
+	tx, err := dba.db.Begin()
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT path FROM driver_media WHERE connection_id = ?`, connId)
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	var files []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return nil, tracerr.Wrap(err)
+		}
+		files = append(files, filepath.Base(p))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+
+	for _, q := range []string{
+		`DELETE FROM driver_media WHERE connection_id = ?`,
+		`DELETE FROM driver_lap WHERE connection_id = ?`,
+		`DELETE FROM driver_drift_run WHERE connection_id = ?`,
+		`DELETE FROM driver_session WHERE connection_id = ?`,
+		`DELETE FROM driver_session_tag WHERE connection_id = ?`,
+		`DELETE FROM driver_connection WHERE id = ?`,
+	} {
+		if _, err := tx.Exec(q, connId); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	return files, nil
+}
+
 // addSessionTag adds a tag to a connection (no-op if it already has it).
 func (dba Dbaccess) addSessionTag(connId int64, tag string, now int64) error {
 	_, err := dba.db.Exec(`
@@ -1853,6 +1901,29 @@ func apiSessionTagRemove(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"tags": tags})
+}
+
+// apiSessionDelete (DELETE /api/drivers/:guid/sessions/:id) deletes a whole
+// session (connection): its segments, laps, drift runs, tags and captured media
+// rows + files on disk. No undo.
+func apiSessionDelete(c *gin.Context) {
+	connId, ok := resolveSessionConn(c)
+	if !ok {
+		return
+	}
+	guid := strings.TrimSpace(c.Param("guid"))
+	files, err := Dba.deleteConnection(connId)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	// Rows are gone; unlink the media files best-effort (same dir as the serve
+	// handler). A missing file shouldn't fail the request.
+	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
+	for _, f := range files {
+		_ = os.Remove(filepath.Join(dir, f))
+	}
+	c.PureJSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 // apiDriverSessionSearch (GET /api/driver-sessions) finds sessions across all

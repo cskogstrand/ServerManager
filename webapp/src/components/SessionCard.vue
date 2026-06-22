@@ -387,16 +387,23 @@ function submitTag() {
     </div>
 
     <!-- Lightbox: plays the clicked clip / shows the clicked still -->
-    <Modal :open="!!active" :title="active?.caption || (active?.kind === 'clip' ? 'Clip' : 'Capture')" @close="active = null">
+    <Modal :open="!!active" wide :title="active?.caption || (active?.kind === 'clip' ? 'Clip' : 'Capture')" @close="active = null">
       <video
         v-if="active?.kind === 'clip'"
         :src="active.url"
-        class="w-full rounded-md bg-black"
+        class="mx-auto max-h-[78vh] w-full rounded-md bg-black object-contain"
         controls
         autoplay
         playsinline
       />
-      <img v-else-if="active" :src="active.url" :alt="active.caption" class="w-full rounded-md" />
+      <img v-else-if="active" :src="active.url" :alt="active.caption" class="mx-auto max-h-[78vh] w-full rounded-md object-contain" />
+      <template #footer>
+        <!-- iOS video player has no download; give it an explicit button -->
+        <Button v-if="active && isRealMedia(active)" variant="ghost" @click="emit('download-media', active)">
+          <Icon name="download" :size="14" class="mr-1.5" /> Download
+        </Button>
+        <Button @click="active = null">Close</Button>
+      </template>
     </Modal>
 
     <!-- Reassign-driver modal -->

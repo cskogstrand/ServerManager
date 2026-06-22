@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon.vue";
 defineProps<{
   open: boolean;
   title?: string;
+  wide?: boolean; // media lightbox: roomy on desktop, full-width on mobile
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -25,7 +26,8 @@ const emit = defineEmits<{ close: [] }>();
         <div
           role="dialog"
           aria-modal="true"
-          class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-md border border-line bg-surface shadow-2xl"
+          class="flex max-h-[90vh] w-full flex-col rounded-md border border-line bg-surface shadow-2xl"
+          :class="wide ? 'max-w-5xl' : 'max-w-lg'"
         >
           <header class="flex min-h-12 items-center border-b border-line bg-surface-2/35 px-4 py-3">
             <h2 class="text-sm font-bold">{{ title }}</h2>

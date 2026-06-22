@@ -74,6 +74,16 @@ async function logout() {
   await router.push({ name: "login" });
 }
 
+// Theme toggle — dark default; the pre-paint init lives in index.html.
+const theme = ref<"dark" | "light">(
+  (document.documentElement.dataset.theme as "dark" | "light") || "dark",
+);
+function toggleTheme() {
+  theme.value = theme.value === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme.value;
+  localStorage.setItem("theme", theme.value);
+}
+
 // Build is preset/setup work (admin only); most of Admin is admin only.
 // Operate is open to every role (viewers see, stewards operate).
 const allSections = [
@@ -208,14 +218,25 @@ watch(
               <div class="text-[11px] text-dim">Signed in</div>
             </div>
           </div>
-          <button
-            type="button"
-            class="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
-            @click="logout"
-          >
-            <Icon name="logOut" :size="15" />
-            Sign out
-          </button>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="flex min-h-8 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              @click="logout"
+            >
+              <Icon name="logOut" :size="15" />
+              Sign out
+            </button>
+            <button
+              type="button"
+              class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+              :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+              @click="toggleTheme"
+            >
+              <Icon :name="theme === 'dark' ? 'sun' : 'moon'" :size="15" />
+            </button>
+          </div>
         </div>
       </aside>
 

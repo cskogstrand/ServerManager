@@ -1,47 +1,91 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
 /* ============================================================
-   OPS SLATE — Server Manager UI system
-   Dense operations dashboard, dark-first, 8px radius, visible focus.
+   APEX — Server Manager UI system
+   Near-monochrome canvas, hairline structure, generous space,
+   one quiet accent, mono for all data. Light + dark from one
+   token set. Differentiation = composition + type, not color.
+   Dark is the default; [data-theme="light"] overrides the same
+   tokens, so every existing utility (bg-surface, text-accent,
+   border-line, rounded-md …) reskins with zero component edits.
    ============================================================ */
 @theme {
-  /* Backgrounds */
-  --color-bg: #071018;
-  --color-surface: #101a25;
-  --color-surface-2: #172433;
-  --color-surface-3: #203246;
-  --color-surface-4: #273c52;
+  /* Backgrounds — true neutral near-black (not blue slate) */
+  --color-bg: #0a0b0d;
+  --color-surface: #131417;
+  --color-surface-2: #1a1c20;
+  --color-surface-3: #232529;
+  --color-surface-4: #2c2f34;
 
-  /* Borders */
-  --color-line: #213246;
-  --color-line-hi: #35506a;
+  /* Borders — hairline */
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-hi: rgba(255, 255, 255, 0.14);
 
-  /* Accent — dusty sky blue */
-  --color-accent: #62b3e8;
-  --color-accent-glow: rgba(98, 179, 232, 0.16);
-  --color-accent-dim: rgba(98, 179, 232, 0.09);
+  /* Accent — one calm azure, used sparingly */
+  --color-accent: #3b8fd6;
+  --color-accent-glow: rgba(59, 143, 214, 0.16);
+  --color-accent-dim: rgba(59, 143, 214, 0.1);
 
-  /* Status — muted, not neon */
-  --color-ok: #4fd884;
-  --color-ok-glow: rgba(79, 216, 132, 0.12);
-  --color-warn: #f0b95a;
-  --color-warn-glow: rgba(240, 185, 90, 0.13);
-  --color-danger: #ef7168;
-  --color-danger-glow: rgba(239, 113, 104, 0.13);
+  /* Status — muted, never neon */
+  --color-ok: #4fae74;
+  --color-ok-glow: rgba(79, 174, 116, 0.13);
+  --color-warn: #cf9a3a;
+  --color-warn-glow: rgba(207, 154, 58, 0.13);
+  --color-danger: #d75f57;
+  --color-danger-glow: rgba(215, 95, 87, 0.13);
 
   /* Typography */
-  --color-text: #d9e7f5;
-  --color-muted: #95a9be;
-  --color-dim: #60768d;
+  --color-text: #e9eaed;
+  --color-muted: #9a9ea6;
+  --color-dim: #61656d;
 
-  --font-ui: "Plus Jakarta Sans", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-ui: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Shape — 8px default radius per design direction */
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Weight scale anchored light — the whole app inherits the thin
+     Hanken feel. Bump these two if it reads too faint on your panel. */
+  --font-weight-thin: 100;
+  --font-weight-extralight: 200;
+  --font-weight-light: 300;
+  --font-weight-normal: 350;
+  --font-weight-medium: 400;
+  --font-weight-semibold: 450;
+  --font-weight-bold: 500;
+  --font-weight-extrabold: 550;
+  --font-weight-black: 600;
+
+  /* Shape — softer, airier radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+/* ---- LIGHT: warm paper + ink, same tokens, deepened semantics ---- */
+:root[data-theme="light"] {
+  --color-bg: #f6f6f3;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1ed;
+  --color-surface-3: #e7e7e1;
+  --color-surface-4: #dcdcd5;
+
+  --color-line: rgba(17, 19, 23, 0.09);
+  --color-line-hi: rgba(17, 19, 23, 0.17);
+
+  --color-accent: #1f7cc0;
+  --color-accent-glow: rgba(31, 124, 192, 0.12);
+  --color-accent-dim: rgba(31, 124, 192, 0.08);
+
+  --color-ok: #2f9159;
+  --color-ok-glow: rgba(47, 145, 89, 0.12);
+  --color-warn: #b07d1f;
+  --color-warn-glow: rgba(176, 125, 31, 0.13);
+  --color-danger: #c6453c;
+  --color-danger-glow: rgba(198, 69, 60, 0.12);
+
+  --color-text: #16181c;
+  --color-muted: #5b6069;
+  --color-dim: #8b909a;
 }
 
 body {
@@ -49,8 +93,13 @@ body {
   color: var(--color-text);
   font-family: var(--font-ui);
   font-size: 14px;
-  line-height: 1.55;
+  font-weight: 300;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 html {

@@ -8,6 +8,7 @@ import { lapTime } from "@/lib/raceTelemetry";
 import { fmtScore, fmtDate, timeAgo, sessionKindLabel, describeResult } from "@/lib/driversApi";
 import { fmtClipDuration } from "@/lib/useDriverCapture";
 import type { DriverSession, DriverResult, MediaItem } from "@/types/driverStats";
+import type { GuestDriver } from "@/lib/guestDriversApi";
 import Icon from "@/components/ui/Icon.vue";
 import MediaActions from "@/components/MediaActions.vue";
 
@@ -16,6 +17,7 @@ const props = defineProps<{
   canOperate: boolean;
   defaultOpen?: boolean;
   deletingIds?: Set<string>;
+  guests?: GuestDriver[];
 }>();
 
 const emit = defineEmits<{
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   (e: "remove-tag", tag: string): void;
   (e: "delete-media", media: MediaItem): void;
   (e: "download-media", media: MediaItem): void;
+  (e: "assign", guestDriverId: number | null): void;
 }>();
 
 const expanded = ref(props.defaultOpen ?? false);
@@ -31,6 +34,19 @@ const newTag = ref("");
 // A real, taggable session (id "0" is the synthetic "ungrouped" legacy bucket).
 const taggable = computed(() => props.canOperate && props.session.id !== "0");
 const isLive = computed(() => props.session.left_at === null);
+
+// Guest attribution: who this whole session counts for. value 0 = the GUID's
+// own name; >0 = a roster guest, resolved against the list the parent loads.
+const assignable = computed(() => props.canOperate && props.session.id !== "0");
+const guestName = computed(() => {
+  const id = props.session.guest_driver_id;
+  if (!id) return "";
+  return props.guests?.find((g) => g.id === id)?.name ?? "Guest driver";
+});
+function onAssign(e: Event) {
+  const v = Number((e.target as HTMLSelectElement).value);
+  emit("assign", v > 0 ? v : null);
+}
 
 const clips = computed(() => props.session.media.filter((m) => m.kind === "clip"));
 const screenshots = computed(() => props.session.media.filter((m) => m.kind === "screenshot"));
@@ -162,6 +178,21 @@ function submitTag() {
             @keydown.stop
           />
         </div>
+      </div>
+
+      <!-- ATTRIBUTION: who this whole session counts for -->
+      <div v-if="assignable || guestName" class="flex flex-wrap items-center gap-2 text-xs" @click.stop>
+        <span class="inline-flex items-center gap-1 text-dim"><Icon name="user" :size="12" /> Driven by</span>
+        <select
+          v-if="assignable"
+          class="h-6 cursor-pointer rounded-md border border-line bg-surface px-2 text-[11px] font-semibold text-text focus:border-accent/50 focus:outline-none"
+          :value="session.guest_driver_id ?? 0"
+          @change="onAssign"
+        >
+          <option :value="0">— Account driver (own name) —</option>
+          <option v-for="g in guests" :key="g.id" :value="g.id">{{ g.name }}</option>
+        </select>
+        <span v-else class="font-semibold text-accent">{{ guestName }}</span>
       </div>
     </header>
 

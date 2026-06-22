@@ -138,6 +138,10 @@ export interface DriverSession {
   laps: SessionLap[];
   drift_runs: DriftRun[];
   media: MediaItem[];
+  // Set when the whole session (connection) is attributed to a guest driver
+  // (a real person sharing this account's GUID); null/absent = the account's
+  // own name. The UI resolves the name from its loaded guest roster.
+  guest_driver_id?: number | null;
 }
 
 // One hit in the global session search (GET /api/driver-sessions): a connection

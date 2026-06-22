@@ -153,6 +153,10 @@ type driverSession struct {
 	Laps      []sessionLap   `json:"laps"`
 	DriftRuns []driftRunItem `json:"drift_runs"`
 	Media     []mediaItem    `json:"media"`
+	// GuestDriverId is set when this whole connection is attributed to a guest
+	// driver (apiSessionAssign cascades it to every row); nil = the GUID's own
+	// name. The UI resolves the name from its loaded guest roster.
+	GuestDriverId *int `json:"guest_driver_id,omitempty"`
 }
 
 // sessionSearchRow is one hit in the global session search (/api/driver-sessions):
@@ -1641,6 +1645,25 @@ func buildSession(
 	if bestDrift > 0 {
 		bd := bestDrift
 		ds.BestDrift = &bd
+	}
+
+	// Connection-level guest attribution: apiSessionAssign cascades one guest to
+	// every row under a connection, so any attributed row reflects the stint.
+	for _, s := range segs {
+		if s.guestDriverId > 0 {
+			gid := s.guestDriverId
+			ds.GuestDriverId = &gid
+			break
+		}
+	}
+	if ds.GuestDriverId == nil {
+		for _, r := range driftRows {
+			if r.guestDriverId > 0 {
+				gid := r.guestDriverId
+				ds.GuestDriverId = &gid
+				break
+			}
+		}
 	}
 	return ds
 }

@@ -48,6 +48,15 @@ export async function assignScore(scoreId: string, guestDriverId: number | null)
   await api.post(`/api/scores/${encodeURIComponent(scoreId)}/assign`, { guest_driver_id: guestDriverId });
 }
 
+// Attribute an entire session (connection) on the driver detail page to a guest
+// driver, or pass null to clear it back to the GUID's own name. `sessionId` is
+// the connection id (DriverSession.id). Cascades to every row in the stint.
+export async function assignSession(guid: string, sessionId: string, guestDriverId: number | null): Promise<void> {
+  await api.post(`/api/drivers/${encodeURIComponent(guid)}/sessions/${encodeURIComponent(sessionId)}/assign`, {
+    guest_driver_id: guestDriverId,
+  });
+}
+
 // Tag a currently-connected car on a running instance with a guest driver (or
 // null to clear) so its subsequent runs/sessions are recorded under that person.
 export async function assignLiveDriver(instanceId: number, carId: number, guestDriverId: number | null): Promise<void> {

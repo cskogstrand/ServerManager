@@ -6,6 +6,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getDriver, addSessionTag, removeSessionTag, fmtDate, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
+import { listGuestDrivers, assignSession, type GuestDriver } from "@/lib/guestDriversApi";
 import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
 import { lapTime, sessionTypeLabel, computeRunningOrder } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
@@ -37,6 +38,8 @@ const guid = computed(() => String(route.params.guid));
 const capStatus = computed(() => cap.statusFor(guid.value));
 const driver = ref<DriverDetail | null>(null);
 const loading = ref(true);
+// Guest-driver roster, for the per-session "Driven by" assignment control.
+const guests = ref<GuestDriver[]>([]);
 
 // Live overlay for this one driver, if they're connected right now.
 const live = computed<DriverState | null>(() => {
@@ -190,11 +193,10 @@ async function pollForClip() {
 const streamLive = computed(() => !!driver.value?.stream && driver.value.stream.status === "live" && !!driver.value.stream.embed_url);
 
 // Deep-link target: /drivers/:guid?session=:id opens (and scrolls to) that
-// session. Otherwise the first (newest / live) session is open by default.
+// session. Otherwise every session starts collapsed (accordion style).
 const focusSessionId = computed(() => (typeof route.query.session === "string" ? route.query.session : ""));
-function sessionOpen(s: DriverSession, i: number): boolean {
-  if (focusSessionId.value) return s.id === focusSessionId.value;
-  return i === 0;
+function sessionOpen(s: DriverSession): boolean {
+  return !!focusSessionId.value && s.id === focusSessionId.value;
 }
 
 // Resolve the favourite car's preview against the cached car list — the same
@@ -236,6 +238,7 @@ async function load() {
 onMounted(() => {
   void content.load(); // car list backs the favourite-car preview
   void load();
+  void listGuestDrivers().then((g) => (guests.value = g)).catch(() => {});
   cap.startPoll();
 });
 watch(guid, load);
@@ -324,6 +327,22 @@ async function removeTag(session: DriverSession, tag: string) {
       return;
     }
     session.tags = prev;
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+// Attribute the whole session (connection) to a guest driver, or null to revert
+// it to this account's own name. Optimistic; rolls back on error.
+async function assignSessionGuest(session: DriverSession, guestDriverId: number | null) {
+  const prev = session.guest_driver_id ?? null;
+  if (prev === guestDriverId) return;
+  session.guest_driver_id = guestDriverId;
+  try {
+    await assignSession(guid.value, session.id, guestDriverId);
+    const name = guestDriverId ? guests.value.find((g) => g.id === guestDriverId)?.name : "";
+    toast.success(guestDriverId ? `Session assigned to ${name ?? "guest driver"}.` : "Session reverted to account driver.");
+  } catch (e) {
+    session.guest_driver_id = prev;
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
@@ -562,11 +581,13 @@ async function removeTag(session: DriverSession, tag: string) {
           :key="s.id"
           :session="s"
           :can-operate="auth.canOperate"
-          :default-open="sessionOpen(s, i)"
+          :default-open="sessionOpen(s)"
           :deleting-ids="deleting"
+          :guests="guests"
           :style="{ animationDelay: Math.min(i, 10) * 45 + 'ms' }"
           @add-tag="(t) => addTag(s, t)"
           @remove-tag="(t) => removeTag(s, t)"
+          @assign="(gid) => assignSessionGuest(s, gid)"
           @delete-media="deleteMedia"
           @download-media="downloadMedia"
         />

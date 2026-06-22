@@ -188,6 +188,33 @@ func (dba Dbaccess) setSessionGuestDriver(sessionId, gdid int) (int64, error) {
 	return affected, tracerr.Wrap(err)
 }
 
+// setConnectionGuestDriver attributes an entire session (connection) — every
+// driver_session and driver_drift_run row under it — to a guest driver, or
+// clears it back to the GUID's own name when gdid == 0. The whole-stint sibling
+// of setSessionGuestDriver. Returns total rows affected.
+func (dba Dbaccess) setConnectionGuestDriver(guid string, connId, gdid int) (int64, error) {
+	var total int64
+	for _, q := range []string{
+		`UPDATE driver_session SET guest_driver_id = ? WHERE connection_id = ? AND driver_guid = ?`,
+		`UPDATE driver_drift_run SET guest_driver_id = ? WHERE connection_id = ? AND driver_guid = ?`,
+	} {
+		res, err := dba.db.Exec(q, nullableId(gdid), connId, guid)
+		if err != nil {
+			return total, tracerr.Wrap(err)
+		}
+		n, _ := res.RowsAffected()
+		total += n
+	}
+	return total, nil
+}
+
+// connectionExists reports whether a connection id belongs to the given guid.
+func (dba Dbaccess) connectionExists(guid string, connId int) (bool, error) {
+	var n int
+	err := dba.db.QueryRow(`SELECT COUNT(*) FROM driver_connection WHERE id = ? AND driver_guid = ?`, connId, guid).Scan(&n)
+	return n > 0, tracerr.Wrap(err)
+}
+
 func (dba Dbaccess) getGuestDriverAvatarPath(id int) (string, error) {
 	var p sql.NullString
 	err := dba.db.QueryRow(`SELECT avatar_path FROM guest_driver WHERE id = ?`, id).Scan(&p)
@@ -608,6 +635,49 @@ func apiScoreAssign(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"id": raw, "guest_driver_id": req.GuestDriverId})
+}
+
+// apiSessionAssign attributes an entire session (connection) on a driver's
+// detail page to a guest driver, or clears it back to the GUID's own name
+// (null guest_driver_id). Connection-scoped sibling of apiScoreAssign.
+func apiSessionAssign(c *gin.Context) {
+	guid := c.Param("guid")
+	connId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || connId <= 0 {
+		apiBadRequest(c, "Invalid session id")
+		return
+	}
+	var req assignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid assignment payload")
+		return
+	}
+	exists, err := Dba.connectionExists(guid, connId)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if !exists {
+		apiNotFound(c)
+		return
+	}
+	gdid := req.gdid()
+	if gdid > 0 {
+		ok, err := Dba.guestDriverExists(gdid)
+		if err != nil {
+			apiDbError(c, err)
+			return
+		}
+		if !ok {
+			apiBadRequest(c, "That guest driver no longer exists.")
+			return
+		}
+	}
+	if _, err := Dba.setConnectionGuestDriver(guid, connId, gdid); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": c.Param("id"), "guest_driver_id": req.GuestDriverId})
 }
 
 // apiLiveDriverAssign tags a currently-connected car with a guest driver so its

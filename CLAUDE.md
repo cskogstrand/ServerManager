@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working Style
+
+Always use the **ponytail** skill/plugin when working in this repo: prefer the laziest solution that works — stdlib and native platform features before dependencies, one line before fifty, deletion over addition, no speculative abstractions.
+
 ## What This Project Is
 
 **Server Manager (SM)** is a web-based control panel for managing Assetto Corsa dedicated racing servers. It is a single Go binary with the Vue SPA, schema, INI templates, and static assets embedded at build time. The web UI runs on `http://localhost:3030`.

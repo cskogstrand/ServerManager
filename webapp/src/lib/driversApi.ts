@@ -547,9 +547,17 @@ const MOCK: DriverDetail[] = MOCK_RAW.map((d) => ({ ...d, session_history: build
 // for drift segments — enough to exercise every part of the session card.
 function buildMockSessions(d: MockDriver): DriverSession[] {
   const out: DriverSession[] = [];
-  const clip = d.media.find((m) => m.kind === "clip") ?? null;
-  for (let i = 0; i < d.results.length; i += 2) {
-    const chunk = d.results.slice(i, i + 2);
+  const clips = d.media.filter((m) => m.kind === "clip");
+  // Group consecutive same-mode results (drift vs timed) into sessions of up to
+  // two segments — a real connection is one server, never a drift+race mix.
+  let i = 0;
+  while (i < d.results.length) {
+    const drift = d.results[i].kind === "drift";
+    const chunk: DriverResult[] = [];
+    while (i < d.results.length && (d.results[i].kind === "drift") === drift && chunk.length < 2) {
+      chunk.push(d.results[i]);
+      i++;
+    }
     const first = chunk[0];
     const idx = out.length;
     const dates = chunk.map((r) => r.date);
@@ -563,7 +571,9 @@ function buildMockSessions(d: MockDriver): DriverSession[] {
       if (r.kind === "drift") {
         const sc = r.drift_score ?? 0;
         bestDrift = Math.max(bestDrift, sc);
-        driftRuns.push({ id: `${r.session_id}-run`, score: sc, ended_at: r.date, clip: null });
+        // Pin a distinct captured clip to each run so every score row has media.
+        const clip = clips.length ? clips[driftRuns.length % clips.length] : null;
+        driftRuns.push({ id: `${r.session_id}-run`, score: sc, ended_at: r.date, clip });
       } else if ((r.best_lap_ms ?? 0) > 0) {
         const bl = r.best_lap_ms as number;
         bestLap = bestLap ? Math.min(bestLap, bl) : bl;
@@ -579,9 +589,6 @@ function buildMockSessions(d: MockDriver): DriverSession[] {
       const fastest = laps.reduce((b, x) => (x.laptime_ms < b.laptime_ms ? x : b), laps[0]);
       fastest.laptime_ms = bestLap;
       fastest.is_best = true;
-    }
-    if (clip && driftRuns.length) {
-      driftRuns.reduce((b, x) => (x.score > b.score ? x : b)).clip = clip;
     }
 
     out.push({

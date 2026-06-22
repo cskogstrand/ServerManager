@@ -52,8 +52,27 @@ function pick(guestDriverId: number | null) {
   emit("assign", guestDriverId);
 }
 
-const clips = computed(() => props.session.media.filter((m) => m.kind === "clip"));
-const screenshots = computed(() => props.session.media.filter((m) => m.kind === "screenshot"));
+// Which kind of server this stint ran on decides what detail list shows: drift
+// scores for a drift server, lap times for a race server.
+const isDrift = computed(
+  () =>
+    props.session.drift_runs.length > 0 ||
+    (props.session.best_drift ?? 0) > 0 ||
+    props.session.segments.some((s) => s.kind === "drift"),
+);
+// One row per drift score, high→low so the headline run leads (rank #1 = best).
+const driftRows = computed(() => [...props.session.drift_runs].sort((a, b) => b.score - a.score));
+
+// Clips ride inline on their score row; the captures gallery holds the rest
+// (screenshots, manual clips) so nothing appears twice.
+const tiedClipIds = computed(() => new Set(props.session.drift_runs.map((r) => r.clip?.id).filter(Boolean)));
+const captures = computed(() => props.session.media.filter((m) => !tiedClipIds.value.has(m.id)));
+
+// One lightbox for the whole card: plays a clip, or shows a still.
+const active = ref<MediaItem | null>(null);
+function openMedia(m: MediaItem | null | undefined) {
+  if (m && isRealMedia(m)) active.value = m;
+}
 
 const durationLabel = computed(() => {
   const end = props.session.left_at ?? Date.now();
@@ -195,8 +214,8 @@ function submitTag() {
         <Button v-if="assignable" variant="ghost" size="sm" class="ml-auto" @click="assignOpen = true">Reassign</Button>
       </div>
 
-      <!-- Segments -->
-      <div v-if="session.segments.length" class="mb-4">
+      <!-- Sessions on track — timed (race) stints only; drift uses the score list -->
+      <div v-if="!isDrift && session.segments.length" class="mb-4">
         <div class="mb-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">Sessions on track</div>
         <ul class="space-y-1">
           <li
@@ -206,11 +225,11 @@ function submitTag() {
           >
             <span
               class="grid w-16 shrink-0 place-items-center rounded border py-0.5 text-[10px] font-bold tracking-wide uppercase"
-              :class="r.kind === 'drift' ? 'border-accent/40 bg-accent-dim text-accent' : r.position === 1 ? 'border-warn/45 bg-warn-glow text-warn' : 'border-line bg-surface-2 text-muted'"
+              :class="r.position === 1 ? 'border-warn/45 bg-warn-glow text-warn' : 'border-line bg-surface-2 text-muted'"
             >
               {{ sessionKindLabel[r.kind] }}
             </span>
-            <div class="min-w-0 flex-1 text-xs text-muted truncate">{{ segMetric(r).secondary }}</div>
+            <div class="min-w-0 flex-1 truncate text-xs text-muted">{{ segMetric(r).secondary }}</div>
             <div class="shrink-0 text-right">
               <span
                 class="font-mono text-xs font-bold tabular-nums"
@@ -222,8 +241,8 @@ function submitTag() {
         </ul>
       </div>
 
-      <!-- Laps -->
-      <div v-if="session.laps.length" class="mb-4">
+      <!-- Lap times — race-server stints only -->
+      <div v-if="!isDrift && session.laps.length" class="mb-4">
         <div class="mb-1.5 flex items-center gap-2 text-[11px] font-bold tracking-wide text-dim uppercase">
           <Icon name="gauge" :size="13" /> Lap times <span class="text-dim/70">({{ session.laps.length }})</span>
         </div>
@@ -257,67 +276,94 @@ function submitTag() {
         </div>
       </div>
 
-      <!-- Drift runs -->
-      <div v-if="session.drift_runs.length" class="mb-4">
+      <!-- Drift scores — drift-server stints only; one row per score, clip inline -->
+      <div v-if="isDrift && driftRows.length" class="mb-4">
         <div class="mb-1.5 flex items-center gap-2 text-[11px] font-bold tracking-wide text-dim uppercase">
-          <Icon name="activity" :size="13" /> Drift runs <span class="text-dim/70">({{ session.drift_runs.length }})</span>
+          <Icon name="activity" :size="13" /> Drift scores <span class="text-dim/70">({{ driftRows.length }})</span>
         </div>
-        <div class="grid gap-2 sm:grid-cols-2">
-          <div
-            v-for="run in session.drift_runs"
+        <ul class="space-y-1.5">
+          <li
+            v-for="(run, i) in driftRows"
             :key="run.id"
-            class="overflow-hidden rounded-md border border-line/60 bg-surface/40"
+            class="flex items-center gap-3 rounded-md border px-2.5 py-2"
+            :class="i === 0 ? 'border-accent/40 bg-accent-dim/30' : 'border-line/60 bg-surface/40'"
           >
-            <div
-              v-if="run.clip && isRealMedia(run.clip)"
-              class="aspect-video w-full overflow-hidden border-b border-line/60"
-            >
-              <video :src="run.clip.url" class="size-full bg-black object-cover" preload="none" controls playsinline />
-            </div>
-            <div class="flex items-center justify-between gap-2 px-2.5 py-1.5">
-              <div class="flex items-center gap-2">
-                <Icon name="activity" :size="13" class="text-accent" />
-                <span class="font-mono text-sm font-bold tabular-nums text-accent">{{ fmtScore(run.score) }}</span>
+            <span
+              class="grid size-6 shrink-0 place-items-center rounded-md border text-[11px] font-bold tabular-nums"
+              :class="i === 0 ? 'border-accent/40 bg-accent-dim text-accent' : 'border-line bg-surface-2 text-dim'"
+            >{{ i + 1 }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="font-mono text-base font-bold tabular-nums text-accent">{{ fmtScore(run.score) }}</span>
                 <span class="text-[10px] font-bold tracking-wide text-dim uppercase">pts</span>
+                <span
+                  v-if="i === 0"
+                  class="inline-flex items-center rounded-full border border-accent/40 bg-accent-dim px-1.5 text-[9px] font-bold tracking-wide text-accent uppercase"
+                >Best</span>
               </div>
-              <span class="text-[10px] text-dim">{{ timeAgo(run.ended_at) }}</span>
+              <div class="mt-0.5 text-[11px] text-muted">{{ timeAgo(run.ended_at) }}</div>
             </div>
-          </div>
-        </div>
+            <!-- Inline clip: poster thumbnail doubles as the play button → lightbox -->
+            <button
+              v-if="run.clip"
+              type="button"
+              class="group relative h-12 w-20 shrink-0 overflow-hidden rounded-md border border-line/60 bg-black"
+              :class="isRealMedia(run.clip) ? 'cursor-pointer' : 'cursor-default opacity-60'"
+              :title="isRealMedia(run.clip) ? 'Play clip' : 'Clip unavailable'"
+              @click="openMedia(run.clip)"
+            >
+              <img v-if="run.clip.thumb_url" :src="run.clip.thumb_url" alt="" loading="lazy" class="size-full object-cover" />
+              <video v-else-if="isRealMedia(run.clip)" :src="run.clip.url" class="size-full object-cover" preload="metadata" muted playsinline />
+              <span class="absolute inset-0 grid place-items-center bg-black/30 text-white/90 transition-colors group-hover:bg-black/45">
+                <Icon name="play" :size="16" />
+              </span>
+              <span
+                v-if="run.clip.duration_s"
+                class="absolute right-0.5 bottom-0.5 rounded bg-black/60 px-1 font-mono text-[9px] font-semibold text-white/90"
+              >{{ fmtClipDuration(run.clip.duration_s) }}</span>
+            </button>
+          </li>
+        </ul>
       </div>
 
-      <!-- Media (manual / screenshots not tied to a run) -->
-      <div v-if="screenshots.length || clips.length">
+      <!-- Captures — stills + clips not pinned to a score row -->
+      <div v-if="captures.length">
         <div class="mb-1.5 flex items-center gap-2 text-[11px] font-bold tracking-wide text-dim uppercase">
-          <Icon name="film" :size="13" /> Highlights <span class="text-dim/70">({{ session.media.length }})</span>
+          <Icon name="film" :size="13" /> Captures <span class="text-dim/70">({{ captures.length }})</span>
         </div>
-        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <article
-            v-for="m in session.media"
-            :key="m.id"
-            class="group overflow-hidden rounded-md border border-line/60 bg-surface/40"
-          >
-            <div class="relative aspect-video overflow-hidden bg-black">
-              <video v-if="m.kind === 'clip' && isRealMedia(m)" :src="m.url" class="size-full object-cover" preload="none" controls playsinline />
-              <img v-else-if="isRealMedia(m)" :src="m.url" alt="" loading="lazy" class="size-full object-cover" />
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <article v-for="m in captures" :key="m.id" class="group">
+            <button
+              type="button"
+              class="relative block aspect-video w-full overflow-hidden rounded-md border border-line/60 bg-black"
+              :class="isRealMedia(m) ? 'cursor-pointer' : 'cursor-default'"
+              @click="openMedia(m)"
+            >
+              <img v-if="m.kind === 'screenshot' && isRealMedia(m)" :src="m.url" alt="" loading="lazy" class="size-full object-cover" />
+              <img v-else-if="m.thumb_url" :src="m.thumb_url" alt="" loading="lazy" class="size-full object-cover" />
+              <video v-else-if="isRealMedia(m)" :src="m.url" class="size-full object-cover" preload="metadata" muted playsinline />
               <div v-else class="grid size-full place-items-center text-text/25">
-                <Icon :name="m.kind === 'clip' ? 'play' : 'camera'" :size="20" />
+                <Icon :name="m.kind === 'clip' ? 'play' : 'camera'" :size="18" />
               </div>
               <span
-                v-if="m.trigger"
-                class="pointer-events-none absolute top-1.5 left-1.5 inline-flex items-center gap-1 rounded border border-warn/45 bg-warn-glow px-1.5 py-0.5 font-mono text-[10px] font-bold text-warn"
+                v-if="m.kind === 'clip' && isRealMedia(m)"
+                class="absolute inset-0 grid place-items-center bg-black/25 text-white/90 transition-colors group-hover:bg-black/40"
               >
-                <Icon name="arrowUp" :size="10" /> +{{ fmtScore(m.trigger.delta) }}
+                <Icon name="play" :size="18" />
               </span>
-              <span v-if="m.duration_s" class="pointer-events-none absolute top-1.5 right-1.5 rounded bg-bg/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text/90">
-                {{ fmtClipDuration(m.duration_s) }}
+              <span
+                v-if="m.trigger"
+                class="pointer-events-none absolute top-1 left-1 inline-flex items-center gap-0.5 rounded border border-warn/45 bg-warn-glow px-1 py-0.5 font-mono text-[9px] font-bold text-warn"
+              >
+                <Icon name="arrowUp" :size="9" /> +{{ fmtScore(m.trigger.delta) }}
               </span>
-            </div>
-            <div class="flex items-center gap-2 px-2 py-1.5">
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-[11px] font-semibold text-text">{{ m.caption }}</div>
-                <div class="text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
-              </div>
+              <span
+                v-if="m.duration_s"
+                class="pointer-events-none absolute right-1 bottom-1 rounded bg-black/60 px-1 font-mono text-[9px] font-semibold text-white/90"
+              >{{ fmtClipDuration(m.duration_s) }}</span>
+            </button>
+            <div class="mt-1 flex items-center gap-1.5">
+              <div class="min-w-0 flex-1 truncate text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
               <MediaActions
                 v-if="isRealMedia(m)"
                 :item="m"
@@ -339,6 +385,19 @@ function submitTag() {
         No laps, drift runs or highlights recorded in this session.
       </p>
     </div>
+
+    <!-- Lightbox: plays the clicked clip / shows the clicked still -->
+    <Modal :open="!!active" :title="active?.caption || (active?.kind === 'clip' ? 'Clip' : 'Capture')" @close="active = null">
+      <video
+        v-if="active?.kind === 'clip'"
+        :src="active.url"
+        class="w-full rounded-md bg-black"
+        controls
+        autoplay
+        playsinline
+      />
+      <img v-else-if="active" :src="active.url" :alt="active.caption" class="w-full rounded-md" />
+    </Modal>
 
     <!-- Reassign-driver modal -->
     <Modal :open="assignOpen" title="Assign session to driver" @close="assignOpen = false">

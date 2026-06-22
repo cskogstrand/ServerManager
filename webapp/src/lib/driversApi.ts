@@ -196,6 +196,12 @@ export async function removeSessionTag(guid: string, sessionId: string, tag: str
   return res.tags ?? [];
 }
 
+// Delete an entire session (connection) and everything tied to it: drift
+// scores, lap times and captured media (files included). No undo.
+export async function deleteSession(guid: string, sessionId: string): Promise<void> {
+  await api.delete(`/api/drivers/${encodeURIComponent(guid)}/sessions/${encodeURIComponent(sessionId)}`);
+}
+
 // Global session search: connections across all drivers, filtered by tag and/or
 // free text (driver name or track). Falls back to the mock sessions on 404/501.
 export async function searchSessions(opts: { tag?: string; q?: string } = {}): Promise<SessionSearchResult[]> {

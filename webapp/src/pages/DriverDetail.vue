@@ -5,12 +5,13 @@
 // stream, and an auto-captured highlight reel of their biggest drift spikes.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { getDriver, addSessionTag, removeSessionTag, fmtDate, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
+import { getDriver, addSessionTag, removeSessionTag, deleteSession, fmtDate, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
 import { listGuestDrivers, assignSession, type GuestDriver } from "@/lib/guestDriversApi";
 import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
 import { lapTime, sessionTypeLabel, computeRunningOrder } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useToastStore } from "@/stores/toast";
+import { useConfirmStore } from "@/stores/confirm";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
@@ -30,6 +31,7 @@ import { isWhepUrl } from "@/lib/useDriverStreams";
 
 const route = useRoute();
 const toast = useToastStore();
+const confirm = useConfirmStore();
 const auth = useAuthStore();
 const server = useServerStore();
 const content = useContentStore();
@@ -375,6 +377,41 @@ async function assignSessionGuest(session: DriverSession, guestDriverId: number 
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
+
+// Delete a whole connection and everything tied to it. Tally the consequences
+// so the warning is concrete, confirm, then drop it from the local list.
+async function removeSession(session: DriverSession) {
+  const clips = session.media.length;
+  const runs = session.drift_runs.length;
+  const laps = session.laps.length;
+  const parts = [
+    runs && `${runs} drift score${runs > 1 ? "s" : ""}`,
+    laps && `${laps} lap time${laps > 1 ? "s" : ""}`,
+    clips && `${clips} image${clips > 1 ? "s" : ""}/video${clips > 1 ? "s" : ""}`,
+  ].filter(Boolean);
+  const ok = await confirm.ask({
+    title: "Delete entire session?",
+    message: `This permanently deletes everything from this ${session.track.name} session and can't be undone.`,
+    detail: parts.length ? `Removes ${parts.join(", ")}, including the captured media files.` : "Removes all scores, lap times and captured media files.",
+    confirmLabel: "Delete session",
+    tone: "danger",
+  });
+  if (!ok || !driver.value) return;
+  // Optimistic: drop it now, roll back only on a real server error.
+  const prev = driver.value.session_history;
+  driver.value.session_history = prev.filter((s) => s.id !== session.id);
+  try {
+    await deleteSession(guid.value, session.id);
+    toast.success("Session deleted.");
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      toast.info(previewFallbackMsg);
+      return;
+    }
+    if (driver.value) driver.value.session_history = prev;
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
 </script>
 
 <template>
@@ -619,6 +656,7 @@ async function assignSessionGuest(session: DriverSession, guestDriverId: number 
           @assign="(gid) => assignSessionGuest(s, gid)"
           @delete-media="deleteMedia"
           @download-media="downloadMedia"
+          @delete-session="removeSession(s)"
         />
 
         <Card v-if="!driver.session_history.length">

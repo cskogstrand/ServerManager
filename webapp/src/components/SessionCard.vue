@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (e: "delete-media", media: MediaItem): void;
   (e: "download-media", media: MediaItem): void;
   (e: "assign", guestDriverId: number | null): void;
+  (e: "delete-session"): void;
 }>();
 
 const expanded = ref(props.defaultOpen ?? false);
@@ -384,6 +385,13 @@ function submitTag() {
       >
         No laps, drift runs or highlights recorded in this session.
       </p>
+
+      <!-- Destructive: wipe the whole connection. Parent confirms + calls the API. -->
+      <div v-if="taggable" class="mt-4 flex justify-end border-t border-line/60 pt-3">
+        <Button variant="danger" size="sm" @click="emit('delete-session')">
+          <Icon name="trash" :size="14" /> Delete session
+        </Button>
+      </div>
     </div>
 
     <!-- Lightbox: plays the clicked clip / shows the clicked still -->

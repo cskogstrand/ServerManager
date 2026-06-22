@@ -217,6 +217,9 @@ type driverRow struct {
 type dsSessionRow struct {
 	id          int64
 	guid        string
+	// name is the driver's display name at session end, carried for the
+	// session_end SSE event only (not persisted; the driver table owns the name).
+	name        string
 	sessionType int
 	carKey      string
 	skinKey     string
@@ -315,6 +318,7 @@ func sessionRowFromDriverLocked(d *DriverState, now int64) dsSessionRow {
 	}
 	return dsSessionRow{
 		guid:        d.Guid,
+		name:        d.Name,
 		sessionType: d.sessType,
 		carKey:      d.Car,
 		skinKey:     d.Skin,
@@ -403,7 +407,9 @@ func persistFinishedSessions(instanceId int, rows []dsSessionRow) {
 		}
 		if err := Dba.insertDriverSession(instanceId, r); err != nil {
 			log.Print("driverstats: insert session: ", err)
+			continue
 		}
+		Events.Publish("session_end", instanceId, sessionEndPayload(r))
 	}
 }
 

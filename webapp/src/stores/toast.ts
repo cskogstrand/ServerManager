@@ -2,10 +2,18 @@ import { defineStore } from "pinia";
 
 export type ToastTone = "success" | "error" | "info";
 
+// An optional actionable button on a toast — a router target ("Go to race",
+// "Preview now"). Clicking it navigates and dismisses the toast.
+export interface ToastAction {
+  label: string;
+  to: string;
+}
+
 export interface Toast {
   id: number;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
   // Auto-dismiss timer handle, kept so we can clear it on manual dismiss.
   timer: ReturnType<typeof setTimeout> | null;
 }
@@ -21,11 +29,12 @@ export const useToastStore = defineStore("toast", {
   }),
 
   actions: {
-    push(tone: ToastTone, message: string, ttl?: number) {
+    push(tone: ToastTone, message: string, ttl?: number, action?: ToastAction) {
       const id = nextId++;
-      const duration = ttl ?? (tone === "error" ? 8000 : 4000);
+      // Actionable toasts linger a little longer so the button is clickable.
+      const duration = ttl ?? (tone === "error" ? 8000 : action ? 7000 : 4000);
       const timer = duration > 0 ? setTimeout(() => this.dismiss(id), duration) : null;
-      this.toasts.push({ id, tone, message, timer });
+      this.toasts.push({ id, tone, message, action, timer });
       return id;
     },
     success(message: string, ttl?: number) {

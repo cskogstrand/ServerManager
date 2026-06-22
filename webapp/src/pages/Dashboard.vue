@@ -18,6 +18,7 @@ import {
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
 import Card from "@/components/ui/Card.vue";
+import LiveFeed from "@/components/LiveFeed.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
 import StreamWall from "@/components/StreamWall.vue";
 import Button from "@/components/ui/Button.vue";
@@ -280,6 +281,8 @@ onMounted(async () => {
       </span>
     </template>
   </PageHeader>
+
+  <LiveFeed class="mb-4" />
 
   <div v-if="loading" class="space-y-3">
     <Skeleton v-for="n in 3" :key="n" class="h-24" />

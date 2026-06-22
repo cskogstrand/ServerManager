@@ -1,10 +1,17 @@
 <script setup lang="ts">
 // Global toast stack, mounted once in App.vue. Bottom-right on desktop,
 // top on mobile (clear of the bottom tab bar).
+import { useRouter } from "vue-router";
 import { useToastStore } from "@/stores/toast";
 import Icon from "@/components/ui/Icon.vue";
 
 const toasts = useToastStore();
+const router = useRouter();
+
+function act(id: number, to: string) {
+  toasts.dismiss(id);
+  void router.push(to);
+}
 
 const tone = {
   success: { icon: "check", cls: "border-ok/45 bg-ok-glow text-ok" },
@@ -27,7 +34,17 @@ const tone = {
           role="status"
         >
           <Icon :name="tone[t.tone].icon" :size="17" class="mt-0.5 shrink-0" />
-          <span class="min-w-0 flex-1 break-words">{{ t.message }}</span>
+          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span class="break-words">{{ t.message }}</span>
+            <button
+              v-if="t.action"
+              type="button"
+              class="self-start cursor-pointer rounded border border-current/40 px-2 py-0.5 text-xs font-semibold opacity-90 transition-opacity hover:opacity-100"
+              @click="act(t.id, t.action.to)"
+            >
+              {{ t.action.label }} →
+            </button>
+          </div>
           <button
             type="button"
             class="-mr-1 shrink-0 cursor-pointer rounded p-0.5 opacity-60 transition-opacity hover:opacity-100"

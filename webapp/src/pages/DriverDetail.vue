@@ -14,6 +14,7 @@ import { useToastStore } from "@/stores/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
+import { useFeedStore } from "@/stores/feed";
 import type { DriverState, InstanceState } from "@/stores/server";
 import type { DriverDetail, DriverSession, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
@@ -32,6 +33,7 @@ const toast = useToastStore();
 const auth = useAuthStore();
 const server = useServerStore();
 const content = useContentStore();
+const feed = useFeedStore();
 const cap = useDriverCapture();
 
 const guid = computed(() => String(route.params.guid));
@@ -242,8 +244,35 @@ onMounted(() => {
   cap.startPoll();
 });
 watch(guid, load);
+
+// Live refresh: when a streamed event for THIS driver lands (lap, drift run,
+// session start/end, saved media, recording), refetch silently — no skeleton
+// flash — so the page updates without a manual refresh. Debounced so a burst
+// (lap after lap) collapses into one refetch.
+let liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+async function reloadSilent() {
+  try {
+    const fresh = await getDriver(guid.value);
+    if (fresh) driver.value = fresh;
+  } catch {
+    /* transient — keep current data until the next event */
+  }
+}
+watch(
+  () => feed.lastId,
+  () => {
+    const it = feed.items[0];
+    if (!it || it.guid !== guid.value || liveRefreshTimer) return;
+    liveRefreshTimer = setTimeout(() => {
+      liveRefreshTimer = null;
+      void reloadSilent();
+    }, 1200);
+  },
+);
+
 onBeforeUnmount(() => {
   if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
+  if (liveRefreshTimer) clearTimeout(liveRefreshTimer);
   recording.value = false;
   cap.stopPoll();
 });

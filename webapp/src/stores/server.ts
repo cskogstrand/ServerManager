@@ -2,6 +2,20 @@ import { defineStore } from "pinia";
 import { api } from "@/lib/api";
 import { subscribeServerEvents, type ServerEvent } from "@/lib/sse";
 import { useContentStore } from "@/stores/content";
+import { useFeedStore } from "@/stores/feed";
+import { useToastStore } from "@/stores/toast";
+
+// Persisted domain changes that belong on the live feed, not in per-instance
+// state. Routed before the instance lookup so guid-only events (instance 0)
+// don't trip the unknown-instance recovery.
+const FEED_TYPES = new Set([
+  "session_start",
+  "session_end",
+  "lap",
+  "drift_run",
+  "media",
+  "recording",
+]);
 
 export interface SessionState {
   name: string;
@@ -311,6 +325,11 @@ export const useServerStore = defineStore("server", {
         return;
       }
 
+      if (FEED_TYPES.has(event.type)) {
+        useFeedStore().ingest(event);
+        return;
+      }
+
       const inst = this.instances[event.instance_id];
       if (!inst) {
         // Event for an instance we have not loaded yet (startup race, or one
@@ -331,7 +350,11 @@ export const useServerStore = defineStore("server", {
           break;
         case "server":
           inst.running = event.data.running;
-          if (!event.data.running) {
+          if (event.data.running) {
+            useFeedStore().add({ type: "server", icon: "power", tone: "ok", text: `${inst.name} started`, link: `/server/${inst.id}` });
+            useToastStore().push("success", `${inst.name} — race started`, undefined, { label: "Go to race", to: `/server/${inst.id}` });
+          } else {
+            useFeedStore().add({ type: "server", icon: "power", tone: "dim", text: `${inst.name} stopped` });
             inst.players = 0;
             inst.session = null;
             inst.drivers = [];

@@ -112,6 +112,7 @@ func (inst *Instance) driverJoin(nc NewConnection) {
 				cur.connectionId = connId
 			}
 			inst.mu.Unlock()
+			inst.publishSessionStart(d.Guid, d.Name, d.Car, d.sessTrack, d.sessConfig, connId)
 		}
 	}
 	Captures.nudge() // a connect may arm a rolling-buffer recorder
@@ -152,7 +153,9 @@ func (inst *Instance) driverLap(lc LapCompleted) {
 	now := time.Now().UnixMilli()
 	inst.mu.Lock()
 	var lap *dsLapInsert
+	var lapName string
 	if d := inst.drivers[lc.carId]; d != nil {
+		lapName = d.Name
 		d.Laps++
 		d.LastLapMs = lc.laptime
 		if lc.laptime > 0 && (d.BestLapMs == 0 || lc.laptime < d.BestLapMs) {
@@ -181,6 +184,8 @@ func (inst *Instance) driverLap(lc LapCompleted) {
 	if lap != nil {
 		if err := Dba.insertDriverLap(inst.Id(), *lap); err != nil {
 			log.Print("driverstats: insert lap: ", err)
+		} else {
+			inst.publishLap(lapName, *lap)
 		}
 	}
 	inst.publishDrivers()
@@ -256,6 +261,7 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 	var run *dsDriftInsert
 	var capReq *captureRequest
 	var endedGuid string
+	var driftName string
 	if d := inst.drivers[carId]; d != nil {
 		if live {
 			// A run starts when the live score first rises from zero; remember
@@ -305,6 +311,7 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 			// A completed run: persist it so the driver's drift history and
 			// best-ever score survive the session reset.
 			if d.Guid != "" && score > 0 {
+				driftName = d.Name
 				run = &dsDriftInsert{
 					guid:          d.Guid,
 					trackKey:      d.sessTrack,
@@ -326,10 +333,13 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 		runId, err := Dba.insertDriftRun(inst.Id(), *run)
 		if err != nil {
 			log.Print("driverstats: insert drift run: ", err)
-		} else if capReq != nil {
-			// Same end-of-run block built both — tag the capture's media with the
-			// run id so the leaderboard links score → video exactly.
-			capReq.driftRunId = runId
+		} else {
+			if capReq != nil {
+				// Same end-of-run block built both — tag the capture's media with the
+				// run id so the leaderboard links score → video exactly.
+				capReq.driftRunId = runId
+			}
+			inst.publishDriftRun(driftName, runId, *run)
 		}
 	}
 	if capReq != nil {

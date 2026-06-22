@@ -412,6 +412,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
+	// One emit here covers every capture path (auto clip/screenshot, manual clip,
+	// snapshot). instance 0: capture isn't instance-scoped; the feed routes by guid.
+	Events.Publish("media", 0, map[string]any{
+		"guid": guid, "kind": kind, "caption": caption,
+		"file": filepath.Base(path), "score": triggerScore,
+		"drift_run_id": driftRunId, "connection_id": connectionId,
+	})
 	return nil
 }
 
@@ -564,6 +571,7 @@ func (m *captureManager) startManualRecording(guid string) error {
 	m.manual[guid] = mark
 	m.manualMu.Unlock()
 
+	Events.Publish("recording", 0, map[string]any{"guid": guid, "recording": true})
 	m.nudge() // make sure a recorder is (or comes) up to fill the buffer
 	log.Printf("driver capture: manual recording armed for %s", guid)
 	return nil

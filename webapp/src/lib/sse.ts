@@ -2,7 +2,22 @@
 // Event shape mirrors src/events.go: {type, instance_id, ts, data}.
 
 export interface ServerEvent {
-  type: "snapshot" | "session" | "players" | "server" | "content_job" | "drivers" | "positions" | "telemetry";
+  type:
+    | "snapshot"
+    | "session"
+    | "players"
+    | "server"
+    | "content_job"
+    | "drivers"
+    | "positions"
+    | "telemetry"
+    // Domain events (persisted changes), routed to the live feed + notifications.
+    | "session_start"
+    | "session_end"
+    | "lap"
+    | "drift_run"
+    | "media"
+    | "recording";
   instance_id: number;
   ts: number;
   data: any;

@@ -11,6 +11,8 @@ import type { DriverSession, DriverResult, MediaItem } from "@/types/driverStats
 import type { GuestDriver } from "@/lib/guestDriversApi";
 import Icon from "@/components/ui/Icon.vue";
 import MediaActions from "@/components/MediaActions.vue";
+import Modal from "@/components/ui/Modal.vue";
+import Button from "@/components/ui/Button.vue";
 
 const props = defineProps<{
   session: DriverSession;
@@ -35,17 +37,19 @@ const newTag = ref("");
 const taggable = computed(() => props.canOperate && props.session.id !== "0");
 const isLive = computed(() => props.session.left_at === null);
 
-// Guest attribution: who this whole session counts for. value 0 = the GUID's
-// own name; >0 = a roster guest, resolved against the list the parent loads.
+// Guest attribution: who this whole session counts for. A roster guest, or the
+// GUID's own name when unassigned. Resolved against the list the parent loads.
+// Reassigning is infrequent, so it lives behind a button + modal in the body.
 const assignable = computed(() => props.canOperate && props.session.id !== "0");
 const guestName = computed(() => {
   const id = props.session.guest_driver_id;
   if (!id) return "";
   return props.guests?.find((g) => g.id === id)?.name ?? "Guest driver";
 });
-function onAssign(e: Event) {
-  const v = Number((e.target as HTMLSelectElement).value);
-  emit("assign", v > 0 ? v : null);
+const assignOpen = ref(false);
+function pick(guestDriverId: number | null) {
+  assignOpen.value = false;
+  emit("assign", guestDriverId);
 }
 
 const clips = computed(() => props.session.media.filter((m) => m.kind === "clip"));
@@ -179,25 +183,18 @@ function submitTag() {
           />
         </div>
       </div>
-
-      <!-- ATTRIBUTION: who this whole session counts for -->
-      <div v-if="assignable || guestName" class="flex flex-wrap items-center gap-2 text-xs" @click.stop>
-        <span class="inline-flex items-center gap-1 text-dim"><Icon name="user" :size="12" /> Driven by</span>
-        <select
-          v-if="assignable"
-          class="h-6 cursor-pointer rounded-md border border-line bg-surface px-2 text-[11px] font-semibold text-text focus:border-accent/50 focus:outline-none"
-          :value="session.guest_driver_id ?? 0"
-          @change="onAssign"
-        >
-          <option :value="0">— Account driver (own name) —</option>
-          <option v-for="g in guests" :key="g.id" :value="g.id">{{ g.name }}</option>
-        </select>
-        <span v-else class="font-semibold text-accent">{{ guestName }}</span>
-      </div>
     </header>
 
     <!-- BODY -->
     <div v-if="expanded" class="border-t border-line/70 px-3.5 pb-4 pt-3 sm:px-4">
+      <!-- Attribution: who this session's results count for -->
+      <div v-if="assignable || guestName" class="mb-4 flex items-center gap-2 rounded-md border border-line/60 bg-surface/40 px-3 py-2">
+        <Icon name="user" :size="14" class="text-dim" />
+        <span class="text-xs text-muted">Driven by</span>
+        <span class="text-sm font-semibold" :class="guestName ? 'text-accent' : 'text-text'">{{ guestName || "Account driver" }}</span>
+        <Button v-if="assignable" variant="ghost" size="sm" class="ml-auto" @click="assignOpen = true">Reassign</Button>
+      </div>
+
       <!-- Segments -->
       <div v-if="session.segments.length" class="mb-4">
         <div class="mb-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">Sessions on track</div>
@@ -342,6 +339,38 @@ function submitTag() {
         No laps, drift runs or highlights recorded in this session.
       </p>
     </div>
+
+    <!-- Reassign-driver modal -->
+    <Modal :open="assignOpen" title="Assign session to driver" @close="assignOpen = false">
+      <p class="mb-3 text-xs text-muted">
+        Attribute every lap, drift run and clip in this session to a driver. Pick the account's own name to revert.
+      </p>
+      <ul class="space-y-1">
+        <li>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+            :class="!session.guest_driver_id ? 'border-accent/50 bg-accent-dim font-semibold text-accent' : 'border-line text-text hover:border-line-hi hover:bg-surface-2'"
+            @click="pick(null)"
+          >
+            <Icon name="user" :size="14" /> Account driver (own name)
+          </button>
+        </li>
+        <li v-for="g in guests" :key="g.id">
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+            :class="session.guest_driver_id === g.id ? 'border-accent/50 bg-accent-dim font-semibold text-accent' : 'border-line text-text hover:border-line-hi hover:bg-surface-2'"
+            @click="pick(g.id)"
+          >
+            {{ g.name }}
+          </button>
+        </li>
+        <li v-if="!guests || !guests.length" class="px-3 py-2 text-xs text-dim">
+          No guest drivers yet — add them on the Guest Drivers page.
+        </li>
+      </ul>
+    </Modal>
   </section>
 </template>
 

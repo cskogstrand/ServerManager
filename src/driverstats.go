@@ -238,11 +238,12 @@ type dsSessionRow struct {
 }
 
 type dsDriftRow struct {
-	id           int64
-	guid         string
-	score        int
-	endedAt      int64
-	connectionId int64
+	id            int64
+	guid          string
+	score         int
+	endedAt       int64
+	connectionId  int64
+	guestDriverId int // guest_driver attribution; 0 = the GUID's own name
 }
 
 // dsDriftFullRow carries the track/car a drift run was set on, for the flat
@@ -610,7 +611,7 @@ FROM driver_session`
 
 // queryDriftRuns returns runs oldest-first (for the trend sparkline). Pass "" for all.
 func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
-	q := `SELECT id, driver_guid, score, ended_at, connection_id FROM driver_drift_run`
+	q := `SELECT id, driver_guid, score, ended_at, connection_id, guest_driver_id FROM driver_drift_run`
 	var rows *sql.Rows
 	var err error
 	if guid != "" {
@@ -626,11 +627,12 @@ func (dba Dbaccess) queryDriftRuns(guid string) ([]dsDriftRow, error) {
 	out := make([]dsDriftRow, 0)
 	for rows.Next() {
 		var d dsDriftRow
-		var connectionId sql.NullInt64
-		if err := rows.Scan(&d.id, &d.guid, &d.score, &d.endedAt, &connectionId); err != nil {
+		var connectionId, guestDriverId sql.NullInt64
+		if err := rows.Scan(&d.id, &d.guid, &d.score, &d.endedAt, &connectionId, &guestDriverId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		d.connectionId = connectionId.Int64
+		d.guestDriverId = int(guestDriverId.Int64)
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {

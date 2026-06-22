@@ -31,65 +31,35 @@ onMounted(() => {
 });
 
 // --- Delete content (removes from disk + cache) ---
-async function deleteTrack(t: CacheTrack) {
+// The three kinds differ only in noun and store method, so they share one flow.
+async function deleteContent(
+  noun: "track" | "car" | "weather",
+  item: { name?: string; key?: string },
+  remove: (key: string) => Promise<unknown>,
+) {
+  const label = item.name || item.key;
   if (
     !(await confirm.ask({
-      title: "Delete track?",
-      message: `Permanently delete "${t.name || t.key}" and all its layouts from disk?`,
-      detail: "This removes the track folder from your Assetto Corsa install and cannot be undone.",
-      confirmLabel: "Delete track",
+      title: `Delete ${noun}?`,
+      message: `Permanently delete "${label}"${noun === "track" ? " and all its layouts" : ""} from disk?`,
+      detail: `This removes the ${noun} folder from your Assetto Corsa install and cannot be undone.`,
+      confirmLabel: `Delete ${noun}`,
       cancelLabel: "Keep",
       tone: "danger",
     }))
   )
     return;
   try {
-    await content.deleteTrack(t.key!);
-    toast.success(`Deleted ${t.name || t.key}.`);
+    await remove(item.key!);
+    toast.success(`Deleted ${label}.`);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
 
-async function deleteCar(carItem: CacheCar) {
-  if (
-    !(await confirm.ask({
-      title: "Delete car?",
-      message: `Permanently delete "${carItem.name || carItem.key}" from disk?`,
-      detail: "This removes the car folder from your Assetto Corsa install and cannot be undone.",
-      confirmLabel: "Delete car",
-      cancelLabel: "Keep",
-      tone: "danger",
-    }))
-  )
-    return;
-  try {
-    await content.deleteCar(carItem.key!);
-    toast.success(`Deleted ${carItem.name || carItem.key}.`);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  }
-}
-
-async function deleteWeather(w: CacheWeather) {
-  if (
-    !(await confirm.ask({
-      title: "Delete weather?",
-      message: `Permanently delete "${w.name || w.key}" from disk?`,
-      detail: "This removes the weather folder from your Assetto Corsa install and cannot be undone.",
-      confirmLabel: "Delete weather",
-      cancelLabel: "Keep",
-      tone: "danger",
-    }))
-  )
-    return;
-  try {
-    await content.deleteWeather(w.key!);
-    toast.success(`Deleted ${w.name || w.key}.`);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  }
-}
+const deleteTrack = (t: CacheTrack) => deleteContent("track", t, (k) => content.deleteTrack(k));
+const deleteCar = (c: CacheCar) => deleteContent("car", c, (k) => content.deleteCar(k));
+const deleteWeather = (w: CacheWeather) => deleteContent("weather", w, (k) => content.deleteWeather(k));
 
 // Library tab and search mirrored to the URL (?tab, ?q).
 const tab = useQueryParam<"tracks" | "cars" | "weathers">(

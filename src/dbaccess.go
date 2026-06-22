@@ -71,122 +71,72 @@ func (dba Dbaccess) applySchema(filePath string) {
 		log.Fatal("Error executing sql schema file: ", err)
 	}
 
-	if err := dba.ensureColumn("user_config", "auto_start_server", "INTEGER DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for user_config.auto_start_server: ", err)
+	// One idempotent pass of additive column migrations so databases created
+	// before a given column existed pick it up. Order is irrelevant (each
+	// ensureColumn is independent); the indexes below run afterward because
+	// they reference connection_id columns added here.
+	migrations := []struct{ table, col, def string }{
+		{"user_config", "auto_start_server", "INTEGER DEFAULT 0"},
+		{"cache_car", "content_path", "TEXT"},
+		{"cache_car", "modified_at", "INTEGER"},
+		{"cache_track", "content_path", "TEXT"},
+		{"cache_track", "modified_at", "INTEGER"},
+		{"user_class_entry", "car_count", "INTEGER NOT NULL DEFAULT 1"},
+		{"server_event", "instance_id", "INTEGER NOT NULL DEFAULT 1"},
+		{"user_config", "mod_download_url", "TEXT"},
+		{"user_config", "server_engine", "TEXT DEFAULT 'kunos'"},
+		{"user_config", "as_relax_checksums", "INTEGER DEFAULT 0"},
+		{"server_instance", "run_mode", "TEXT NOT NULL DEFAULT 'manual_queue'"},
+		{"server_instance", "repeat_event_id", "INTEGER"},
+		{"server_instance", "scheduled_start", "INTEGER"},
+		{"server_instance", "stream_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"server_instance", "stream_embed_url", "TEXT"},
+		{"server_instance", "stream_status_url", "TEXT"},
+		{"server_instance", "spectator_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"server_instance", "spectator_driver_name", "TEXT"},
+		{"server_instance", "spectator_guid", "TEXT"},
+		{"server_instance", "spectator_car_key", "TEXT"},
+		{"server_instance", "spectator_skin_key", "TEXT"},
+		{"server_instance", "start_on_boot", "INTEGER NOT NULL DEFAULT 0"},
+		{"server_instance", "drift_score_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"server_instance", "allow_wrong_way", "INTEGER NOT NULL DEFAULT 0"},
+		{"user_event", "name", "TEXT"},
+		// Existing single-user installs default to admin so nobody is locked out.
+		{"users", "role", "TEXT NOT NULL DEFAULT 'admin'"},
+		{"driver_stream", "stream_capture_url", "TEXT"},
+		// Links an auto-captured clip/screenshot to the drift run that triggered
+		// it, so the leaderboard relates a score to its video exactly.
+		{"driver_media", "drift_run_id", "INTEGER"},
+		// Per-row attribution override to a guest_driver (shared-account support).
+		// Installs that had the old extra_driver_id were renamed in
+		// migrateExtraDriverToGuest; this adds the column on ones predating it.
+		{"driver_drift_run", "guest_driver_id", "INTEGER"},
+		{"driver_session", "guest_driver_id", "INTEGER"},
+		// Guest-driver avatar (added after the table was first introduced).
+		{"guest_driver", "avatar_path", "TEXT"},
+		// Driver "sessions" = connections (connect→disconnect). The connection_id
+		// link columns are added to the pre-existing tables here so existing
+		// databases pick them up. NULL on rows written before connections.
+		{"driver_session", "connection_id", "INTEGER"},
+		{"driver_drift_run", "connection_id", "INTEGER"},
+		{"driver_media", "connection_id", "INTEGER"},
+		// Drift auto-capture settings.
+		{"user_config", "capture_enabled", "INTEGER NOT NULL DEFAULT 1"},
+		{"user_config", "capture_screenshots", "INTEGER NOT NULL DEFAULT 1"},
+		{"user_config", "capture_clips", "INTEGER NOT NULL DEFAULT 1"},
+		{"user_config", "capture_trigger_score", "INTEGER NOT NULL DEFAULT 2500"},
+		{"user_config", "capture_clip_seconds", "INTEGER NOT NULL DEFAULT 14"},
+		{"user_config", "capture_cooldown_seconds", "INTEGER NOT NULL DEFAULT 45"},
+		{"user_config", "capture_max_per_session", "INTEGER NOT NULL DEFAULT 12"},
 	}
-	if err := dba.ensureColumn("cache_car", "content_path", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for cache_car.content_path: ", err)
-	}
-	if err := dba.ensureColumn("cache_car", "modified_at", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for cache_car.modified_at: ", err)
-	}
-	if err := dba.ensureColumn("cache_track", "content_path", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for cache_track.content_path: ", err)
-	}
-	if err := dba.ensureColumn("cache_track", "modified_at", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for cache_track.modified_at: ", err)
-	}
-	if err := dba.ensureColumn("user_class_entry", "car_count", "INTEGER NOT NULL DEFAULT 1"); err != nil {
-		log.Fatal("Error applying database migration for user_class_entry.car_count: ", err)
-	}
-	if err := dba.ensureColumn("server_event", "instance_id", "INTEGER NOT NULL DEFAULT 1"); err != nil {
-		log.Fatal("Error applying database migration for server_event.instance_id: ", err)
-	}
-	if err := dba.ensureColumn("user_config", "mod_download_url", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for user_config.mod_download_url: ", err)
-	}
-	if err := dba.ensureColumn("user_config", "server_engine", "TEXT DEFAULT 'kunos'"); err != nil {
-		log.Fatal("Error applying database migration for user_config.server_engine: ", err)
-	}
-	if err := dba.ensureColumn("user_config", "as_relax_checksums", "INTEGER DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for user_config.as_relax_checksums: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "run_mode", "TEXT NOT NULL DEFAULT 'manual_queue'"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.run_mode: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "repeat_event_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.repeat_event_id: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "scheduled_start", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.scheduled_start: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "stream_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.stream_enabled: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "stream_embed_url", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.stream_embed_url: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "stream_status_url", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.stream_status_url: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "spectator_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.spectator_enabled: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "spectator_driver_name", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.spectator_driver_name: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "spectator_guid", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.spectator_guid: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "spectator_car_key", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.spectator_car_key: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "spectator_skin_key", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.spectator_skin_key: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "start_on_boot", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.start_on_boot: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "drift_score_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.drift_score_enabled: ", err)
-	}
-	if err := dba.ensureColumn("server_instance", "allow_wrong_way", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		log.Fatal("Error applying database migration for server_instance.allow_wrong_way: ", err)
-	}
-	if err := dba.ensureColumn("user_event", "name", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for user_event.name: ", err)
-	}
-	// Existing single-user installs default to admin so nobody is locked out.
-	if err := dba.ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
-		log.Fatal("Error applying database migration for users.role: ", err)
-	}
-	if err := dba.ensureColumn("driver_stream", "stream_capture_url", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for driver_stream.stream_capture_url: ", err)
-	}
-	// Links an auto-captured clip/screenshot to the drift run that triggered it,
-	// so the leaderboard relates a score to its video exactly (no time-matching).
-	if err := dba.ensureColumn("driver_media", "drift_run_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_media.drift_run_id: ", err)
-	}
-	// Per-row attribution override to a guest_driver (shared-account support).
-	// On installs that predate this column entirely it is added here; installs
-	// that had the old extra_driver_id were renamed in migrateExtraDriverToGuest.
-	if err := dba.ensureColumn("driver_drift_run", "guest_driver_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_drift_run.guest_driver_id: ", err)
-	}
-	if err := dba.ensureColumn("driver_session", "guest_driver_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_session.guest_driver_id: ", err)
-	}
-	// Guest-driver avatar (added after the table was first introduced).
-	if err := dba.ensureColumn("guest_driver", "avatar_path", "TEXT"); err != nil {
-		log.Fatal("Error applying database migration for guest_driver.avatar_path: ", err)
-	}
-	// Driver "sessions" = connections (connect→disconnect). The driver_connection,
-	// driver_lap and driver_session_tag tables are created by the schema above; the
-	// connection_id link columns are added to the pre-existing tables here so
-	// existing databases pick them up. NULL on rows written before connections.
-	if err := dba.ensureColumn("driver_session", "connection_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_session.connection_id: ", err)
-	}
-	if err := dba.ensureColumn("driver_drift_run", "connection_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_drift_run.connection_id: ", err)
-	}
-	if err := dba.ensureColumn("driver_media", "connection_id", "INTEGER"); err != nil {
-		log.Fatal("Error applying database migration for driver_media.connection_id: ", err)
+	for _, m := range migrations {
+		if err := dba.ensureColumn(m.table, m.col, m.def); err != nil {
+			log.Fatalf("Error applying database migration for %s.%s: %v", m.table, m.col, err)
+		}
 	}
 	// Indexes on the just-added connection_id columns. These live here, not in
-	// schema.sql, because schema.sql is executed before the ensureColumn calls
-	// above — on an existing database the column wouldn't exist yet there.
+	// schema.sql, because schema.sql is executed before the migrations above —
+	// on an existing database the column wouldn't exist yet there.
 	for _, idx := range []string{
 		"CREATE INDEX IF NOT EXISTS idx_driver_session_conn ON driver_session (connection_id)",
 		"CREATE INDEX IF NOT EXISTS idx_driver_drift_run_conn ON driver_drift_run (connection_id)",
@@ -194,19 +144,6 @@ func (dba Dbaccess) applySchema(filePath string) {
 	} {
 		if _, err := dba.db.Exec(idx); err != nil {
 			log.Fatal("Error creating driver connection_id index: ", err)
-		}
-	}
-	for col, def := range map[string]string{
-		"capture_enabled":          "INTEGER NOT NULL DEFAULT 1",
-		"capture_screenshots":      "INTEGER NOT NULL DEFAULT 1",
-		"capture_clips":            "INTEGER NOT NULL DEFAULT 1",
-		"capture_trigger_score":    "INTEGER NOT NULL DEFAULT 2500",
-		"capture_clip_seconds":     "INTEGER NOT NULL DEFAULT 14",
-		"capture_cooldown_seconds": "INTEGER NOT NULL DEFAULT 45",
-		"capture_max_per_session":  "INTEGER NOT NULL DEFAULT 12",
-	} {
-		if err := dba.ensureColumn("user_config", col, def); err != nil {
-			log.Fatal("Error applying database migration for user_config."+col+": ", err)
 		}
 	}
 }

@@ -36,6 +36,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ztrue/tracerr"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 const (
@@ -348,24 +350,11 @@ func fileNonEmpty(path string) bool {
 	return err == nil && fi.Size() > 0
 }
 
+var thousandsPrinter = message.NewPrinter(language.English)
+
 // groupThousands renders an int with comma group separators (12480 -> "12,480").
 func groupThousands(n int) string {
-	s := strconv.Itoa(n)
-	neg := strings.HasPrefix(s, "-")
-	if neg {
-		s = s[1:]
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteByte(s[i])
-	}
-	if neg {
-		return "-" + b.String()
-	}
-	return b.String()
+	return thousandsPrinter.Sprintf("%d", n)
 }
 
 // ---- capture-specific DB access --------------------------------------------

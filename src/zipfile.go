@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/akutz/sortfold"
 	"golang.org/x/image/draw"
 )
 
@@ -196,8 +195,9 @@ func (zf *ZipFile) UpdateZipfile(filesToZip map[string]string) {
 	}
 
 	// sort keys by name, insensitively
+	// ponytail: ToLower compare drops the sortfold dep; exact for the ASCII file paths here.
 	sort.Slice(keys, func(i, j int) bool {
-		return sortfold.CompareFold(keys[i], keys[j]) < 0
+		return strings.ToLower(keys[i]) < strings.ToLower(keys[j])
 	})
 
 	newFiles := make([]string, 0)

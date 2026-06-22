@@ -1043,15 +1043,16 @@ func apiWeatherPreviewImage(c *gin.Context) {
 	serveZipImage(c, "weather/"+weather+"/preview.jpg", "image/jpeg")
 }
 
-func apiDifficulty(c *gin.Context) {
+// apiPresetByID serves a single preset row by :id, 404ing on a bad id or a
+// missing row. The four preset GET-by-id endpoints differ only in their
+// selector and zero-value check, so they share this.
+func apiPresetByID[T any](c *gin.Context, sel func(int) (T, error), missing func(T) bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		noRoute(c)
 		return
 	}
-
-	data, err := Dba.selectDifficulty(id)
-
+	data, err := sel(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, map[string]any{
 			"success": false,
@@ -1059,88 +1060,27 @@ func apiDifficulty(c *gin.Context) {
 		})
 		return
 	}
-
-	if data.Id == nil {
+	if missing(data) {
 		noRoute(c)
 		return
 	}
-	c.PureJSON(http.StatusOK, gin.H{
-		"data": data,
-	})
+	c.PureJSON(http.StatusOK, gin.H{"data": data})
+}
+
+func apiDifficulty(c *gin.Context) {
+	apiPresetByID(c, Dba.selectDifficulty, func(d UserDifficulty) bool { return d.Id == nil })
 }
 
 func apiSession(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		noRoute(c)
-		return
-	}
-
-	data, err := Dba.selectSession(id)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	if data.Id == nil {
-		noRoute(c)
-		return
-	}
-	c.PureJSON(http.StatusOK, gin.H{
-		"data": data,
-	})
+	apiPresetByID(c, Dba.selectSession, func(d UserSession) bool { return d.Id == nil })
 }
 
 func apiClass(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		noRoute(c)
-		return
-	}
-
-	data, err := Dba.selectClassEntries(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	if data.Id == nil {
-		noRoute(c)
-		return
-	}
-	c.PureJSON(http.StatusOK, gin.H{
-		"data": data,
-	})
+	apiPresetByID(c, Dba.selectClassEntries, func(d UserClass) bool { return d.Id == nil })
 }
 
 func apiTime(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		noRoute(c)
-		return
-	}
-
-	data, err := Dba.selectTimeWeather(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	if data.Id == nil {
-		noRoute(c)
-		return
-	}
-	c.PureJSON(http.StatusOK, gin.H{
-		"data": data,
-	})
+	apiPresetByID(c, Dba.selectTimeWeather, func(d UserTime) bool { return d.Id == nil })
 }
 
 func apiRecacheContent(c *gin.Context) {

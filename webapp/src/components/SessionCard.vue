@@ -31,22 +31,18 @@ const emit = defineEmits<{
   (e: "delete-session"): void;
 }>();
 
-const expanded = ref(props.defaultOpen ?? false);
+const isLive = computed(() => props.session.left_at === null);
+// Live sessions open by default — you want to watch them, not click into them.
+const expanded = ref((props.defaultOpen ?? false) || isLive.value);
 const newTag = ref("");
 
 // A real, taggable session (id "0" is the synthetic "ungrouped" legacy bucket).
 const taggable = computed(() => props.canOperate && props.session.id !== "0");
-const isLive = computed(() => props.session.left_at === null);
 
 // Guest attribution: who this whole session counts for. A roster guest, or the
 // GUID's own name when unassigned. Resolved against the list the parent loads.
 // Reassigning is infrequent, so it lives behind a button + modal in the body.
 const assignable = computed(() => props.canOperate && props.session.id !== "0");
-const guestName = computed(() => {
-  const id = props.session.guest_driver_id;
-  if (!id) return "";
-  return props.guests?.find((g) => g.id === id)?.name ?? "Guest driver";
-});
 const assignOpen = ref(false);
 function pick(guestDriverId: number | null) {
   assignOpen.value = false;
@@ -207,14 +203,6 @@ function submitTag() {
 
     <!-- BODY -->
     <div v-if="expanded" class="border-t border-line/70 px-3.5 pb-4 pt-3 sm:px-4">
-      <!-- Attribution: who this session's results count for -->
-      <div v-if="assignable || guestName" class="mb-4 flex items-center gap-2 rounded-md border border-line/60 bg-surface/40 px-3 py-2">
-        <Icon name="user" :size="14" class="text-dim" />
-        <span class="text-xs text-muted">Driven by</span>
-        <span class="text-sm font-semibold" :class="guestName ? 'text-accent' : 'text-text'">{{ guestName || "Account driver" }}</span>
-        <Button v-if="assignable" variant="ghost" size="sm" class="ml-auto" @click="assignOpen = true">Reassign</Button>
-      </div>
-
       <!-- Sessions on track — timed (race) stints only; drift uses the score list -->
       <div v-if="!isDrift && session.segments.length" class="mb-4">
         <div class="mb-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">Sessions on track</div>
@@ -386,9 +374,12 @@ function submitTag() {
         No laps, drift runs or highlights recorded in this session.
       </p>
 
-      <!-- Destructive: wipe the whole connection. Parent confirms + calls the API. -->
-      <div v-if="taggable" class="mt-4 flex justify-end border-t border-line/60 pt-3">
-        <Button variant="danger" size="sm" @click="emit('delete-session')">
+      <!-- Reassign + delete. Delete is finished-sessions only; parent confirms + calls the API. -->
+      <div v-if="assignable" class="mt-4 flex justify-end gap-2 border-t border-line/60 pt-3">
+        <Button variant="ghost" size="sm" @click="assignOpen = true">
+          <Icon name="user" :size="14" /> Reassign driver
+        </Button>
+        <Button v-if="!isLive" variant="danger" size="sm" @click="emit('delete-session')">
           <Icon name="trash" :size="14" /> Delete session
         </Button>
       </div>

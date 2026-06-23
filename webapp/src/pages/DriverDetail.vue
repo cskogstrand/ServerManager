@@ -730,27 +730,6 @@ async function removeSession(session: DriverSession) {
               Connecting…
             </span>
           </h2>
-          <div v-if="auth.canOperate" class="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              :disabled="snapping"
-              title="Grab a still from the live stream now"
-              @click="takePicture"
-            >
-              <Icon name="camera" :size="14" />
-              {{ snapping ? "Capturing…" : "Take picture" }}
-            </Button>
-            <Button
-              size="sm"
-              :variant="isRecording ? 'danger' : 'ghost'"
-              :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
-              @click="isRecording ? stopRecord() : recordNow()"
-            >
-              <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
-              {{ isRecording ? "Stop recording" : "Record now" }}
-            </Button>
-          </div>
         </div>
         <Card class="min-w-0">
         <div
@@ -780,6 +759,27 @@ async function removeSession(session: DriverSession) {
               {{ driver.stream?.status === "offline" ? "The driver's stream isn't live right now." : "Add a stream URL under Instances → Driver streams." }}
             </p>
           </div>
+        </div>
+        <div v-if="auth.canOperate" class="mt-3 flex flex-wrap items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            :disabled="snapping"
+            title="Grab a still from the live stream now"
+            @click="takePicture"
+          >
+            <Icon name="camera" :size="14" />
+            {{ snapping ? "Capturing…" : "Take picture" }}
+          </Button>
+          <Button
+            size="sm"
+            :variant="isRecording ? 'danger' : 'ghost'"
+            :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
+            @click="isRecording ? stopRecord() : recordNow()"
+          >
+            <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
+            {{ isRecording ? "Stop recording" : "Record now" }}
+          </Button>
         </div>
         </Card>
       </div>

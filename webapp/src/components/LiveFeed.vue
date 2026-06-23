@@ -23,6 +23,7 @@ const FILTERS = [
   { v: "media", label: "Media" },
   { v: "recording", label: "Recordings" },
   { v: "server", label: "Server" },
+  { v: "app", label: "App" },
 ];
 
 const filterType = ref("");

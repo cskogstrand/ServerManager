@@ -47,6 +47,11 @@ function describe(e: ServerEvent): Describe | null {
   const who = d.name || (guid ? shortGuid(guid) : "Driver");
 
   switch (e.type) {
+    case "app":
+      // Server Manager app start/stop (persisted; replays after a restart).
+      return d.running
+        ? { icon: "activity", tone: "ok", text: "Server Manager started" }
+        : { icon: "activity", tone: "dim", text: "Server Manager stopped" };
     case "server":
       // Server start/stop. Persisted so the line survives a refresh; the toast
       // stays in the server store (notify:false here to avoid a double toast).

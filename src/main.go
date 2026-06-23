@@ -407,11 +407,18 @@ func main() {
 		}
 	}()
 
+	// App lifecycle in the activity feed. Persisted, so a restart shows up after
+	// the SPA reconnects even though no client is listening at boot.
+	Events.Publish("app", 0, map[string]any{"running": true})
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Print("Shutting down WebUI...\n\n")
+
+	// Persist the shutdown line before the DB closes (Publish writes synchronously).
+	Events.Publish("app", 0, map[string]any{"running": false})
 
 	Dba.db.Close()
 

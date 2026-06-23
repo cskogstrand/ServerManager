@@ -38,8 +38,8 @@ func (b *EventBroker) Unsubscribe(ch chan []byte) {
 // Domain event types worth persisting to the activity feed. Live-state churn
 // (telemetry, players, positions, snapshots) is deliberately excluded.
 var feedPersistTypes = map[string]bool{
-	"server": true, "session_start": true, "session_end": true, "lap": true,
-	"drift_run": true, "media": true, "recording": true,
+	"app": true, "server": true, "session_start": true, "session_end": true,
+	"lap": true, "drift_run": true, "media": true, "recording": true,
 }
 
 // Publish broadcasts one event. instanceId 0 means "not instance-specific"

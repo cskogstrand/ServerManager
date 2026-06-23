@@ -12,6 +12,7 @@ export interface ServerEvent {
     | "positions"
     | "telemetry"
     // Domain events (persisted changes), routed to the live feed + notifications.
+    | "app"
     | "session_start"
     | "session_end"
     | "lap"

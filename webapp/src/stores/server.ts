@@ -9,6 +9,7 @@ import { useToastStore } from "@/stores/toast";
 // state. Routed before the instance lookup so guid-only events (instance 0)
 // don't trip the unknown-instance recovery.
 const FEED_TYPES = new Set([
+  "app",
   "session_start",
   "session_end",
   "lap",

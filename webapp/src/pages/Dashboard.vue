@@ -282,8 +282,6 @@ onMounted(async () => {
     </template>
   </PageHeader>
 
-  <LiveFeed class="mb-4" />
-
   <div v-if="loading" class="space-y-3">
     <Skeleton v-for="n in 3" :key="n" class="h-24" />
   </div>
@@ -483,6 +481,8 @@ onMounted(async () => {
     </div>
     <StreamWall :channels="allStreamChannels" @watch="openTheater" />
   </section>
+
+  <LiveFeed class="mt-6" />
 
   <!-- Edit run setup: shared editor on the current event -->
   <Sheet :open="editOpen" title="Edit run setup" @close="editOpen = false">

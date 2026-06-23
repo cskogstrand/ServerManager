@@ -287,6 +287,7 @@ func main() {
 		api.GET("/server/readiness", apiServerReadiness)
 		api.GET("/setup/summary", apiSetupSummary)
 		api.GET("/server/events", apiServerEventsSSE)
+		api.GET("/feed", apiFeedList)
 		api.POST("/server/current-event", apiServerUpdateCurrentEvent)
 		api.POST("/server/broadcast", apiRaceBroadcast)
 		api.POST("/server/next-session", apiRaceNextSession)

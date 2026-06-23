@@ -91,6 +91,18 @@ function describe(e: ServerEvent): Describe | null {
   }
 }
 
+// feedItemFromEvent maps a raw domain event to a display item (no side effects).
+// Shared by the live SSE ingest and the persisted-feed history fetch so both
+// render identically. Returns null for events that aren't feed-worthy.
+export function feedItemFromEvent(e: ServerEvent): FeedItem | null {
+  const v = describe(e);
+  if (!v) return null;
+  return {
+    id: seq++, type: e.type, icon: v.icon, tone: v.tone, text: v.text,
+    guid: v.guid, link: v.link, ts: e.ts ? e.ts * 1000 : Date.now(),
+  };
+}
+
 export const useFeedStore = defineStore("feed", {
   state: () => ({
     items: [] as FeedItem[],
@@ -109,16 +121,27 @@ export const useFeedStore = defineStore("feed", {
       return full;
     },
 
+    // seed fills the live ring from persisted history (newest-first) so a fresh
+    // page load isn't empty. Only seeds when the ring is empty — never clobbers
+    // events the live SSE stream has already delivered.
+    seed(events: ServerEvent[]) {
+      if (this.items.length) return;
+      const items = events.map(feedItemFromEvent).filter((i): i is FeedItem => i !== null);
+      this.items = items.slice(0, CAP);
+      this.lastId = this.items[0]?.id ?? this.lastId;
+    },
+
     // ingest maps a raw domain SSE event to a feed item and, when notable, an
     // actionable toast (throttled per type+guid).
     ingest(e: ServerEvent) {
+      const item = feedItemFromEvent(e);
+      if (!item) return;
+      this.items.unshift(item);
+      if (this.items.length > CAP) this.items.length = CAP;
+      this.lastId = item.id;
+
       const v = describe(e);
-      if (!v) return;
-      this.add({
-        type: e.type, icon: v.icon, tone: v.tone, text: v.text,
-        guid: v.guid, link: v.link, ts: e.ts ? e.ts * 1000 : Date.now(),
-      });
-      if (!v.notify) return;
+      if (!v?.notify) return;
       const key = `${e.type}:${v.guid ?? ""}`;
       const now = Date.now();
       if (now - (lastToastAt[key] ?? 0) < TOAST_WINDOW) return;

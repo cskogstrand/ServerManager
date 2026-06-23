@@ -2291,3 +2291,69 @@ func (dba Dbaccess) deleteCacheWeather(key string) error {
 	_, err := dba.db.Exec("DELETE FROM cache_weather WHERE key = ?", key)
 	return tracerr.Wrap(err)
 }
+
+// insertFeedEvent appends one event to the persisted activity feed. The
+// feed_event_cap trigger trims old rows automatically.
+func (dba Dbaccess) insertFeedEvent(eventType string, instanceId int, guid string, ts int64, data string) error {
+	_, err := dba.db.Exec(
+		"INSERT INTO feed_event (type, instance_id, guid, ts, data) VALUES (?, ?, ?, ?, ?)",
+		eventType, instanceId, guid, ts, data)
+	return tracerr.Wrap(err)
+}
+
+// queryFeedEvents returns persisted feed events newest-first, filtered by any of
+// types/guid/instance_id, with limit/offset paging. Also returns the total count
+// matching the filters (ignoring paging) so the UI can render page controls.
+func (dba Dbaccess) queryFeedEvents(types []string, guid string, instanceId, limit, offset int) ([]feedEventRow, int, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	conds := []string{}
+	args := []any{}
+	if len(types) > 0 {
+		conds = append(conds, "type IN ("+strings.TrimSuffix(strings.Repeat("?,", len(types)), ",")+")")
+		for _, t := range types {
+			args = append(args, t)
+		}
+	}
+	if guid != "" {
+		conds = append(conds, "guid = ?")
+		args = append(args, guid)
+	}
+	if instanceId > 0 {
+		conds = append(conds, "instance_id = ?")
+		args = append(args, instanceId)
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
+	}
+
+	var total int
+	if err := dba.db.QueryRow("SELECT COUNT(*) FROM feed_event"+where, args...).Scan(&total); err != nil {
+		return nil, 0, tracerr.Wrap(err)
+	}
+
+	rows, err := dba.db.Query(
+		"SELECT type, instance_id, ts, data FROM feed_event"+where+" ORDER BY id DESC LIMIT ? OFFSET ?",
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+
+	out := make([]feedEventRow, 0, limit)
+	for rows.Next() {
+		var r feedEventRow
+		var data string
+		if err := rows.Scan(&r.Type, &r.InstanceId, &r.Ts, &data); err != nil {
+			return nil, 0, tracerr.Wrap(err)
+		}
+		r.Data = json.RawMessage(data)
+		out = append(out, r)
+	}
+	return out, total, rows.Err()
+}

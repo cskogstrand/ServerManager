@@ -418,6 +418,27 @@ CREATE TABLE IF NOT EXISTS driver_session_tag (
   UNIQUE(connection_id, tag)
 );
 
+-- Persisted activity feed: the domain events (joins, finishes, laps, drift runs,
+-- media, recordings) the dashboard live feed shows, kept so the feed survives a
+-- reload and can be filtered/paged. `data` is the raw event payload JSON; `guid`
+-- is denormalised out of it for fast per-driver filtering. ts is Unix seconds.
+CREATE TABLE IF NOT EXISTS feed_event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  instance_id INTEGER NOT NULL DEFAULT 0,
+  guid TEXT,
+  ts INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+
+-- ponytail: cap at newest ~5000 rows via a self-maintaining trigger, no Go-side
+-- pruning. Raise the cap or switch to time-based retention if anyone needs more
+-- history than a few days of activity.
+CREATE TRIGGER IF NOT EXISTS feed_event_cap AFTER INSERT ON feed_event
+BEGIN
+  DELETE FROM feed_event WHERE id <= NEW.id - 5000;
+END;
+
 
 
 
@@ -430,6 +451,8 @@ CREATE INDEX IF NOT EXISTS idx_driver_connection_guid ON driver_connection (driv
 CREATE INDEX IF NOT EXISTS idx_driver_lap_conn ON driver_lap (connection_id);
 CREATE INDEX IF NOT EXISTS idx_session_tag_tag ON driver_session_tag (tag);
 CREATE INDEX IF NOT EXISTS idx_session_tag_conn ON driver_session_tag (connection_id);
+CREATE INDEX IF NOT EXISTS idx_feed_event_type ON feed_event (type);
+CREATE INDEX IF NOT EXISTS idx_feed_event_guid ON feed_event (guid);
 -- NOTE: indexes on driver_session/driver_drift_run/driver_media.connection_id are
 -- created in dbaccess.go AFTER the ensureColumn migrations add that column —
 -- this file runs before those ALTERs, so the column may not exist here yet.

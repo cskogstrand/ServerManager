@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,17 +35,29 @@ func (b *EventBroker) Unsubscribe(ch chan []byte) {
 	b.mu.Unlock()
 }
 
+// Domain event types worth persisting to the activity feed. Live-state churn
+// (telemetry, players, positions, snapshots) is deliberately excluded.
+var feedPersistTypes = map[string]bool{
+	"session_start": true, "session_end": true, "lap": true,
+	"drift_run": true, "media": true, "recording": true,
+}
+
 // Publish broadcasts one event. instanceId 0 means "not instance-specific"
 // (e.g. content jobs).
 func (b *EventBroker) Publish(eventType string, instanceId int, payload any) {
+	ts := time.Now().Unix()
 	msg, err := json.Marshal(map[string]any{
 		"type":        eventType,
 		"instance_id": instanceId,
-		"ts":          time.Now().Unix(),
+		"ts":          ts,
 		"data":        payload,
 	})
 	if err != nil {
 		return
+	}
+
+	if feedPersistTypes[eventType] {
+		persistFeedEvent(eventType, instanceId, ts, payload)
 	}
 
 	b.mu.Lock()
@@ -54,6 +68,52 @@ func (b *EventBroker) Publish(eventType string, instanceId int, payload any) {
 		default:
 		}
 	}
+}
+
+// feedEventRow is one persisted feed event, shaped to match the SSE ServerEvent
+// the SPA already knows ({type, instance_id, ts, data}) so the frontend reuses
+// its existing event→feed-item mapping for fetched history.
+type feedEventRow struct {
+	Type       string          `json:"type"`
+	InstanceId int             `json:"instance_id"`
+	Ts         int64           `json:"ts"`
+	Data       json.RawMessage `json:"data"`
+}
+
+// persistFeedEvent stores a feed-worthy event. ponytail: synchronous insert on
+// the publish path; local SQLite writes are sub-ms. Move to a buffered channel
+// only if it ever shows up as UDP-handler latency.
+func persistFeedEvent(eventType string, instanceId int, ts int64, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	guid := ""
+	if m, ok := payload.(map[string]any); ok {
+		guid, _ = m["guid"].(string)
+	}
+	_ = Dba.insertFeedEvent(eventType, instanceId, guid, ts, string(data))
+}
+
+// apiFeedList (GET /api/feed) returns persisted feed events newest-first with
+// optional type (comma-separated), guid and instance_id filters plus limit/
+// offset pagination. Shape: {events: ServerEvent[], total: int}.
+func apiFeedList(c *gin.Context) {
+	var types []string
+	if t := strings.TrimSpace(c.Query("type")); t != "" {
+		types = strings.Split(t, ",")
+	}
+	guid := strings.TrimSpace(c.Query("guid"))
+	instanceId, _ := strconv.Atoi(c.Query("instance_id"))
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	offset, _ := strconv.Atoi(c.Query("offset"))
+
+	events, total, err := Dba.queryFeedEvents(types, guid, instanceId, limit, offset)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"events": events, "total": total})
 }
 
 func sessionEventPayload(s SessionInfo) map[string]any {

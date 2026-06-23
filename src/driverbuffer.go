@@ -401,7 +401,7 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 	}
 	defer os.Remove(listPath)
 
-	if m.concatEncode(listPath, outPath) {
+	if m.concatEncode(listPath, outPath, endMs-startMs) {
 		return sel[0].startMs, true
 	}
 	return 0, false
@@ -415,8 +415,18 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 // it). Re-encoding rebuilds a clean, monotonic, zero-based timeline.
 // ponytail: re-encode always — correctness over the copy fast-path that shipped
 // unplayable clips. Re-add a copy path only if it produces verified-monotonic ts.
-func (m *captureManager) concatEncode(listPath, outPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*localFfmpegTimeout)
+func (m *captureManager) concatEncode(listPath, outPath string, windowMs int64) bool {
+	// Budget the re-encode off the clip length, not a fixed cap: a 120s manual
+	// clip needs far longer than a 14s auto-clip. CommandContext sends SIGKILL on
+	// the deadline, which leaves a moov-less, unplayable MP4 — so a too-short
+	// timeout silently produces a broken file. Allow ~3x realtime + headroom,
+	// floored at the old short-clip budget. ponytail: 3x is slack for a busy box;
+	// veryfast usually beats realtime.
+	timeout := time.Duration(windowMs)*3*time.Millisecond + 30*time.Second
+	if timeout < 2*localFfmpegTimeout {
+		timeout = 2 * localFfmpegTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.ffmpeg,
 		"-nostdin", "-y", "-loglevel", "error",
@@ -426,6 +436,9 @@ func (m *captureManager) concatEncode(listPath, outPath string) bool {
 		outPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("driver capture: clip concat encode failed: %v %s", err, strings.TrimSpace(string(out)))
+		// A killed/failed encode leaves a partial, moov-less file — drop it so it
+		// can't be served or orphaned on disk.
+		_ = os.Remove(outPath)
 		return false
 	}
 	return fileNonEmpty(outPath)

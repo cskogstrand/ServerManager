@@ -38,7 +38,7 @@ func (b *EventBroker) Unsubscribe(ch chan []byte) {
 // Domain event types worth persisting to the activity feed. Live-state churn
 // (telemetry, players, positions, snapshots) is deliberately excluded.
 var feedPersistTypes = map[string]bool{
-	"session_start": true, "session_end": true, "lap": true,
+	"server": true, "session_start": true, "session_end": true, "lap": true,
 	"drift_run": true, "media": true, "recording": true,
 }
 
@@ -137,7 +137,10 @@ func sessionEventPayload(s SessionInfo) map[string]any {
 }
 
 func (inst *Instance) publishRunning(running bool) {
-	Events.Publish("server", inst.Id(), map[string]any{"running": running})
+	// name travels with the event so the persisted-feed history renders the same
+	// "<server> started/stopped" line the live client builds, with no instance
+	// lookup needed when replayed after a refresh.
+	Events.Publish("server", inst.Id(), map[string]any{"running": running, "name": inst.Name()})
 }
 
 func (inst *Instance) publishPlayers() {

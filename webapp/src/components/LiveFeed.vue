@@ -22,6 +22,7 @@ const FILTERS = [
   { v: "session_start", label: "Joins" },
   { v: "media", label: "Media" },
   { v: "recording", label: "Recordings" },
+  { v: "server", label: "Server" },
 ];
 
 const filterType = ref("");

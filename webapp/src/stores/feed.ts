@@ -47,6 +47,12 @@ function describe(e: ServerEvent): Describe | null {
   const who = d.name || (guid ? shortGuid(guid) : "Driver");
 
   switch (e.type) {
+    case "server":
+      // Server start/stop. Persisted so the line survives a refresh; the toast
+      // stays in the server store (notify:false here to avoid a double toast).
+      return d.running
+        ? { icon: "power", tone: "ok", text: `${d.name ?? "Server"} started`, link: `/server/${e.instance_id}` }
+        : { icon: "power", tone: "dim", text: `${d.name ?? "Server"} stopped` };
     case "session_start":
       return { icon: "users", tone: "info", text: `${who} joined`, guid, link };
     case "session_end": {
@@ -112,15 +118,6 @@ export const useFeedStore = defineStore("feed", {
   }),
 
   actions: {
-    // add pushes a pre-built item (used for non-driver events like server start).
-    add(item: Omit<FeedItem, "id" | "ts"> & { ts?: number }) {
-      const full: FeedItem = { id: seq++, ts: item.ts ?? Date.now(), ...item };
-      this.items.unshift(full);
-      if (this.items.length > CAP) this.items.length = CAP;
-      this.lastId = full.id;
-      return full;
-    },
-
     // seed fills the live ring from persisted history (newest-first) so a fresh
     // page load isn't empty. Only seeds when the ring is empty — never clobbers
     // events the live SSE stream has already delivered.

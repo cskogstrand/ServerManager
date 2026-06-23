@@ -350,11 +350,12 @@ export const useServerStore = defineStore("server", {
           break;
         case "server":
           inst.running = event.data.running;
+          // Feed item via the shared mapping so the live line matches the
+          // persisted one replayed after a refresh; toast stays explicit here.
+          useFeedStore().ingest(event);
           if (event.data.running) {
-            useFeedStore().add({ type: "server", icon: "power", tone: "ok", text: `${inst.name} started`, link: `/server/${inst.id}` });
             useToastStore().push("success", `${inst.name} — race started`, undefined, { label: "Go to race", to: `/server/${inst.id}` });
           } else {
-            useFeedStore().add({ type: "server", icon: "power", tone: "dim", text: `${inst.name} stopped` });
             inst.players = 0;
             inst.session = null;
             inst.drivers = [];

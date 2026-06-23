@@ -192,6 +192,19 @@ func (dba Dbaccess) setSessionGuestDriver(sessionId, gdid int) (int64, error) {
 // driver_session and driver_drift_run row under it — to a guest driver, or
 // clears it back to the GUID's own name when gdid == 0. The whole-stint sibling
 // of setSessionGuestDriver. Returns total rows affected.
+// setMediaGuestDriver attributes one standalone manual recording (matched by
+// driver + filename) to a guest driver; gdid 0 clears it back to the GUID's name.
+func (dba Dbaccess) setMediaGuestDriver(guid, file string, gdid int) (int64, error) {
+	res, err := dba.db.Exec(
+		`UPDATE driver_media SET guest_driver_id = ? WHERE driver_guid = ? AND path = ?`,
+		nullableId(gdid), guid, file)
+	if err != nil {
+		return 0, tracerr.Wrap(err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 func (dba Dbaccess) setConnectionGuestDriver(guid string, connId, gdid int) (int64, error) {
 	var total int64
 	for _, q := range []string{
@@ -678,6 +691,45 @@ func apiSessionAssign(c *gin.Context) {
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"id": c.Param("id"), "guest_driver_id": req.GuestDriverId})
+}
+
+// apiDriverMediaAssign attributes one standalone manual recording (matched by
+// driver + filename, the same key the GET/DELETE media routes use) to a guest
+// driver, or clears it. Per-capture sibling of apiSessionAssign.
+func apiDriverMediaAssign(c *gin.Context) {
+	guid := strings.TrimSpace(c.Param("guid"))
+	file := filepath.Base(c.Param("file"))
+	if guid == "" || file == "" || file == "." || file == "/" {
+		apiNotFound(c)
+		return
+	}
+	var req assignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiBadRequest(c, "Invalid assignment payload")
+		return
+	}
+	gdid := req.gdid()
+	if gdid > 0 {
+		ok, err := Dba.guestDriverExists(gdid)
+		if err != nil {
+			apiDbError(c, err)
+			return
+		}
+		if !ok {
+			apiBadRequest(c, "That guest driver no longer exists.")
+			return
+		}
+	}
+	n, err := Dba.setMediaGuestDriver(guid, file, gdid)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if n == 0 {
+		apiNotFound(c)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"guest_driver_id": req.GuestDriverId})
 }
 
 // apiLiveDriverAssign tags a currently-connected car with a guest driver so its

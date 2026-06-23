@@ -120,6 +120,8 @@ func (dba Dbaccess) applySchema(filePath string) {
 		{"driver_session", "connection_id", "INTEGER"},
 		{"driver_drift_run", "connection_id", "INTEGER"},
 		{"driver_media", "connection_id", "INTEGER"},
+		// Per-capture guest attribution for standalone manual recordings.
+		{"driver_media", "guest_driver_id", "INTEGER"},
 		// Drift auto-capture settings.
 		{"user_config", "capture_enabled", "INTEGER NOT NULL DEFAULT 1"},
 		{"user_config", "capture_screenshots", "INTEGER NOT NULL DEFAULT 1"},

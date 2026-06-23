@@ -76,6 +76,9 @@ type mediaItem struct {
 	CapturedAt int64         `json:"captured_at"`
 	DurationS  *int          `json:"duration_s,omitempty"`
 	Trigger    *mediaTrigger `json:"trigger,omitempty"`
+	// GuestDriverId attributes a standalone manual recording to a guest driver
+	// (nil = the GUID's own name). Only set/used for the manual-recordings reel.
+	GuestDriverId *int `json:"guest_driver_id,omitempty"`
 }
 
 type streamRef struct {
@@ -940,15 +943,16 @@ func (dba Dbaccess) tagsForConnection(connId int64) ([]string, error) {
 // mediaWithConn pairs a media item with the connection it was captured in, so
 // getDriverDetail can build the flat reel and the per-session groups in one read.
 type mediaWithConn struct {
-	item   mediaItem
-	connId int64
+	item       mediaItem
+	connId     int64
+	driftRunId int64 // 0 = not tied to a scored drift run (manual/snapshot/legacy)
 }
 
 // queryDriverMediaRows returns a driver's media newest-first, each tagged with
 // its connection id (0 when unknown/legacy).
 func (dba Dbaccess) queryDriverMediaRows(guid string) ([]mediaWithConn, error) {
 	rows, err := dba.db.Query(`
-SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, connection_id
+SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, connection_id, drift_run_id, guest_driver_id
 FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
@@ -960,8 +964,8 @@ FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 		var kind, path string
 		var caption sql.NullString
 		var capturedAt int64
-		var durationS, triggerScore, triggerDelta, connId sql.NullInt64
-		if err := rows.Scan(&id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta, &connId); err != nil {
+		var durationS, triggerScore, triggerDelta, connId, driftRunId, guestId sql.NullInt64
+		if err := rows.Scan(&id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta, &connId, &driftRunId, &guestId); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		m := mediaItem{
@@ -978,7 +982,11 @@ FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 		if triggerScore.Valid || triggerDelta.Valid {
 			m.Trigger = &mediaTrigger{DriftScore: int(triggerScore.Int64), Delta: int(triggerDelta.Int64)}
 		}
-		out = append(out, mediaWithConn{item: m, connId: connId.Int64})
+		if guestId.Valid {
+			v := int(guestId.Int64)
+			m.GuestDriverId = &v
+		}
+		out = append(out, mediaWithConn{item: m, connId: connId.Int64, driftRunId: driftRunId.Int64})
 	}
 	return out, rows.Err()
 }
@@ -1524,11 +1532,18 @@ func getDriverDetail(guid string) (*driverDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	det.Media = make([]mediaItem, 0, len(mediaRows))
+	// Manual recordings made outside any session (no connection, no scored run)
+	// get their own reel; everything else stays grouped under its session.
+	det.Media = make([]mediaItem, 0)
+	grouped := make([]mediaWithConn, 0, len(mediaRows))
 	for _, mw := range mediaRows {
-		det.Media = append(det.Media, mw.item)
+		if mw.connId == 0 && mw.driftRunId == 0 {
+			det.Media = append(det.Media, mw.item)
+		} else {
+			grouped = append(grouped, mw)
+		}
 	}
-	det.Sessions = assembleSessions(conns, sessions, drifts, lapsByConn, tagsByConn, mediaRows, clipByRun, carNames, trackInfo, sum.Online)
+	det.Sessions = assembleSessions(conns, sessions, drifts, lapsByConn, tagsByConn, grouped, clipByRun, carNames, trackInfo, sum.Online)
 	det.Stream = streamForGuid(guid)
 	return det, nil
 }

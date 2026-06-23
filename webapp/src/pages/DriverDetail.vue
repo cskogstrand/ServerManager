@@ -6,7 +6,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getDriver, addSessionTag, removeSessionTag, deleteSession, fmtDate, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
-import { listGuestDrivers, assignSession, type GuestDriver } from "@/lib/guestDriversApi";
+import { listGuestDrivers, assignSession, assignMedia, type GuestDriver } from "@/lib/guestDriversApi";
 import { useDriverCapture, fmtClipDuration } from "@/lib/useDriverCapture";
 import { lapTime, sessionTypeLabel, computeRunningOrder } from "@/lib/raceTelemetry";
 import { api, ApiError, csrfToken } from "@/lib/api";
@@ -26,6 +26,7 @@ import Sparkline from "@/components/ui/Sparkline.vue";
 import CountUp from "@/components/ui/CountUp.vue";
 import TrackImage from "@/components/TrackImage.vue";
 import SessionCard from "@/components/SessionCard.vue";
+import ManualRecordings from "@/components/ManualRecordings.vue";
 import WhepPlayer from "@/components/WhepPlayer.vue";
 import { isWhepUrl } from "@/lib/useDriverStreams";
 
@@ -172,8 +173,15 @@ async function stopRecord() {
 
 // Recording ends server-side on the next drift run; poll until the clip lands
 // (or give up after ~3 min) so it appears without a manual refresh.
+// Total media across the manual reel + every session, so the poll notices a new
+// clip whether it lands standalone (recorded off-session) or inside a session.
+function mediaCount(d: DriverDetail | null): number {
+  if (!d) return 0;
+  return d.media.length + d.session_history.reduce((n, s) => n + s.media.length, 0);
+}
+
 async function pollForClip() {
-  const before = driver.value?.media.length ?? 0;
+  const before = mediaCount(driver.value);
   for (let i = 0; i < 18 && recording.value; i++) {
     await sleep(10000);
     if (!recording.value) return;
@@ -181,7 +189,7 @@ async function pollForClip() {
       const fresh = await getDriver(guid.value);
       if (fresh) {
         driver.value = fresh;
-        if (fresh.media.length > before) {
+        if (mediaCount(fresh) > before) {
           toast.success("Clip captured.");
           break;
         }
@@ -374,6 +382,23 @@ async function assignSessionGuest(session: DriverSession, guestDriverId: number 
     toast.success(guestDriverId ? `Session assigned to ${name ?? "guest driver"}.` : "Session reverted to account driver.");
   } catch (e) {
     session.guest_driver_id = prev;
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  }
+}
+
+// Attribute one standalone manual recording to a guest driver (or null to
+// revert). Optimistic; rolls back on error.
+async function assignMediaGuest(m: MediaItem, guestDriverId: number | null) {
+  if (!driver.value) return;
+  const prev = m.guest_driver_id ?? null;
+  if (prev === guestDriverId) return;
+  m.guest_driver_id = guestDriverId;
+  try {
+    await assignMedia(m.url, guestDriverId);
+    const name = guestDriverId ? guests.value.find((g) => g.id === guestDriverId)?.name : "";
+    toast.success(guestDriverId ? `Recording assigned to ${name ?? "guest driver"}.` : "Recording reverted to account driver.");
+  } catch (e) {
+    m.guest_driver_id = prev;
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
 }
@@ -757,6 +782,19 @@ async function removeSession(session: DriverSession) {
         </div>
       </Card>
     </div>
+
+    <!-- MANUAL RECORDINGS — captures made outside any session -->
+    <ManualRecordings
+      v-if="driver.media.length"
+      class="mt-4"
+      :items="driver.media"
+      :can-operate="auth.canOperate"
+      :deleting-ids="deleting"
+      :guests="guests"
+      @assign="assignMediaGuest"
+      @delete-media="deleteMedia"
+      @download-media="downloadMedia"
+    />
   </template>
 </template>
 

@@ -57,6 +57,13 @@ export async function assignSession(guid: string, sessionId: string, guestDriver
   });
 }
 
+// Attribute one standalone manual recording to a guest driver, or pass null to
+// clear it. `mediaUrl` is the item's served URL (/api/drivers/:guid/media/:file)
+// — the same key the download/delete actions use.
+export async function assignMedia(mediaUrl: string, guestDriverId: number | null): Promise<void> {
+  await api.post(`${mediaUrl}/assign`, { guest_driver_id: guestDriverId });
+}
+
 // Tag a currently-connected car on a running instance with a guest driver (or
 // null to clear) so its subsequent runs/sessions are recorded under that person.
 export async function assignLiveDriver(instanceId: number, carId: number, guestDriverId: number | null): Promise<void> {

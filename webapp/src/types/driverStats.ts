@@ -57,6 +57,9 @@ export interface MediaItem {
     delta: number;
     track?: string;
   };
+  // Guest-driver attribution for a standalone manual recording (null = the
+  // account's own name). Only meaningful for items in the manual-recordings reel.
+  guest_driver_id?: number | null;
 }
 
 export interface StreamRef {

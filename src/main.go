@@ -340,6 +340,7 @@ func main() {
 		api.POST("/drivers/:guid/snapshot", apiDriverSnapshot)
 		api.GET("/drivers/:guid/media/:file", apiDriverMedia)
 		api.DELETE("/drivers/:guid/media/:file", apiDriverMediaDelete)
+		api.POST("/drivers/:guid/media/:file/assign", apiDriverMediaAssign)
 		// Session (connection) tags + global session search.
 		api.POST("/drivers/:guid/sessions/:id/tags", apiSessionTagAdd)
 		api.DELETE("/drivers/:guid/sessions/:id/tags", apiSessionTagRemove)

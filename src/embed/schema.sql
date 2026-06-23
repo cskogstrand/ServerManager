@@ -371,7 +371,10 @@ CREATE TABLE IF NOT EXISTS driver_media (
   trigger_delta INTEGER,
   drift_run_id INTEGER,
   -- driver_connection this capture happened in (NULL on legacy/manual rows).
-  connection_id INTEGER
+  connection_id INTEGER,
+  -- Per-capture attribution to a guest_driver, for manual recordings made
+  -- outside any session (NULL = the GUID's own name).
+  guest_driver_id INTEGER
 );
 
 -- A driver "session": one continuous connection, from connect to disconnect. It

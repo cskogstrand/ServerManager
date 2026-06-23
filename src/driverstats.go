@@ -18,6 +18,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -1814,7 +1815,57 @@ func apiScoresList(c *gin.Context) {
 		apiDbError(c, err)
 		return
 	}
+	// In -debug with an empty DB, hand back synthetic rows so the leaderboard
+	// table + pagination are exercisable without seeding real sessions.
+	if debug && len(list) == 0 {
+		list = debugDummyScores()
+	}
 	c.PureJSON(http.StatusOK, gin.H{"scores": list})
+}
+
+// debugDummyScores fabricates a leaderboard feed (~45 drift + ~45 lap rows) for
+// local dev. ponytail: deterministic index math, debug-gated, never prod.
+func debugDummyScores() []scoreEntry {
+	names := []string{"Kenji Sato", "Ola Berg", "Tariq Aziz", "Mei Lin", "Vince Carter", "Rosa Diaz",
+		"Finn Olsen", "Hana Kim", "Bruno Costa", "Igor Petrov", "Sora Watanabe", "Elif Demir",
+		"Noah Webb", "Aiko Mori", "Pavel Novak", "Greta Hahn"}
+	cars := []carRef{
+		{Key: "ks_toyota_ae86_drift", Name: "Toyota AE86 Trueno"},
+		{Key: "ks_nissan_silvia_s15", Name: "Nissan Silvia S15"},
+		{Key: "ks_mazda_rx7_spirit_r", Name: "Mazda RX-7 Spirit R"},
+		{Key: "ks_nissan_skyline_r34", Name: "Nissan Skyline GT-R R34"},
+		{Key: "ks_porsche_911_gt3_r_2016", Name: "Porsche 911 GT3 R"},
+		{Key: "ks_ferrari_488_gt3", Name: "Ferrari 488 GT3"},
+		{Key: "ks_audi_r8_lms_2016", Name: "Audi R8 LMS"},
+	}
+	driftTracks := []trackRef{
+		{Key: "gunma_cycle_sports_center", Name: "Gunma Cycle Sports Center", Country: "Japan"},
+		{Key: "ebisu_minami", Name: "Ebisu Minami", Country: "Japan"},
+		{Key: "ek_irohazaka", Name: "Irohazaka Downhill", Country: "Japan"},
+	}
+	lapTracks := []trackRef{
+		{Key: "spa", Name: "Circuit de Spa-Francorchamps", Country: "Belgium"},
+		{Key: "ks_nordschleife", Config: "endurance", Name: "Nürburgring Nordschleife", Country: "Germany"},
+		{Key: "ks_brands_hatch", Config: "gp", Name: "Brands Hatch GP", Country: "United Kingdom"},
+	}
+	min := int64(60_000)
+	now := time.Now().UnixMilli()
+	out := make([]scoreEntry, 0, 90)
+	for i := 0; i < 45; i++ {
+		guid := fmt.Sprintf("765611991000%05d", 1000+i)
+		driver := names[i%len(names)]
+		out = append(out, scoreEntry{
+			Id: fmt.Sprintf("dev-d-%d", i), Guid: guid, Driver: driver, Kind: "drift",
+			Date: now - int64(i+1)*37*min, Track: driftTracks[i%len(driftTracks)], Car: cars[i%len(cars)],
+			DriftScore: intPtr(14000 - i*170 + (i%5)*90),
+		})
+		out = append(out, scoreEntry{
+			Id: fmt.Sprintf("dev-l-%d", i), Guid: guid, Driver: driver, Kind: "lap",
+			Date: now - int64(i+1)*53*min, Track: lapTracks[i%len(lapTracks)], Car: cars[(i+3)%len(cars)],
+			BestLapMs: intPtr(82000 + i*350 + (i%4)*120), Position: intPtr(i%12 + 1), Entrants: intPtr(16 + i%8),
+		})
+	}
+	return out
 }
 
 func apiDriverGet(c *gin.Context) {

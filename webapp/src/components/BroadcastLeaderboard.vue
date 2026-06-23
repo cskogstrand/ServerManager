@@ -4,7 +4,8 @@
 // — and lets you filter by discipline (drift / lap), track, car and recency.
 // Self-contained: loads its own feed on mount and refreshes on a slow timer so
 // it can stand as a permanent trackside display.
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { listScores, fmtScore, timeAgo } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
 import type { MediaItem, ScoreEntry } from "@/types/driverStats";
@@ -20,6 +21,8 @@ import FormRow from "@/components/ui/FormRow.vue";
 
 const auth = useAuthStore();
 const toast = useToastStore();
+const route = useRoute();
+const router = useRouter();
 
 const scores = ref<ScoreEntry[]>([]);
 const loaded = ref(false);
@@ -35,14 +38,10 @@ async function load() {
 }
 
 // --- filters ----------------------------------------------------------------
+// State seeds from the URL query so a filtered board is shareable/bookmarkable;
+// changes write back with router.replace (no history entry — see the watch below).
 type Discipline = "drift" | "lap";
-const discipline = ref<Discipline>("drift");
-const trackFilter = ref(""); // "" = all; else `${key} ${config}`
-const carFilter = ref(""); // "" = all; else car key
-const search = ref("");
-
 type Period = "all" | "6h" | "today" | "1d" | "7d" | "30d";
-const period = ref<Period>("all");
 const periodOptions: { value: Period; label: string }[] = [
   { value: "all", label: "All time" },
   { value: "6h", label: "6h" },
@@ -51,6 +50,17 @@ const periodOptions: { value: Period; label: string }[] = [
   { value: "7d", label: "7d" },
   { value: "30d", label: "30d" },
 ];
+
+const qstr = (v: unknown) => (typeof v === "string" ? v : "");
+const discipline = ref<Discipline>(route.query.d === "lap" ? "lap" : "drift");
+const trackFilter = ref(qstr(route.query.track)); // "" = all; else `${key} ${config}`
+const carFilter = ref(qstr(route.query.car)); // "" = all; else car key
+const search = ref(qstr(route.query.q));
+const period = ref<Period>(periodOptions.some((o) => o.value === route.query.period) ? (route.query.period as Period) : "all");
+
+// --- pagination -------------------------------------------------------------
+const PER_PAGE = 25;
+const page = ref(1);
 
 // Oldest epoch-ms timestamp still included for a period, or -Infinity for "all".
 // "today" is the local calendar day (since midnight) — distinct from the rolling
@@ -96,7 +106,7 @@ const carOptions = computed(() => {
   return [...m].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 });
 
-const rows = computed<ScoreEntry[]>(() => {
+const filtered = computed<ScoreEntry[]>(() => {
   const q = search.value.trim().toLowerCase();
   const minDate = periodCutoff(period.value, Date.now());
   const list = scores.value.filter((s) => {
@@ -111,12 +121,32 @@ const rows = computed<ScoreEntry[]>(() => {
       ? (b.drift_score ?? 0) - (a.drift_score ?? 0)
       : (a.best_lap_ms ?? 0) - (b.best_lap_ms ?? 0),
   );
-  return list.slice(0, 100);
+  return list;
 });
+
+const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / PER_PAGE)));
+const paged = computed(() => filtered.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
 const hasFilters = computed(
   () => !!trackFilter.value || !!carFilter.value || !!search.value.trim() || period.value !== "all",
 );
+
+// Sync filters → URL (replace, so no history spam) and snap back to page 1.
+watch([discipline, trackFilter, carFilter, search, period], () => {
+  page.value = 1;
+  const q: Record<string, string> = {};
+  if (discipline.value !== "drift") q.d = discipline.value;
+  if (trackFilter.value) q.track = trackFilter.value;
+  if (carFilter.value) q.car = carFilter.value;
+  if (search.value.trim()) q.q = search.value.trim();
+  if (period.value !== "all") q.period = period.value;
+  void router.replace({ query: q }).catch(() => {});
+});
+
+// Keep the page in range when the result set shrinks (filter change, reload).
+watch(pageCount, (n) => {
+  if (page.value > n) page.value = n;
+});
 
 // --- Highlight-clip popup ---------------------------------------------------
 // A drift row whose run was auto-captured opens the clip in a modal with a
@@ -281,85 +311,130 @@ onBeforeUnmount(() => {
         <Icon :name="discipline === 'drift' ? 'broadcast' : 'activity'" :size="16" :class="discipline === 'drift' ? 'text-accent' : 'text-ok'" />
         <h2 class="numerals text-lg tracking-tight">{{ discipline === "drift" ? "Top Drift Runs" : "Best Laps" }}</h2>
         <span class="ml-auto font-mono text-[11px] tracking-wider text-dim uppercase">
-          {{ rows.length }}{{ rows.length === 100 ? "+" : "" }} · all servers
+          {{ filtered.length }} · all servers
         </span>
       </header>
 
-      <ol class="flex-1 overflow-y-auto p-2">
-        <li
-          v-for="(s, i) in rows"
-          :key="s.id"
-          class="flex items-center gap-3 rounded-lg px-3 py-2.5"
-          :class="i === 0 ? 'bg-accent-glow/5' : i % 2 ? 'bg-surface/30' : ''"
-        >
-          <span
-            class="numerals grid size-8 shrink-0 place-items-center rounded-lg text-base font-bold tabular-nums"
-            :class="i === 0 ? (discipline === 'drift' ? 'bg-accent text-bg' : 'bg-ok text-bg') : 'bg-surface-3 text-muted'"
-          >{{ i + 1 }}</span>
-
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <span v-if="s.online" class="size-1.5 shrink-0 rounded-full bg-ok live-dot" title="On track now" />
-              <span class="truncate text-sm font-bold">{{ s.driver }}</span>
-            </div>
-            <div class="truncate font-mono text-[11px] text-dim">
-              {{ s.car.name }}<span class="text-dim/60"> · </span>{{ s.track.name }}
-            </div>
-          </div>
-
-          <div class="hidden shrink-0 text-right sm:block">
-            <span class="font-mono text-[11px] text-dim">{{ timeAgo(s.date) }}</span>
-          </div>
-
-          <div class="shrink-0 text-right">
-            <span
-              class="numerals text-xl font-semibold tabular-nums"
-              :class="discipline === 'drift' ? 'text-accent' : 'text-ok'"
+      <div class="min-h-0 flex-1 overflow-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead class="sticky top-0 z-10 bg-surface/85 backdrop-blur-sm">
+            <tr class="border-b border-line/60 text-left font-mono text-[10px] tracking-wider text-dim uppercase">
+              <th class="w-12 px-3 py-2 text-center">#</th>
+              <th class="w-full px-3 py-2">Driver</th>
+              <th class="hidden px-3 py-2 whitespace-nowrap sm:table-cell">When</th>
+              <th class="px-3 py-2 text-right whitespace-nowrap">{{ discipline === "drift" ? "Drift" : "Lap" }}</th>
+              <th class="px-3 py-2 text-right whitespace-nowrap">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(s, i) in paged"
+              :key="s.id"
+              class="border-b border-line/40"
+              :class="(page - 1) * PER_PAGE + i === 0 ? 'bg-accent-glow/5' : i % 2 ? 'bg-surface/30' : ''"
             >
-              {{ discipline === "drift" ? fmtScore(s.drift_score ?? 0) : lapTime(s.best_lap_ms ?? 0) }}
-            </span>
-            <span v-if="discipline === 'drift'" class="ml-1 font-mono text-[10px] tracking-wider text-dim uppercase">pts</span>
-          </div>
+              <td class="px-3 py-2 text-center">
+                <span
+                  class="numerals inline-grid size-8 place-items-center rounded-lg text-base font-bold tabular-nums"
+                  :class="(page - 1) * PER_PAGE + i === 0 ? (discipline === 'drift' ? 'bg-accent text-bg' : 'bg-ok text-bg') : 'bg-surface-3 text-muted'"
+                >{{ (page - 1) * PER_PAGE + i + 1 }}</span>
+              </td>
 
+              <td class="min-w-0 px-3 py-2">
+                <div class="flex items-center gap-1.5">
+                  <span v-if="s.online" class="size-1.5 shrink-0 rounded-full bg-ok live-dot" title="On track now" />
+                  <span class="truncate text-sm font-bold">{{ s.driver }}</span>
+                </div>
+                <div class="truncate font-mono text-[11px] text-dim">
+                  {{ s.car.name }}<span class="text-dim/60"> · </span>{{ s.track.name }}
+                </div>
+              </td>
+
+              <td class="hidden px-3 py-2 font-mono text-[11px] whitespace-nowrap text-dim sm:table-cell">
+                {{ timeAgo(s.date) }}
+              </td>
+
+              <td class="px-3 py-2 text-right whitespace-nowrap">
+                <span
+                  class="numerals text-xl font-semibold tabular-nums"
+                  :class="discipline === 'drift' ? 'text-accent' : 'text-ok'"
+                >
+                  {{ discipline === "drift" ? fmtScore(s.drift_score ?? 0) : lapTime(s.best_lap_ms ?? 0) }}
+                </span>
+                <span v-if="discipline === 'drift'" class="ml-1 font-mono text-[10px] tracking-wider text-dim uppercase">pts</span>
+              </td>
+
+              <td class="px-3 py-2">
+                <div class="flex items-center justify-end gap-1.5">
+                  <button
+                    v-if="discipline === 'drift' && s.clip"
+                    type="button"
+                    class="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent"
+                    title="Watch the highlight clip from this run"
+                    @click="clip = s.clip ?? null"
+                  >
+                    <Icon name="film" :size="15" />
+                  </button>
+
+                  <button
+                    v-if="auth.canOperate"
+                    type="button"
+                    title="Set which driver this result belongs to"
+                    class="grid size-8 shrink-0 place-items-center rounded-lg border bg-surface-2/70 transition-colors"
+                    :class="s.guest_driver_id
+                      ? 'border-accent/50 text-accent hover:border-accent'
+                      : 'border-line text-muted hover:border-accent/60 hover:text-accent'"
+                    @click="openEdit(s)"
+                  >
+                    <Icon name="edit" :size="14" />
+                  </button>
+
+                  <RouterLink
+                    :to="s.guest_driver_id
+                      ? { name: 'guest-driver-detail', params: { id: s.guest_driver_id } }
+                      : { name: 'driver-detail', params: { guid: s.guid } }"
+                    target="_blank"
+                    :title="s.guest_driver_id ? 'Open guest driver profile' : 'Open driver detail'"
+                    class="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent"
+                  >
+                    <Icon :name="s.guest_driver_id ? 'users' : 'user'" :size="14" />
+                  </RouterLink>
+                </div>
+              </td>
+            </tr>
+
+            <tr v-if="!paged.length">
+              <td colspan="5" class="px-3 py-10 text-center font-mono text-xs text-dim">
+                {{ !loaded ? "Loading…" : hasFilters ? "No scores match these filters." : discipline === "drift" ? "No drift runs recorded yet." : "No timed laps recorded yet." }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <footer v-if="filtered.length" class="flex items-center justify-between gap-2 border-t border-line/60 px-4 py-2.5 font-mono text-xs text-dim">
+        <span>{{ filtered.length }} result{{ filtered.length === 1 ? "" : "s" }}</span>
+        <div class="flex items-center gap-1.5">
           <button
-            v-if="discipline === 'drift' && s.clip"
             type="button"
-            class="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent"
-            title="Watch the highlight clip from this run"
-            @click="clip = s.clip ?? null"
+            class="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border border-line bg-surface-2/70 px-2.5 transition-colors hover:border-accent/60 hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:border-line disabled:hover:text-dim"
+            :disabled="page <= 1"
+            @click="page--"
           >
-            <Icon name="film" :size="15" />
+            <Icon name="arrowUp" :size="14" class="-rotate-90" /> Prev
           </button>
-
+          <span class="px-1 tracking-wider text-muted">{{ page }} / {{ pageCount }}</span>
           <button
-            v-if="auth.canOperate"
             type="button"
-            title="Set which driver this result belongs to"
-            class="grid size-8 shrink-0 place-items-center rounded-lg border bg-surface-2/70 transition-colors"
-            :class="s.guest_driver_id
-              ? 'border-accent/50 text-accent hover:border-accent'
-              : 'border-line text-muted hover:border-accent/60 hover:text-accent'"
-            @click="openEdit(s)"
+            class="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border border-line bg-surface-2/70 px-2.5 transition-colors hover:border-accent/60 hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:border-line disabled:hover:text-dim"
+            :disabled="page >= pageCount"
+            @click="page++"
           >
-            <Icon name="edit" :size="14" />
+            Next <Icon name="arrowUp" :size="14" class="rotate-90" />
           </button>
-
-          <RouterLink
-            :to="s.guest_driver_id
-              ? { name: 'guest-driver-detail', params: { id: s.guest_driver_id } }
-              : { name: 'driver-detail', params: { guid: s.guid } }"
-            target="_blank"
-            :title="s.guest_driver_id ? 'Open guest driver profile' : 'Open driver detail'"
-            class="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface-2/70 text-muted transition-colors hover:border-accent/60 hover:text-accent"
-          >
-            <Icon :name="s.guest_driver_id ? 'users' : 'user'" :size="14" />
-          </RouterLink>
-        </li>
-
-        <li v-if="!rows.length" class="px-3 py-10 text-center font-mono text-xs text-dim">
-          {{ !loaded ? "Loading…" : hasFilters ? "No scores match these filters." : discipline === "drift" ? "No drift runs recorded yet." : "No timed laps recorded yet." }}
-        </li>
-      </ol>
+        </div>
+      </footer>
     </section>
   </div>
 

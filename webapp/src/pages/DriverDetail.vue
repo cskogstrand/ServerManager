@@ -602,12 +602,11 @@ async function removeSession(session: DriverSession) {
 
     <!-- FAVOURITES -->
     <div class="mt-4 grid gap-4 md:grid-cols-2">
+      <div class="min-w-0 space-y-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
+        <Icon name="star" :size="15" class="text-warn" /> Favourite car
+      </h2>
       <Card class="min-w-0">
-        <template #header>
-          <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-            <Icon name="star" :size="15" class="text-warn" /> Favourite car
-          </h2>
-        </template>
         <div v-if="driver.favourite_car" class="flex items-center gap-3 sm:gap-4">
           <div class="grid h-16 w-24 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32">
             <img
@@ -627,13 +626,13 @@ async function removeSession(session: DriverSession) {
         </div>
         <p v-else class="text-sm text-muted">No car data yet.</p>
       </Card>
+      </div>
 
+      <div class="min-w-0 space-y-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
+        <Icon name="mapPin" :size="15" class="text-accent" /> Favourite track
+      </h2>
       <Card class="min-w-0">
-        <template #header>
-          <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-            <Icon name="mapPin" :size="15" class="text-accent" /> Favourite track
-          </h2>
-        </template>
         <div v-if="driver.favourite_track" class="flex items-center gap-3 sm:gap-4">
           <TrackImage
             :track-key="driver.favourite_track.key"
@@ -648,6 +647,7 @@ async function removeSession(session: DriverSession) {
         </div>
         <p v-else class="text-sm text-muted">No track data yet.</p>
       </Card>
+      </div>
     </div>
 
     <!-- SESSIONS + STREAM -->
@@ -698,60 +698,61 @@ async function removeSession(session: DriverSession) {
         </Card>
       </div>
 
-      <Card class="min-w-0 lg:sticky lg:top-4">
-        <template #header>
-          <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
+      <div class="min-w-0 space-y-3 lg:sticky lg:top-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="flex flex-wrap items-center gap-2 text-sm font-bold tracking-tight">
             <Icon name="broadcast" :size="15" :class="streamLive ? 'text-ok' : 'text-dim'" /> Live stream
+            <span
+              v-if="streamLive"
+              class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
+            >
+              <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
+            </span>
+            <!-- Live capture status from the rolling-buffer recorder -->
+            <span
+              v-if="capStatus?.manual_active"
+              class="inline-flex items-center gap-1.5 rounded-full border border-danger/45 bg-danger-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-danger uppercase"
+            >
+              <span class="size-1.5 rounded-full bg-danger live-dot" /> REC {{ fmtClipDuration(cap.manualElapsed(guid)) }}
+            </span>
+            <span
+              v-else-if="capStatus?.buffering"
+              class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
+              title="Rolling buffer recording — drift-run clips are cut from this"
+            >
+              <span class="size-1.5 rounded-full bg-ok" /> Buffering
+            </span>
+            <span
+              v-else-if="capStatus?.recorder_running"
+              class="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-warn uppercase"
+              title="Recorder running but no fresh segments — source may be down"
+            >
+              Connecting…
+            </span>
           </h2>
-          <span
-            v-if="streamLive"
-            class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
-          >
-            <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
-          </span>
-          <!-- Live capture status from the rolling-buffer recorder -->
-          <span
-            v-if="capStatus?.manual_active"
-            class="inline-flex items-center gap-1.5 rounded-full border border-danger/45 bg-danger-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-danger uppercase"
-          >
-            <span class="size-1.5 rounded-full bg-danger live-dot" /> REC {{ fmtClipDuration(cap.manualElapsed(guid)) }}
-          </span>
-          <span
-            v-else-if="capStatus?.buffering"
-            class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
-            title="Rolling buffer recording — drift-run clips are cut from this"
-          >
-            <span class="size-1.5 rounded-full bg-ok" /> Buffering
-          </span>
-          <span
-            v-else-if="capStatus?.recorder_running"
-            class="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-warn uppercase"
-            title="Recorder running but no fresh segments — source may be down"
-          >
-            Connecting…
-          </span>
-        </template>
-        <template v-if="auth.canOperate" #actions>
-          <Button
-            size="sm"
-            variant="ghost"
-            :disabled="snapping"
-            title="Grab a still from the live stream now"
-            @click="takePicture"
-          >
-            <Icon name="camera" :size="14" />
-            {{ snapping ? "Capturing…" : "Take picture" }}
-          </Button>
-          <Button
-            size="sm"
-            :variant="isRecording ? 'danger' : 'ghost'"
-            :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
-            @click="isRecording ? stopRecord() : recordNow()"
-          >
-            <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
-            {{ isRecording ? "Stop recording" : "Record now" }}
-          </Button>
-        </template>
+          <div v-if="auth.canOperate" class="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              :disabled="snapping"
+              title="Grab a still from the live stream now"
+              @click="takePicture"
+            >
+              <Icon name="camera" :size="14" />
+              {{ snapping ? "Capturing…" : "Take picture" }}
+            </Button>
+            <Button
+              size="sm"
+              :variant="isRecording ? 'danger' : 'ghost'"
+              :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
+              @click="isRecording ? stopRecord() : recordNow()"
+            >
+              <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
+              {{ isRecording ? "Stop recording" : "Record now" }}
+            </Button>
+          </div>
+        </div>
+        <Card class="min-w-0">
         <div
           v-if="streamLive && isWhepUrl(driver.stream!.embed_url)"
           class="aspect-video w-full overflow-hidden rounded-md border border-line"
@@ -780,7 +781,8 @@ async function removeSession(session: DriverSession) {
             </p>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
     </div>
 
     <!-- MANUAL RECORDINGS — captures made outside any session -->

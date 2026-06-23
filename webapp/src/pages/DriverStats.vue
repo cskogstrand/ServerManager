@@ -130,45 +130,45 @@ onMounted(load);
   </PageHeader>
 
   <!-- KPI strip -->
-  <div class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-    <div class="rounded-md border border-line bg-surface px-4 py-3">
-      <div class="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">
-        <Icon name="users" :size="14" /> Drivers seen
+  <div class="mb-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+    <div class="rounded-md border border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
+      <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase sm:text-[11px]">
+        <Icon name="users" :size="13" /> Drivers seen
       </div>
-      <div class="mt-1 font-mono text-2xl font-bold tabular-nums text-text">{{ drivers.length }}</div>
-      <div class="truncate text-xs text-muted">across all sessions</div>
+      <div class="mt-0.5 font-mono text-xl font-bold tabular-nums text-text sm:mt-1 sm:text-2xl">{{ drivers.length }}</div>
+      <div class="truncate text-[11px] text-muted sm:text-xs">across all sessions</div>
     </div>
-    <div class="rounded-md border border-line bg-surface px-4 py-3">
-      <div class="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">
-        <Icon name="activity" :size="14" /> On track now
+    <div class="rounded-md border border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
+      <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase sm:text-[11px]">
+        <Icon name="activity" :size="13" /> On track now
       </div>
-      <div class="mt-1 font-mono text-2xl font-bold tabular-nums" :class="liveCount ? 'text-ok' : 'text-text'">
+      <div class="mt-0.5 font-mono text-xl font-bold tabular-nums sm:mt-1 sm:text-2xl" :class="liveCount ? 'text-ok' : 'text-text'">
         {{ liveCount }}
       </div>
-      <div class="truncate text-xs text-muted">{{ liveCount ? "live from the server" : "garage is quiet" }}</div>
+      <div class="truncate text-[11px] text-muted sm:text-xs">{{ liveCount ? "live from the server" : "garage is quiet" }}</div>
     </div>
-    <div class="rounded-md border border-line bg-surface px-4 py-3">
-      <div class="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">
-        <Icon name="gauge" :size="14" /> Top drift
+    <div class="rounded-md border border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
+      <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase sm:text-[11px]">
+        <Icon name="gauge" :size="13" /> Top drift
       </div>
-      <div class="mt-1 font-mono text-2xl font-bold tabular-nums text-accent">
+      <div class="mt-0.5 font-mono text-xl font-bold tabular-nums text-accent sm:mt-1 sm:text-2xl">
         {{ topDrift ? fmtScore(topDrift.best_drift) : "—" }}
       </div>
-      <div class="truncate text-xs text-muted">{{ topDrift?.name ?? "no runs yet" }}</div>
+      <div class="truncate text-[11px] text-muted sm:text-xs">{{ topDrift?.name ?? "no runs yet" }}</div>
     </div>
-    <div class="rounded-md border border-line bg-surface px-4 py-3">
-      <div class="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-dim uppercase">
-        <Icon name="clock" :size="14" /> Fastest lap
+    <div class="rounded-md border border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
+      <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase sm:text-[11px]">
+        <Icon name="clock" :size="13" /> Fastest lap
       </div>
-      <div class="mt-1 font-mono text-2xl font-bold tabular-nums text-text">
+      <div class="mt-0.5 font-mono text-xl font-bold tabular-nums text-text sm:mt-1 sm:text-2xl">
         {{ fastest ? lapTime(fastest.best_lap_ms) : "—" }}
       </div>
-      <div class="truncate text-xs text-muted">{{ fastest?.name ?? "no timed laps yet" }}</div>
+      <div class="truncate text-[11px] text-muted sm:text-xs">{{ fastest?.name ?? "no timed laps yet" }}</div>
     </div>
   </div>
 
   <!-- Controls -->
-  <div class="mb-4 flex flex-wrap items-center gap-2">
+  <div class="mb-3 flex flex-wrap items-center gap-2">
     <div class="relative min-w-[200px] flex-1">
       <Icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dim" />
       <input

@@ -387,14 +387,40 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 	if len(sel) == 0 {
 		return 0, false
 	}
-	listPath := outPath + ".concat.txt"
+	// Pin the selected segments before encoding. A long clip's oldest segment can
+	// age past the ring window while a slow re-encode is still running; the
+	// janitor would then delete it and ffmpeg's sequential concat read would fail.
+	// Hardlinking into a private stage dir keeps the bytes alive (shared inode)
+	// until we remove the stage — independent of how long the encode runs or what
+	// the janitor prunes. Same filesystem (both under the driver media dir), so
+	// the link always succeeds for a still-present segment.
+	stage := outPath + ".segs"
+	if err := os.MkdirAll(stage, os.ModePerm); err != nil {
+		log.Print("driver capture: stage mkdir: ", err)
+		return 0, false
+	}
+	defer os.RemoveAll(stage)
+
 	var b strings.Builder
-	for _, s := range sel {
+	firstStart := int64(0)
+	for i, s := range sel {
+		link := filepath.Join(stage, strconv.Itoa(i)+".ts")
+		if err := os.Link(s.path, link); err != nil {
+			continue // already pruned / unlinkable — drop it, encode what remains
+		}
+		if firstStart == 0 {
+			firstStart = s.startMs
+		}
 		// concat demuxer entries: single-quoted, with embedded quotes escaped.
 		b.WriteString("file '")
-		b.WriteString(strings.ReplaceAll(s.path, "'", `'\''`))
+		b.WriteString(strings.ReplaceAll(link, "'", `'\''`))
 		b.WriteString("'\n")
 	}
+	if b.Len() == 0 {
+		return 0, false // every segment vanished before it could be pinned
+	}
+
+	listPath := outPath + ".concat.txt"
 	if err := os.WriteFile(listPath, []byte(b.String()), 0o644); err != nil {
 		log.Print("driver capture: write concat list: ", err)
 		return 0, false
@@ -402,9 +428,23 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 	defer os.Remove(listPath)
 
 	if m.concatEncode(listPath, outPath, endMs-startMs) {
-		return sel[0].startMs, true
+		return firstStart, true
 	}
 	return 0, false
+}
+
+// clipEncodeTimeout budgets the re-encode off the clip length, not a fixed cap:
+// a 120s manual clip needs far longer than a 14s auto-clip. CommandContext sends
+// SIGKILL on the deadline, which leaves a moov-less, unplayable MP4 — so a
+// too-short budget silently produces a broken file. ~3x realtime + headroom,
+// floored at the old short-clip budget. Always exceeds the window duration, so a
+// merely realtime-speed encode of the whole clip is never killed.
+func clipEncodeTimeout(windowMs int64) time.Duration {
+	t := time.Duration(windowMs)*3*time.Millisecond + 30*time.Second
+	if t < 2*localFfmpegTimeout {
+		t = 2 * localFfmpegTimeout
+	}
+	return t
 }
 
 // concatEncode stitches the buffered TS segments into outPath, RE-ENCODING
@@ -416,17 +456,7 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 // ponytail: re-encode always — correctness over the copy fast-path that shipped
 // unplayable clips. Re-add a copy path only if it produces verified-monotonic ts.
 func (m *captureManager) concatEncode(listPath, outPath string, windowMs int64) bool {
-	// Budget the re-encode off the clip length, not a fixed cap: a 120s manual
-	// clip needs far longer than a 14s auto-clip. CommandContext sends SIGKILL on
-	// the deadline, which leaves a moov-less, unplayable MP4 — so a too-short
-	// timeout silently produces a broken file. Allow ~3x realtime + headroom,
-	// floored at the old short-clip budget. ponytail: 3x is slack for a busy box;
-	// veryfast usually beats realtime.
-	timeout := time.Duration(windowMs)*3*time.Millisecond + 30*time.Second
-	if timeout < 2*localFfmpegTimeout {
-		timeout = 2 * localFfmpegTimeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), clipEncodeTimeout(windowMs))
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.ffmpeg,
 		"-nostdin", "-y", "-loglevel", "error",

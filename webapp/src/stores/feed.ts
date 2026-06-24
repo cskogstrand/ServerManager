@@ -86,10 +86,12 @@ function describe(e: ServerEvent): Describe | null {
       };
     case "media": {
       const clip = d.kind === "clip";
+      // Deep-link straight to this media's lightbox: /drivers/:guid?media=:file.
+      const mediaLink = link && d.file ? `${link}?media=${encodeURIComponent(d.file)}` : link;
       return {
         icon: clip ? "film" : "camera", tone: "accent",
         text: `${clip ? "Clip" : "Picture"} saved${d.caption ? ` — ${d.caption}` : ""}`,
-        guid, link, notify: true, action: "Preview now", toastTone: "success",
+        guid, link: mediaLink, notify: true, action: "Preview now", toastTone: "success",
       };
     }
     case "recording":

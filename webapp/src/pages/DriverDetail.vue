@@ -19,6 +19,7 @@ import { useFeedStore } from "@/stores/feed";
 import type { DriverState, InstanceState } from "@/stores/server";
 import type { DriverDetail, DriverSession, MediaItem } from "@/types/driverStats";
 import Card from "@/components/ui/Card.vue";
+import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
@@ -211,6 +212,25 @@ function sessionOpen(s: DriverSession): boolean {
   return !!focusSessionId.value && s.id === focusSessionId.value;
 }
 
+// Deep-link target: /drivers/:guid?media=:file opens that clip/still in a
+// lightbox (used by the feed's "Clip saved" link). The query carries the file
+// basename, which is the last segment of every media url.
+const activeMedia = ref<MediaItem | null>(null);
+const focusMediaFile = computed(() => (typeof route.query.media === "string" ? route.query.media : ""));
+function mediaFile(m: MediaItem): string {
+  return (m.url.split("?")[0].split("/").pop() ?? "");
+}
+function openDeepLinkedMedia() {
+  const d = driver.value;
+  if (!focusMediaFile.value || !d) return;
+  const all = [...d.media, ...d.session_history.flatMap((s) => [...s.media, ...s.drift_runs.map((r) => r.clip)])];
+  const m = all.find((x): x is MediaItem => !!x && isRealMedia(x) && mediaFile(x) === focusMediaFile.value);
+  if (m) activeMedia.value = m;
+}
+// Reopen when navigating between feed media links while already on this page
+// (guid unchanged, so load() — which fires the initial open — won't re-run).
+watch(focusMediaFile, openDeepLinkedMedia);
+
 // Resolve the favourite car's preview against the cached car list — the same
 // source the Content car grid renders from — so the image matches (and carries
 // the imageVersion cache-buster) even when the driver's recorded skin is blank
@@ -245,6 +265,8 @@ async function load() {
     await nextTick();
     document.getElementById(`session-${focusSessionId.value}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  // Deep-link: pop the requested clip/still in its lightbox.
+  openDeepLinkedMedia();
 }
 
 onMounted(() => {
@@ -797,6 +819,30 @@ async function removeSession(session: DriverSession) {
       @delete-media="deleteMedia"
       @download-media="downloadMedia"
     />
+
+    <!-- Deep-link lightbox: plays/shows the media named in ?media=:file -->
+    <Modal
+      :open="!!activeMedia"
+      wide
+      :title="activeMedia?.caption || (activeMedia?.kind === 'clip' ? 'Clip' : 'Capture')"
+      @close="activeMedia = null"
+    >
+      <video
+        v-if="activeMedia?.kind === 'clip'"
+        :src="activeMedia.url"
+        class="mx-auto max-h-[78vh] w-full rounded-md bg-black object-contain"
+        controls
+        autoplay
+        playsinline
+      />
+      <img v-else-if="activeMedia" :src="activeMedia.url" :alt="activeMedia.caption" class="mx-auto max-h-[78vh] w-full rounded-md object-contain" />
+      <template #footer>
+        <Button v-if="activeMedia && isRealMedia(activeMedia)" variant="ghost" @click="downloadMedia(activeMedia)">
+          <Icon name="download" :size="14" class="mr-1.5" /> Download
+        </Button>
+        <Button @click="activeMedia = null">Close</Button>
+      </template>
+    </Modal>
   </template>
 </template>
 

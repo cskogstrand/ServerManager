@@ -240,6 +240,7 @@ const carImgUrl = computed(() => {
   if (!c) return "";
   const car = content.carByKey(c.key);
   const skin = car?.skins.find((s) => s.key === c.skin)?.key ?? car?.skins[0]?.key ?? c.skin ?? "";
+  if (!skin) return ""; // no resolvable skin (e.g. content not loaded yet) — skip the doomed request
   return `/api/car/image/${encodeURIComponent(c.key)}/${encodeURIComponent(skin)}?v=${content.imageVersion}`;
 });
 const carImgOk = ref(true);
@@ -632,7 +633,7 @@ async function removeSession(session: DriverSession) {
         <div v-if="driver.favourite_car" class="flex items-center gap-3 sm:gap-4">
           <div class="grid h-16 w-24 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32">
             <img
-              v-if="carImgOk"
+              v-if="carImgOk && carImgUrl"
               :src="carImgUrl"
               alt=""
               class="size-full object-cover"

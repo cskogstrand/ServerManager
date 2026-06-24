@@ -31,6 +31,20 @@ func routeSpa(c *gin.Context) {
 		p = "/index.html"
 	}
 
+	// Missing hashed assets must 404, not fall back to index.html. A stale
+	// browser tab requesting an old chunk would otherwise get index.html
+	// (text/html), tripping strict MIME checks and hanging the SPA.
+	if strings.HasPrefix(p, "/assets/") {
+		if debug {
+			c.File(filepath.Join("embed", "webapp", "dist", filepath.FromSlash(p)))
+		} else if asset := "/webapp/dist" + p; assetExists(asset) {
+			serveAsset(c, asset)
+		} else {
+			c.Status(http.StatusNotFound)
+		}
+		return
+	}
+
 	if debug {
 		base := filepath.Join("embed", "webapp", "dist")
 		full := filepath.Join(base, filepath.FromSlash(p))
@@ -52,6 +66,12 @@ func routeSpa(c *gin.Context) {
 	if !assetExists(asset) {
 		asset = "/webapp/dist/index.html"
 	}
+	serveAsset(c, asset)
+}
+
+// serveAsset writes an embedded asset to the response with the right
+// content-type. index.html is marked no-cache so new builds are picked up.
+func serveAsset(c *gin.Context, asset string) {
 	if strings.HasSuffix(asset, "index.html") {
 		c.Header("Cache-Control", "no-cache")
 	}

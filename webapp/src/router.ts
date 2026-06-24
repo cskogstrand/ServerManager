@@ -50,4 +50,17 @@ router.beforeEach(async (to) => {
   return true;
 });
 
+// Stale-chunk recovery: after a redeploy the old hashed route chunks no longer
+// exist, so lazy import() rejects and navigation hangs. Reload the target once
+// to pull the fresh build. The timestamp guard stops a reload loop if the chunk
+// is genuinely missing (e.g. mid-deploy).
+router.onError((err, to) => {
+  if (!/dynamically imported module|module script failed/i.test(String(err))) return;
+  const last = Number(sessionStorage.getItem("chunk-reload-ts") || 0);
+  if (Date.now() - last > 10_000) {
+    sessionStorage.setItem("chunk-reload-ts", String(Date.now()));
+    window.location.assign(to.fullPath);
+  }
+});
+
 export default router;

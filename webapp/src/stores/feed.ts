@@ -93,10 +93,15 @@ function describe(e: ServerEvent): Describe | null {
       };
     }
     case "recording":
-      return {
-        icon: "record", tone: "danger", text: `${who} · recording started`,
-        guid, link, notify: true, action: "Open", toastTone: "info",
-      };
+      return d.recording === false
+        ? {
+            icon: "film", tone: "dim", text: `${who} · recording stopped — saving clip`,
+            guid, link, notify: true, action: "Open", toastTone: "info",
+          }
+        : {
+            icon: "record", tone: "danger", text: `${who} · recording started`,
+            guid, link, notify: true, action: "Open", toastTone: "info",
+          };
     default:
       return null;
   }

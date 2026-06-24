@@ -614,6 +614,7 @@ func (m *captureManager) finalizeManual(guid string) {
 	if mark.timer != nil {
 		mark.timer.Stop()
 	}
+	Events.Publish("recording", 0, map[string]any{"guid": guid, "recording": false})
 	go m.assembleManual(mark)
 }
 

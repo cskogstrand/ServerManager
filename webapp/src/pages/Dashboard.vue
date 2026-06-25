@@ -300,7 +300,7 @@ onMounted(async () => {
     </RouterLink>
   </EmptyState>
 
-  <div v-else class="space-y-3">
+  <div v-else class="grid gap-3 min-[1600px]:grid-cols-2">
     <Card v-for="inst in server.instanceList" :key="inst.id" class="transition-colors hover:border-line-hi">
       <template #header>
         <span

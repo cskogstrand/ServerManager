@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/text/encoding/unicode/utf32"
@@ -341,6 +342,11 @@ func (inst *Instance) udpReceive() bool {
 	switch acsp {
 	case acspError:
 		err := r.ReadUTF32String()
+		// ponytail: known benign acServer noise at session-loop boundaries;
+		// real session changes are logged via ACSP_NEW_SESSION/ACSP_SESSION_INFO.
+		if strings.Contains(err, "ACSP_GET_SESSION_INFO out of bounds") {
+			break
+		}
 		log.Print("ACSP_ERROR: ", err)
 
 	case acspChat:

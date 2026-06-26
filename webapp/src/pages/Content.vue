@@ -340,7 +340,7 @@ function jobTone(status: string) {
             ]"
           />
         </FormRow>
-        <FormRow label="Archive file" hint="zip / 7z / rar, up to 2 GB">
+        <FormRow label="Archive file" hint="zip / 7z / rar, up to 10 GB">
           <input
             type="file"
             accept=".zip,.7z,.rar"

@@ -1207,7 +1207,7 @@ func apiContentUpload(c *gin.Context) {
 	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Could not read the upload. Use a supported archive smaller than 2 GB.",
+			"message": "Could not read the upload. Use a supported archive smaller than 10 GB.",
 		})
 		return
 	}

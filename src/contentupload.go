@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const maxContentUploadSize int64 = 2 << 30
+const maxContentUploadSize int64 = 10 << 30
 const contentDownloadTimeout = 20 * time.Minute
 
 var supportedArchiveExtensions = []string{
@@ -396,7 +396,7 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 	if resp.ContentLength > maxContentUploadSize {
 		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: "The remote archive is larger than 2 GB.",
+			Message: "The remote archive is larger than 10 GB.",
 		}
 	}
 
@@ -436,7 +436,7 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 			if written > maxContentUploadSize {
 				return "", contentUploadError{
 					Status:  http.StatusBadRequest,
-					Message: "The remote archive is larger than 2 GB.",
+					Message: "The remote archive is larger than 10 GB.",
 				}
 			}
 
@@ -464,7 +464,7 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 	if written > maxContentUploadSize {
 		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: "The remote archive is larger than 2 GB.",
+			Message: "The remote archive is larger than 10 GB.",
 		}
 	}
 

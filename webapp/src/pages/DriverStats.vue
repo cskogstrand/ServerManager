@@ -240,7 +240,7 @@ onMounted(load);
           >
             {{ i + 1 }}
           </span>
-          <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="38" />
+          <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="48" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="truncate text-sm font-bold text-text group-hover:text-accent">{{ d.name }}</span>
@@ -301,7 +301,7 @@ onMounted(load);
           {{ i + 1 }}
         </span>
 
-        <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="42" />
+        <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="56" />
 
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">

@@ -538,7 +538,7 @@ onBeforeUnmount(() => {
             <img
                 :src="mapImageUrl"
                 alt="Track Map"
-                class="absolute inset-0 size-full object-contain opacity-60 blend-luminosity"
+                class="absolute inset-0 size-full object-fill opacity-60 blend-luminosity"
                 @error="mapImageOk = false"
             />
 
@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
             <button
                 v-if="positionFor(d.car_id)"
                 type="button"
-                class="puck absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left,transform] duration-300 ease-linear hover:scale-110"
+                class="puck absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left,transform] duration-200 ease-linear hover:scale-110"
                 :class="{ 'puck-focus z-20': focusRow?.car_id === d.car_id }"
                 :style="mapPoint(positionFor(d.car_id)!, effectiveMapMeta)"
                 @click="focusCar(d.car_id)"

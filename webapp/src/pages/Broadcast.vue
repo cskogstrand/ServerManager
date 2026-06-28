@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
             <button
                 v-if="positionFor(d.car_id)"
                 type="button"
-                class="puck absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 ease-out hover:scale-110"
+                class="puck absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left,transform] duration-300 ease-linear hover:scale-110"
                 :class="{ 'puck-focus z-20': focusRow?.car_id === d.car_id }"
                 :style="mapPoint(positionFor(d.car_id)!, effectiveMapMeta)"
                 @click="focusCar(d.car_id)"
@@ -673,7 +673,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                   <div
-                      class="h-full rounded-full transition-[width] duration-200 ease-linear"
+                      class="h-full rounded-full transition-[width] duration-300 ease-linear"
                       :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
                       :style="{ width: `${rpmPct(card.row.pos)}%` }"
                   />

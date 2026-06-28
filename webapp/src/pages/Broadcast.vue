@@ -89,6 +89,10 @@ const aggregate = computed(() => autoMode.value && !busiest.value);
 const detail = ref<StatusPayload | null>(null);
 const mapMeta = ref<TrackMapMeta | null>(null);
 const mapImageOk = ref(true);
+// map.ini WIDTH/HEIGHT are unreliable (some tracks bake in MARGIN, some don't),
+// so the projection denominator is the displayed PNG's true pixel size, read off
+// the <img> once it loads. Falls back to meta dims until then.
+const mapNatural = ref<{w: number; h: number} | null>(null);
 
 // --- Client-only demo mode: fabricate a fake running session so the broadcast
 // layout can be exercised without a live server. Nothing here hits the backend;
@@ -201,7 +205,7 @@ const mapImageUrl = computed(() =>
 
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
-  const ratio = (meta.width || 16) / (meta.height || 9);
+  const ratio = (mapNatural.value?.w || meta.width || 16) / (mapNatural.value?.h || meta.height || 9);
   // Fit the column: cap width so the derived height never exceeds the height
   // budget (--map-h). That budget is the full stage on desktop, but a small
   // slice on mobile where the map sits stacked above the cards — keeps the
@@ -216,9 +220,11 @@ function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
   const scale = meta.scale_factor || 1;
   const px = (pos.x + meta.x_offset) / scale + meta.margin;
   const py = (pos.z + meta.z_offset) / scale + meta.margin;
+  const w = mapNatural.value?.w || meta.width;
+  const h = mapNatural.value?.h || meta.height;
   return {
-    left: `${Math.max(0, Math.min(100, (px / meta.width) * 100))}%`,
-    top: `${Math.max(0, Math.min(100, (py / meta.height) * 100))}%`,
+    left: `${Math.max(0, Math.min(100, (px / w) * 100))}%`,
+    top: `${Math.max(0, Math.min(100, (py / h) * 100))}%`,
   };
 }
 
@@ -335,7 +341,10 @@ async function fetchMapMeta() {
 }
 
 watch(activeTrack, (next, prev) => {
-  if (next?.key !== prev?.key || next?.config !== prev?.config) void fetchMapMeta();
+  if (next?.key !== prev?.key || next?.config !== prev?.config) {
+    mapNatural.value = null; // re-read natural dims off the new track's PNG
+    void fetchMapMeta();
+  }
 });
 
 // Auto mode handoff: when the followed instance changes (a server overtakes the
@@ -539,6 +548,7 @@ onBeforeUnmount(() => {
                 :src="mapImageUrl"
                 alt="Track Map"
                 class="absolute inset-0 size-full object-fill opacity-60 blend-luminosity"
+                @load="mapNatural = { w: ($event.target as HTMLImageElement).naturalWidth, h: ($event.target as HTMLImageElement).naturalHeight }"
                 @error="mapImageOk = false"
             />
 

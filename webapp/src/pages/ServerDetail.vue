@@ -17,7 +17,7 @@ import {
   raceSetupValid,
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
-import { computeRunningOrder, type TimingRow } from "@/lib/raceTelemetry";
+import { computeRunningOrder, trackMapPoint, type TimingRow } from "@/lib/raceTelemetry";
 import { isWhepUrl, useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
 import type { CacheCar, CacheTrack, UserClass, UserClassEntry } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
@@ -349,15 +349,11 @@ function mapCanvasStyle(meta: TrackMapMeta) {
 }
 
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
-  // AC map.ini projection — same maths the in-game minimap uses.
-  // World (x,z) -> map.png pixels: divide by SCALE_FACTOR, add MARGIN.
-  // The Z axis is NOT flipped: map.png pixel-Y already grows with world Z.
-  const scale = meta.scale_factor || 1;
-  const px = (pos.x + meta.x_offset) / scale + meta.margin;
-  const py = (pos.z + meta.z_offset) / scale + meta.margin;
+  const point = trackMapPoint(pos, meta);
   return {
-    left: `${Math.max(0, Math.min(100, (px / meta.width) * 100))}%`,
-    top: `${Math.max(0, Math.min(100, (py / meta.height) * 100))}%`,
+    left: point.left,
+    top: point.top,
+    visibility: point.inBounds ? ("visible" as const) : ("hidden" as const),
   };
 }
 

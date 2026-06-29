@@ -155,6 +155,10 @@ function mix(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+function pct(n: number): string {
+  return `${Number(n.toFixed(4))}%`;
+}
+
 export function positionFrameMs(from: CarPositionState, to: CarPositionState): number {
   const dt = to.updated_at - from.updated_at;
   return dt > 0 ? Math.max(120, Math.min(450, dt)) : 220;
@@ -174,5 +178,37 @@ export function interpolatePosition(from: CarPositionState, to: CarPositionState
     engine_rpm: Math.round(mix(from.engine_rpm, to.engine_rpm, p)),
     normalized_spline_pos: to.normalized_spline_pos,
     updated_at: to.updated_at,
+  };
+}
+
+export interface TrackMapProjection {
+  width: number;
+  height: number;
+  x_offset: number;
+  z_offset: number;
+  scale_factor: number;
+  margin: number;
+}
+
+export interface TrackMapPoint {
+  left: string;
+  top: string;
+  inBounds: boolean;
+}
+
+export function trackMapPoint(
+  pos: CarPositionState,
+  meta: TrackMapProjection,
+  natural?: { w: number; h: number } | null,
+): TrackMapPoint {
+  const scale = meta.scale_factor || 1;
+  const width = natural?.w || meta.width;
+  const height = natural?.h || meta.height;
+  const left = (((pos.x + meta.x_offset) / scale + meta.margin) / width) * 100;
+  const top = (((pos.z + meta.z_offset) / scale + meta.margin) / height) * 100;
+  return {
+    left: pct(Math.max(0, Math.min(100, left))),
+    top: pct(Math.max(0, Math.min(100, top))),
+    inBounds: left >= 0 && left <= 100 && top >= 0 && top <= 100,
   };
 }

@@ -22,6 +22,7 @@ import {
   rpmCeiling,
   sessionTypeLabel,
   speedKmh,
+  trackMapPoint,
   type TimingRow,
 } from "@/lib/raceTelemetry";
 import {type StreamChannel, useDriverStreams} from "@/lib/useDriverStreams";
@@ -289,17 +290,11 @@ function mapWrapStyle(meta: TrackMapMeta) {
 }
 
 function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
-  // AC map.ini projection — same maths the in-game minimap uses.
-  // World (x,z) -> map.png pixels: divide by SCALE_FACTOR, add MARGIN.
-  // The Z axis is NOT flipped: map.png pixel-Y already grows with world Z.
-  const scale = meta.scale_factor || 1;
-  const px = (pos.x + meta.x_offset) / scale + meta.margin;
-  const py = (pos.z + meta.z_offset) / scale + meta.margin;
-  const w = mapNatural.value?.w || meta.width;
-  const h = mapNatural.value?.h || meta.height;
+  const point = trackMapPoint(pos, meta, mapNatural.value);
   return {
-    left: `${Math.max(0, Math.min(100, (px / w) * 100))}%`,
-    top: `${Math.max(0, Math.min(100, (py / h) * 100))}%`,
+    left: point.left,
+    top: point.top,
+    visibility: point.inBounds ? ("visible" as const) : ("hidden" as const),
   };
 }
 
@@ -621,7 +616,7 @@ onBeforeUnmount(() => {
             :style="mapWrapStyle(effectiveMapMeta)"
         >
           <!-- Padded inner stage so the track layout keeps some air around it -->
-          <div class="absolute inset-[6%]">
+          <div class="absolute inset-[6%] overflow-hidden">
             <img
                 :src="mapImageUrl"
                 alt="Track Map"
@@ -1014,6 +1009,7 @@ onBeforeUnmount(() => {
 }
 
 .bcast-map {
+  overflow: hidden;
   border: 1px solid var(--color-line-hi);
   border-radius: var(--radius-md);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55),

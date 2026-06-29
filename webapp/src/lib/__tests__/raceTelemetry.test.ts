@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeRunningOrder, deltaTime, gearLabel, interpolatePosition, lapTime, positionFrameMs } from "@/lib/raceTelemetry";
+import { computeRunningOrder, deltaTime, gearLabel, interpolatePosition, lapTime, positionFrameMs, trackMapPoint } from "@/lib/raceTelemetry";
 import type { CarPositionState, DriverState } from "@/stores/server";
 
 function driver(p: Partial<DriverState>): DriverState {
@@ -91,5 +91,22 @@ describe("position smoothing", () => {
     expect(mid.normalized_spline_pos).toBe(0.1);
     expect(positionFrameMs(from, to)).toBe(200);
     expect(positionFrameMs(from, { ...to, updated_at: 5000 })).toBe(450);
+  });
+});
+
+describe("track map projection", () => {
+  it("projects world coordinates and flags out-of-map samples", () => {
+    const meta = { width: 100, height: 100, x_offset: 10, z_offset: 20, scale_factor: 2, margin: 5 };
+
+    expect(trackMapPoint({ ...pos(1, 0), x: 90, z: 80 }, meta)).toEqual({
+      left: "55%",
+      top: "55%",
+      inBounds: true,
+    });
+    expect(trackMapPoint({ ...pos(1, 0), x: 300, z: 80 }, meta)).toEqual({
+      left: "100%",
+      top: "55%",
+      inBounds: false,
+    });
   });
 });

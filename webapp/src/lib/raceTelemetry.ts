@@ -150,3 +150,29 @@ export function rpmCeiling(positions: CarPositionState[]): number {
   const peak = Math.max(8000, ...positions.map((p) => p.engine_rpm || 0));
   return Math.ceil(peak / 1000) * 1000;
 }
+
+function mix(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+export function positionFrameMs(from: CarPositionState, to: CarPositionState): number {
+  const dt = to.updated_at - from.updated_at;
+  return dt > 0 ? Math.max(120, Math.min(450, dt)) : 220;
+}
+
+export function interpolatePosition(from: CarPositionState, to: CarPositionState, t: number): CarPositionState {
+  const p = Math.max(0, Math.min(1, t));
+  return {
+    car_id: to.car_id,
+    x: mix(from.x, to.x, p),
+    y: mix(from.y, to.y, p),
+    z: mix(from.z, to.z, p),
+    velocity_x: mix(from.velocity_x, to.velocity_x, p),
+    velocity_y: mix(from.velocity_y, to.velocity_y, p),
+    velocity_z: mix(from.velocity_z, to.velocity_z, p),
+    gear: p < 0.5 ? from.gear : to.gear,
+    engine_rpm: Math.round(mix(from.engine_rpm, to.engine_rpm, p)),
+    normalized_spline_pos: to.normalized_spline_pos,
+    updated_at: to.updated_at,
+  };
+}

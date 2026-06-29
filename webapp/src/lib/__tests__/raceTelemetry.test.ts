@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeRunningOrder, deltaTime, gearLabel, lapTime } from "@/lib/raceTelemetry";
+import { computeRunningOrder, deltaTime, gearLabel, interpolatePosition, lapTime, positionFrameMs } from "@/lib/raceTelemetry";
 import type { CarPositionState, DriverState } from "@/stores/server";
 
 function driver(p: Partial<DriverState>): DriverState {
@@ -74,5 +74,22 @@ describe("formatters", () => {
     expect(gearLabel(pos(1, 0, 0))).toBe("1"); // gear 2 → first
     expect(gearLabel({ ...pos(1, 0), gear: 0 })).toBe("R");
     expect(gearLabel({ ...pos(1, 0), gear: 1 })).toBe("N");
+  });
+});
+
+describe("position smoothing", () => {
+  it("interpolates live telemetry fields without drifting running-order spline", () => {
+    const from = { ...pos(1, 0.9, 4000), x: 10, z: 20, velocity_x: 1, updated_at: 1000 };
+    const to = { ...pos(1, 0.1, 8000), x: 30, z: 60, velocity_x: 5, gear: 4, updated_at: 1200 };
+
+    const mid = interpolatePosition(from, to, 0.5);
+    expect(mid.x).toBe(20);
+    expect(mid.z).toBe(40);
+    expect(mid.velocity_x).toBe(3);
+    expect(mid.engine_rpm).toBe(6000);
+    expect(mid.gear).toBe(4);
+    expect(mid.normalized_spline_pos).toBe(0.1);
+    expect(positionFrameMs(from, to)).toBe(200);
+    expect(positionFrameMs(from, { ...to, updated_at: 5000 })).toBe(450);
   });
 });

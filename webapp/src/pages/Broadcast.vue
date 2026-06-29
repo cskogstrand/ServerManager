@@ -16,7 +16,9 @@ import {
   computeRunningOrder,
   formatClock,
   gearLabel,
+  interpolatePosition,
   lapTime,
+  positionFrameMs,
   rpmCeiling,
   sessionTypeLabel,
   speedKmh,
@@ -102,7 +104,9 @@ const demo = useBroadcastDemo(content);
 
 // --- Live state straight from the store (SSE-updated), or the demo feed ---
 const drivers = computed(() => (debug.value ? demo.drivers.value : (inst.value?.drivers ?? [])));
-const positions = computed(() => (debug.value ? demo.positions.value : (inst.value?.positions ?? [])));
+const livePositions = computed(() => inst.value?.positions ?? []);
+const smoothedLivePositions = ref<CarPositionState[]>([]);
+const positions = computed(() => (debug.value ? demo.positions.value : smoothedLivePositions.value));
 const session = computed(() => (debug.value ? demo.session.value : (inst.value?.session ?? null)));
 const telemetry = computed(() => inst.value?.telemetry ?? null);
 const running = computed(() => (debug.value ? true : (inst.value?.running ?? false)));
@@ -111,6 +115,77 @@ const running = computed(() => (debug.value ? true : (inst.value?.running ?? fal
 const isDrift = computed(() => (debug.value ? true : inst.value?.drift_score_enabled === 1));
 
 const telemetryOnline = computed(() => (debug.value ? true : !!telemetry.value?.udp_online));
+
+interface PositionTween {
+  from: CarPositionState;
+  to: CarPositionState;
+  started: number;
+  duration: number;
+}
+
+const positionTweens = new Map<number, PositionTween>();
+let positionFrame: number | null = null;
+
+function samePositionFrame(a: CarPositionState, b: CarPositionState): boolean {
+  return a.updated_at === b.updated_at && a.engine_rpm === b.engine_rpm && a.x === b.x && a.z === b.z;
+}
+
+function cancelPositionFrame() {
+  if (positionFrame != null) cancelAnimationFrame(positionFrame);
+  positionFrame = null;
+}
+
+function stopPositionSmoothing() {
+  cancelPositionFrame();
+  positionTweens.clear();
+}
+
+function renderPositionTweens(now = performance.now()) {
+  let active = false;
+  smoothedLivePositions.value = livePositions.value.map((target) => {
+    const tween = positionTweens.get(target.car_id);
+    if (!tween) return target;
+    const progress = Math.min(1, (now - tween.started) / tween.duration);
+    if (progress >= 1) {
+      positionTweens.delete(target.car_id);
+      return target;
+    }
+    active = true;
+    return interpolatePosition(tween.from, tween.to, progress);
+  });
+  positionFrame = active ? requestAnimationFrame(renderPositionTweens) : null;
+}
+
+function smoothLivePositionSnapshot(next: CarPositionState[], prev: CarPositionState[]) {
+  const now = performance.now();
+  const current = new Map(smoothedLivePositions.value.map((p) => [p.car_id, p]));
+  const previous = new Map(prev.map((p) => [p.car_id, p]));
+  const liveIds = new Set(next.map((p) => p.car_id));
+  for (const id of positionTweens.keys()) {
+    if (!liveIds.has(id)) positionTweens.delete(id);
+  }
+  for (const target of next) {
+    const oldTarget = previous.get(target.car_id);
+    if (!oldTarget || samePositionFrame(oldTarget, target)) continue;
+    positionTweens.set(target.car_id, {
+      from: current.get(target.car_id) ?? oldTarget,
+      to: target,
+      started: now,
+      duration: positionFrameMs(oldTarget, target),
+    });
+  }
+  cancelPositionFrame();
+  if (positionTweens.size) renderPositionTweens(now);
+  else smoothedLivePositions.value = next;
+}
+
+watch(
+    livePositions,
+    (next, prev = []) => {
+      if (!debug.value) smoothLivePositionSnapshot(next, prev);
+    },
+    {immediate: true},
+);
 
 // Track on stage: the live session wins; the status payload's current event is
 // the fallback before the first session frame lands.
@@ -375,12 +450,14 @@ function toggleDebug() {
 watch(debug, async (on) => {
   pinnedCarId.value = null;
   if (on) {
+    stopPositionSmoothing();
     mapImageOk.value = true;
     if (!content.loaded) await content.load();
     demo.regenerate();
     demo.start();
   } else {
     demo.stop();
+    smoothedLivePositions.value = livePositions.value;
     void fetchMapMeta();
   }
 });
@@ -404,6 +481,7 @@ onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   driverStreams.stopHealthPoll();
   cap.stopPoll();
+  stopPositionSmoothing();
   demo.stop();
 });
 </script>

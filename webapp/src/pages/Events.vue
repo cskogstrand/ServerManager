@@ -207,6 +207,8 @@ const confirmAction = () =>
 // --- Group management ---
 const groupModalOpen = ref(false);
 const newGroupName = ref("");
+const renameModalOpen = ref(false);
+const renameGroupName = ref("");
 
 const createGroup = () =>
   guard(async () => {
@@ -220,13 +222,20 @@ const createGroup = () =>
     toast.success("Group created.");
   });
 
+function openRenameGroup() {
+  if (groupFilter.value === "all") return;
+  const g = groups.value.find((x) => x.id === groupFilter.value);
+  renameGroupName.value = g?.name ?? "";
+  renameModalOpen.value = true;
+}
+
 const renameGroup = () =>
   guard(async () => {
     if (groupFilter.value === "all") return;
-    const g = groups.value.find((x) => x.id === groupFilter.value);
-    const name = window.prompt("Rename group", g?.name ?? "");
-    if (!name?.trim()) return;
-    await api.patch(`/api/category/${groupFilter.value}`, { name: name.trim() });
+    const name = renameGroupName.value.trim();
+    if (!name) return;
+    await api.patch(`/api/category/${groupFilter.value}`, { name });
+    renameModalOpen.value = false;
     await loadAll();
     toast.success("Group renamed.");
   });
@@ -305,7 +314,7 @@ onMounted(() =>
       New group
     </Button>
     <template v-if="groupFilter !== 'all'">
-      <Button variant="ghost" size="sm" aria-label="Rename group" @click="renameGroup">
+      <Button variant="ghost" size="sm" aria-label="Rename group" @click="openRenameGroup">
         <Icon name="edit" :size="14" />
       </Button>
       <Button variant="ghost" size="sm" aria-label="Delete group" @click="deleteGroup">
@@ -442,6 +451,17 @@ onMounted(() =>
     <template #footer>
       <Button variant="ghost" @click="groupModalOpen = false">Cancel</Button>
       <Button :disabled="busy || !newGroupName.trim()" @click="createGroup">Create group</Button>
+    </template>
+  </Modal>
+
+  <!-- Rename group -->
+  <Modal :open="renameModalOpen" title="Rename group" @close="renameModalOpen = false">
+    <FormRow label="Group name" for-id="renamegrp">
+      <Input id="renamegrp" v-model="renameGroupName" @keyup.enter="renameGroup" />
+    </FormRow>
+    <template #footer>
+      <Button variant="ghost" @click="renameModalOpen = false">Cancel</Button>
+      <Button :disabled="busy || !renameGroupName.trim()" @click="renameGroup">Rename group</Button>
     </template>
   </Modal>
 </template>

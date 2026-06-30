@@ -13,6 +13,7 @@ import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import Modal from "@/components/ui/Modal.vue";
 
 interface UserRow {
   name: string;
@@ -35,6 +36,9 @@ const roleOptions = [
 const newName = ref("");
 const newPassword = ref("");
 const newRole = ref("steward");
+const resetOpen = ref(false);
+const resetTarget = ref<UserRow | null>(null);
+const resetValue = ref("");
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
@@ -72,12 +76,22 @@ const setRole = (u: UserRow, role: string) =>
     await load();
   });
 
-const resetPassword = (u: UserRow) =>
+function openResetPassword(u: UserRow) {
+  resetTarget.value = u;
+  resetValue.value = "";
+  resetOpen.value = true;
+}
+
+const resetPassword = () =>
   guard(async () => {
-    const pw = window.prompt(`New password for ${u.name}:`);
-    if (!pw) return;
+    const u = resetTarget.value;
+    const pw = resetValue.value;
+    if (!u || !pw) return;
     await api.put(`/api/users/${encodeURIComponent(u.name)}/password`, { password: pw });
     toast.success(`Password reset for ${u.name}.`);
+    resetOpen.value = false;
+    resetTarget.value = null;
+    resetValue.value = "";
   });
 
 const removeUser = (u: UserRow) =>
@@ -128,7 +142,7 @@ onMounted(() => guard(load));
             :options="roleOptions"
             @update:model-value="(r) => setRole(u, String(r))"
           />
-          <Button variant="dark" size="sm" class="w-full" :disabled="busy" @click="resetPassword(u)">Reset password</Button>
+          <Button variant="dark" size="sm" class="w-full" :disabled="busy" @click="openResetPassword(u)">Reset password</Button>
         </li>
       </ul>
 
@@ -157,7 +171,7 @@ onMounted(() => guard(load));
               />
             </td>
             <td class="py-2 text-right whitespace-nowrap">
-              <Button variant="dark" size="sm" :disabled="busy" @click="resetPassword(u)">Reset password</Button>
+              <Button variant="dark" size="sm" :disabled="busy" @click="openResetPassword(u)">Reset password</Button>
               <Button
                 v-if="u.name !== auth.user?.name"
                 variant="ghost"
@@ -192,4 +206,14 @@ onMounted(() => guard(load));
       </Button>
     </Card>
   </div>
+
+  <Modal :open="resetOpen" :title="`Reset password${resetTarget ? ` for ${resetTarget.name}` : ''}`" @close="resetOpen = false">
+    <FormRow label="New password" for-id="resetpw">
+      <Input id="resetpw" v-model="resetValue" type="password" autocomplete="new-password" @keyup.enter="resetPassword" />
+    </FormRow>
+    <template #footer>
+      <Button variant="ghost" @click="resetOpen = false">Cancel</Button>
+      <Button :disabled="busy || !resetValue" @click="resetPassword">Reset password</Button>
+    </template>
+  </Modal>
 </template>

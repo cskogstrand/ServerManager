@@ -1,6 +1,7 @@
 import { onMounted, ref, type Ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useQueryParam, numberParam } from "@/lib/useQueryParam";
+import { useConfirmStore } from "@/stores/confirm";
 import type { presetResource } from "@/lib/presets";
 import type { DropDownList } from "@/types/generated";
 
@@ -19,6 +20,7 @@ export function usePresetPage<T extends { id?: number }>(
   const busy = ref(false);
   const notice = ref("");
   const error = ref("");
+  const confirm = useConfirmStore();
 
   // How many events use each preset of this kind: { presetId: count }.
   const usage = ref<Record<string, number>>({});
@@ -73,7 +75,14 @@ export function usePresetPage<T extends { id?: number }>(
 
   const remove = (id: number) =>
     guard(async () => {
-      if (!window.confirm("Delete this preset? Events using it will block the delete.")) return;
+      const ok = await confirm.ask({
+        title: "Delete preset",
+        message: "Delete this preset?",
+        detail: "Events using it will block the delete.",
+        confirmLabel: "Delete preset",
+        tone: "danger",
+      });
+      if (!ok) return;
       await resource.remove(id);
       if (selectedId.value === id) {
         selectedId.value = null;

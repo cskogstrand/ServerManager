@@ -7,6 +7,7 @@ import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useServerStore, type InstanceState } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
 import { useSetupSummary } from "@/lib/useSetupSummary";
+import { useConfirmStore } from "@/stores/confirm";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
@@ -21,6 +22,7 @@ import Select from "@/components/ui/Select.vue";
 const server = useServerStore();
 const content = useContentStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
+const confirm = useConfirmStore();
 
 // Setup health: instances aren't a first-run gate, but if global setup blocks
 // running we surface it here with a link back to the guided /setup flow.
@@ -202,7 +204,14 @@ const save = () =>
 
 const remove = (inst: InstanceState) =>
   guard(async () => {
-    if (!window.confirm(`Delete "${inst.name}"? Its queue entries are removed too.`)) return;
+    const ok = await confirm.ask({
+      title: "Delete instance",
+      message: `Delete "${inst.name}"?`,
+      detail: "Its queue entries are removed too. This cannot be undone.",
+      confirmLabel: "Delete instance",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.delete(`/api/instances/${inst.id}`);
     notice.value = "Instance deleted.";
     await server.load();
@@ -284,7 +293,15 @@ const saveDriverStream = () =>
 
 const removeDriverStream = (stream: DriverStream) =>
   guard(async () => {
-    if (!stream.id || !window.confirm(`Delete stream for "${stream.display_name || stream.driver_guid}"?`)) return;
+    if (!stream.id) return;
+    const ok = await confirm.ask({
+      title: "Delete driver stream",
+      message: `Delete stream for "${stream.display_name || stream.driver_guid}"?`,
+      detail: "The driver will no longer appear with a linked stream or capture source.",
+      confirmLabel: "Delete stream",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.delete(`/api/driver-streams/${stream.id}`);
     notice.value = "Driver stream deleted.";
     await loadDriverStreams();

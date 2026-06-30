@@ -262,7 +262,7 @@ onMounted(async () => {
 <template>
   <PageHeader
     title="Dashboard"
-    subtitle="Live status across every server instance. Open one for the map, live timing and full race control."
+    subtitle="Live status across every server instance. Open Race Control for the map, live timing and server commands."
     icon="dashboard"
   >
     <template #actions>
@@ -334,7 +334,7 @@ onMounted(async () => {
         </Button>
         <RouterLink :to="`/server/${inst.id}`">
           <Button variant="dark" size="sm">
-            Details
+            Race Control
             <Icon name="arrowUp" :size="14" class="rotate-90" />
           </Button>
         </RouterLink>

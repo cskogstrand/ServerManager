@@ -336,7 +336,14 @@ const deleting = ref<Set<string>>(new Set());
 async function deleteMedia(m: MediaItem) {
   if (!isRealMedia(m) || deleting.value.has(m.id)) return;
   const label = m.kind === "clip" ? "clip" : "screenshot";
-  if (!window.confirm(`Delete this ${label}? This can't be undone.`)) return;
+  const ok = await confirm.ask({
+    title: `Delete ${label}`,
+    message: `Delete this ${label}?`,
+    detail: "This cannot be undone.",
+    confirmLabel: `Delete ${label}`,
+    tone: "danger",
+  });
+  if (!ok) return;
   deleting.value.add(m.id);
   try {
     await api.delete(m.url);

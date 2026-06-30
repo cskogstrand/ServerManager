@@ -84,47 +84,56 @@ function toggleTheme() {
   localStorage.setItem("theme", theme.value);
 }
 
-// Build is preset/setup work (admin only); most of Admin is admin only.
-// Operate is open to every role (viewers see, stewards operate).
+// Navigation follows the user's jobs: operate live servers, build reusable race
+// setups, review driver history, then administer the installation.
 const allSections = [
   {
     label: "Operate",
     items: [
       { to: "/", label: "Dashboard", icon: "dashboard" },
-      { to: "/events", label: "Race Setups", icon: "events" },
+      { key: "race-control", label: "Race Control", icon: "activity" },
       { to: "/queue", label: "Run Plan", icon: "queue" },
-      { to: "/drivers", label: "Driver Stats", icon: "trophy" },
-      { to: "/sessions", label: "Session Search", icon: "search" },
-      { to: "/leaderboard", label: "Leaderboard", icon: "flag" },
-      { to: "/guest-drivers", label: "Guest Drivers", icon: "users", operate: true },
+      { to: "/broadcast", label: "Broadcast Display", icon: "broadcast" },
     ],
   },
   {
     label: "Build",
     items: [
+      { to: "/events", label: "Race Setups", icon: "events" },
       { to: "/presets/classes", label: "Car Classes", icon: "car", operate: true },
-      { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty", admin: true },
       { to: "/presets/sessions", label: "Sessions", icon: "clock", admin: true },
       { to: "/presets/time", label: "Time & Weather", icon: "weather", admin: true },
+      { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty", admin: true },
+    ],
+  },
+  {
+    label: "Drivers & History",
+    items: [
+      { to: "/drivers", label: "Driver Stats", icon: "trophy" },
+      { to: "/sessions", label: "Session Search", icon: "search" },
+      { to: "/guest-drivers", label: "Guest Drivers", icon: "users", operate: true },
     ],
   },
   {
     label: "Admin",
     items: [
       { to: "/setup", label: "Server Setup", icon: "settings", admin: true },
-      { to: "/settings", label: "Configuration", icon: "settings", admin: true },
-      { to: "/settings/instances", label: "Instances", icon: "instances", admin: true },
-      { to: "/settings/streams", label: "Stream Debug", icon: "broadcast", admin: true },
-      { to: "/content", label: "Content", icon: "content", admin: true },
+      { to: "/content", label: "Content Library", icon: "content", admin: true },
+      { to: "/settings", label: "Server Configuration", icon: "settings", admin: true },
+      { to: "/settings/instances", label: "Server Instances", icon: "instances", admin: true },
+      { to: "/settings/streams", label: "Stream Diagnostics", icon: "broadcast", admin: true },
       { to: "/maintenance", label: "Backup & Restore", icon: "content", admin: true },
       { to: "/settings/users", label: "Users & Roles", icon: "users", admin: true },
-      { to: "/preferences", label: "Preferences", icon: "user" },
-      { to: "/about", label: "About", icon: "info" },
     ],
   },
 ] as const;
 
-type NavItem = { to: string; label: string; icon: string; admin?: boolean; operate?: boolean };
+const accountItems = [
+  { to: "/preferences", label: "Preferences", icon: "user" },
+  { to: "/about", label: "About", icon: "info" },
+] as const;
+
+type NavItem = { to?: string; key?: "race-control"; label: string; icon: string; admin?: boolean; operate?: boolean };
 
 // Item visibility: admin items need admin; operate items need steward-or-admin;
 // everything else is open to any role.
@@ -137,13 +146,21 @@ const navSections = computed(() =>
     .filter((s) => s.items.length > 0),
 );
 
-// Bottom-tab nav (mobile): the four daily-operations items; the fifth slot is a
-// hamburger that opens a drawer with every remaining (role-visible) item.
-// Capped at four so the grid stays 4 tabs + hamburger — extra Operate items
-// (e.g. Leaderboard) are reachable from the "More" drawer.
+const raceControlTo = computed(() => {
+  if (route.name === "server-detail") return route.fullPath;
+  const active = server.instanceList.find((i) => i.running) ?? server.instanceList[0];
+  return active ? `/server/${active.id}` : "/";
+});
+
+function navTo(item: NavItem): string {
+  return item.key === "race-control" ? raceControlTo.value : (item.to ?? "/");
+}
+
+// Bottom-tab nav (mobile): the four daily-operation items; the fifth slot opens
+// the drawer with everything else.
 const operate = allSections[0].items as readonly NavItem[];
 const mobileNav = computed<NavItem[]>(() =>
-  (operate as NavItem[]).filter(canSee).slice(0, 4), // Dashboard, Events, Queue, Driver Stats
+  (operate as NavItem[]).filter(canSee).slice(0, 4),
 );
 
 // Mobile "more" drawer: all nav sections, closed on navigation.
@@ -196,8 +213,8 @@ watch(
             <div class="space-y-1">
               <RouterLink
                 v-for="item in section.items"
-                :key="item.to"
-                :to="item.to"
+                :key="item.to ?? item.key"
+                :to="navTo(item)"
                 class="flex min-h-9 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors duration-200 hover:bg-surface-2 hover:text-text"
                 active-class="bg-accent-dim !text-accent"
               >
@@ -217,6 +234,18 @@ watch(
               <div class="truncate text-xs font-semibold text-text">{{ auth.user?.name }}</div>
               <div class="text-[11px] text-dim">Signed in</div>
             </div>
+          </div>
+          <div class="mb-2 grid grid-cols-2 gap-1">
+            <RouterLink
+              v-for="item in accountItems"
+              :key="item.to"
+              :to="item.to"
+              class="flex min-h-8 items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              active-class="bg-accent-dim !text-accent"
+            >
+              <Icon :name="item.icon" :size="15" />
+              {{ item.label }}
+            </RouterLink>
           </div>
           <div class="flex items-center gap-1">
             <button
@@ -273,8 +302,8 @@ watch(
     <nav class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 px-1 py-1.5 backdrop-blur md:hidden">
       <RouterLink
         v-for="item in mobileNav"
-        :key="item.to"
-        :to="item.to"
+        :key="item.to ?? item.key"
+        :to="navTo(item)"
         class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
         active-class="bg-accent-dim !text-accent"
       >
@@ -336,6 +365,23 @@ watch(
               <div class="space-y-1">
                 <RouterLink
                   v-for="item in section.items"
+                  :key="item.to ?? item.key"
+                  :to="navTo(item)"
+                  class="flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                  active-class="bg-accent-dim !text-accent"
+                >
+                  <Icon :name="item.icon" :size="17" />
+                  <span class="truncate">{{ item.label }}</span>
+                </RouterLink>
+              </div>
+            </section>
+            <section>
+              <h3 class="mb-1.5 px-3 text-[11px] font-bold tracking-wide text-dim uppercase">
+                Account
+              </h3>
+              <div class="space-y-1">
+                <RouterLink
+                  v-for="item in accountItems"
                   :key="item.to"
                   :to="item.to"
                   class="flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"

@@ -118,6 +118,12 @@ const confirm = useConfirmStore();
 
 const instanceId = computed(() => Number(route.params.id));
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
+const serverOptions = computed(() =>
+  server.instanceList.map((i) => ({
+    value: i.id,
+    label: `${i.name} · ${i.running ? `${i.players} player${i.players === 1 ? "" : "s"}` : "stopped"} · :${i.tcp_port}`,
+  })),
+);
 
 const detail = ref<StatusPayload | null>(null);
 const queue = ref<QueueItem[]>([]);
@@ -181,6 +187,12 @@ function carName(model: string): string {
 }
 
 const broadcastTo = computed(() => `/server/${instanceId.value}/broadcast`);
+
+function switchInstance(id: string | number | null | undefined) {
+  const next = Number(id);
+  if (!Number.isFinite(next) || next === instanceId.value) return;
+  void router.push(`/server/${next}`);
+}
 
 function timingFor(carId: number): TimingRow | undefined {
   return timingRows.value.find((r) => r.car_id === carId);
@@ -277,6 +289,23 @@ async function fetchMapMeta() {
 
 watch(activeTrack, (next, prev) => {
   if (next?.key !== prev?.key || next?.config !== prev?.config) void fetchMapMeta();
+});
+
+watch(instanceId, async (id) => {
+  if (!server.instances[id]) {
+    toast.error("Unknown server instance.");
+    void router.replace("/");
+    return;
+  }
+  detail.value = null;
+  queue.value = [];
+  mapMeta.value = null;
+  mapImageOk.value = true;
+  consoleOpen.value = false;
+  loading.value = true;
+  await Promise.all([fetchDetail(), fetchQueue()]);
+  await fetchMapMeta();
+  loading.value = false;
 });
 
 // SSE running flips → refetch the detail payload (event may have rotated)
@@ -873,12 +902,20 @@ onBeforeUnmount(() => {
         <Icon name="arrowUp" :size="14" class="-rotate-90" />
         Dashboard
       </RouterLink>
+      <div class="min-w-56 sm:min-w-72">
+        <label for="race-control-instance" class="sr-only">Server instance</label>
+        <Select
+          id="race-control-instance"
+          :model-value="instanceId"
+          :options="serverOptions"
+          @update:model-value="switchInstance"
+        />
+      </div>
       <span
         class="size-2.5 rounded-full"
         :class="inst.running ? 'bg-ok shadow-[0_0_16px_rgba(79,216,132,0.6)]' : 'bg-dim'"
       />
-      <h1 class="text-xl font-black tracking-tight">{{ inst.name }}</h1>
-      <span class="font-mono text-xs text-dim">:{{ inst.tcp_port }}</span>
+      <h1 class="text-xl font-black tracking-tight">Race Control</h1>
       <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
         {{ inst.players }} player{{ inst.players === 1 ? "" : "s" }}
       </span>

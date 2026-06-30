@@ -188,13 +188,14 @@ watch(
     {immediate: true},
 );
 
-// Track on stage: the live session wins; the status payload's current event is
-// the fallback before the first session frame lands.
+// Track on stage: prefer the event's content-cache key. AC's live session track
+// string can differ from the configured key/layout, while telemetry projection
+// must use the same map asset ServerDetail uses.
 const activeTrack = computed(() => {
-  const s = session.value;
-  if (s?.track) return {key: s.track, config: s.track_config ?? ""};
   const ev = detail.value?.current_event;
   if (ev?.track_key) return {key: ev.track_key, config: ev.track_config ?? ""};
+  const s = session.value;
+  if (s?.track) return {key: s.track, config: s.track_config ?? ""};
   return null;
 });
 

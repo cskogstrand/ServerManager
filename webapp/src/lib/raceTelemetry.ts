@@ -205,12 +205,11 @@ export interface TrackMapPoint {
 export function trackMapPoint(
   pos: CarPositionState,
   meta: TrackMapProjection,
-  natural?: { w: number; h: number } | null,
   edgeInsetPct = 0,
 ): TrackMapPoint {
   const scale = meta.scale_factor || 1;
-  const width = natural?.w || meta.width;
-  const height = natural?.h || meta.height;
+  const width = meta.width;
+  const height = meta.height;
   const px = (pos.x + meta.x_offset) / scale + meta.margin;
   const py = (pos.z + meta.z_offset) / scale + meta.margin;
   const edgeX = clamp(px, 0, width);

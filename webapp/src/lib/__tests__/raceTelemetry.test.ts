@@ -112,7 +112,7 @@ describe("track map projection", () => {
       distanceMeters: 120,
       angleDeg: 0,
     });
-    expect(trackMapPoint({ ...pos(1, 0), x: 300, z: 80 }, meta, null, 6)).toMatchObject({
+    expect(trackMapPoint({ ...pos(1, 0), x: 300, z: 80 }, meta, 6)).toMatchObject({
       left: "94%",
       top: "55%",
     });

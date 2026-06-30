@@ -92,10 +92,6 @@ const aggregate = computed(() => autoMode.value && !busiest.value);
 const detail = ref<StatusPayload | null>(null);
 const mapMeta = ref<TrackMapMeta | null>(null);
 const mapImageOk = ref(true);
-// map.ini WIDTH/HEIGHT are unreliable (some tracks bake in MARGIN, some don't),
-// so the projection denominator is the displayed PNG's true pixel size, read off
-// the <img> once it loads. Falls back to meta dims until then.
-const mapNatural = ref<{w: number; h: number} | null>(null);
 
 // --- Client-only demo mode: fabricate a fake running session so the broadcast
 // layout can be exercised without a live server. Nothing here hits the backend;
@@ -284,7 +280,7 @@ const MAP_EDGE_INSET_PCT = 6;
 
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
-  const ratio = (mapNatural.value?.w || meta.width || 16) / (mapNatural.value?.h || meta.height || 9);
+  const ratio = (meta.width || 16) / (meta.height || 9);
   // Fit the column: cap width so the derived height never exceeds the height
   // budget (--map-h). That budget is the full stage on desktop, but a small
   // slice on mobile where the map sits stacked above the cards — keeps the
@@ -302,7 +298,7 @@ const mapCars = computed(() => {
   return drivers.value.flatMap((driver) => {
     const pos = positions.value.find((p) => p.car_id === driver.car_id);
     return pos
-        ? [{driver, point: trackMapPoint(pos, meta, mapNatural.value, MAP_EDGE_INSET_PCT)}]
+        ? [{driver, point: trackMapPoint(pos, meta, MAP_EDGE_INSET_PCT)}]
         : [];
   });
 });
@@ -422,7 +418,6 @@ async function fetchMapMeta() {
 
 watch(activeTrack, (next, prev) => {
   if (next?.key !== prev?.key || next?.config !== prev?.config) {
-    mapNatural.value = null; // re-read natural dims off the new track's PNG
     void fetchMapMeta();
   }
 });
@@ -631,7 +626,6 @@ onBeforeUnmount(() => {
                 :src="mapImageUrl"
                 alt="Track Map"
                 class="absolute inset-0 size-full object-fill opacity-60 blend-luminosity"
-                @load="mapNatural = { w: ($event.target as HTMLImageElement).naturalWidth, h: ($event.target as HTMLImageElement).naturalHeight }"
                 @error="mapImageOk = false"
             />
 

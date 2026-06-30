@@ -279,6 +279,8 @@ const mapImageUrl = computed(() =>
             : "",
 );
 
+const MAP_EDGE_INSET_PCT = 6;
+
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
   const ratio = (mapNatural.value?.w || meta.width || 16) / (mapNatural.value?.h || meta.height || 9);
@@ -289,21 +291,28 @@ function mapWrapStyle(meta: TrackMapMeta) {
   return {aspectRatio: String(ratio), width: `min(100%, calc(var(--map-h) * ${ratio}))`, margin: "auto"};
 }
 
-function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
-  const point = trackMapPoint(pos, meta, mapNatural.value);
-  return {
-    left: point.left,
-    top: point.top,
-    visibility: point.inBounds ? ("visible" as const) : ("hidden" as const),
-  };
-}
-
-function positionFor(carId: number): CarPositionState | undefined {
-  return positions.value.find((p) => p.car_id === carId);
-}
-
 function timingFor(carId: number): TimingRow | undefined {
   return timingRows.value.find((r) => r.car_id === carId);
+}
+
+const mapCars = computed(() => {
+  const meta = effectiveMapMeta.value;
+  if (!meta) return [];
+  return drivers.value.flatMap((driver) => {
+    const pos = positions.value.find((p) => p.car_id === driver.car_id);
+    return pos
+        ? [{driver, point: trackMapPoint(pos, meta, mapNatural.value, MAP_EDGE_INSET_PCT)}]
+        : [];
+  });
+});
+
+function offMapArrowStyle(angleDeg: number) {
+  return {transform: `rotate(${angleDeg + 90}deg)`};
+}
+
+function distanceLabel(meters: number): string {
+  if (meters >= 950) return `${Number((meters / 1000).toFixed(1))} km`;
+  return `${Math.max(1, Math.round(meters))} m`;
 }
 
 // --- Watchable driver streams ---
@@ -625,39 +634,51 @@ onBeforeUnmount(() => {
                 @error="mapImageOk = false"
             />
 
-            <template v-for="d in drivers" :key="d.car_id">
             <button
-                v-if="positionFor(d.car_id)"
+                v-for="car in mapCars"
+                :key="car.driver.car_id"
                 type="button"
                 class="puck absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left,transform] duration-200 ease-linear hover:scale-110"
-                :class="{ 'puck-focus z-20': focusRow?.car_id === d.car_id }"
-                :style="mapPoint(positionFor(d.car_id)!, effectiveMapMeta)"
-                @click="focusCar(d.car_id)"
+                :class="{ 'puck-focus z-20': focusRow?.car_id === car.driver.car_id, 'puck-offmap': !car.point.inBounds }"
+                :style="{ left: car.point.left, top: car.point.top }"
+                @click="focusCar(car.driver.car_id)"
             >
+              <span
+                  v-if="!car.point.inBounds"
+                  class="offmap-pin relative inline-flex h-7 items-center gap-1 rounded-full border border-warn/70 bg-bg/90 px-2 font-mono text-[10px] font-bold text-warn shadow-lg backdrop-blur-sm"
+              >
+                <Icon name="arrowUp" :size="13" class="shrink-0" :style="offMapArrowStyle(car.point.angleDeg)" />
+                <span class="grid size-4 place-items-center rounded-full bg-warn text-[9px] font-black text-bg">
+                  {{ (car.driver.name || 'C' + car.driver.car_id).slice(0, 1).toUpperCase() }}
+                </span>
+                <span>{{ distanceLabel(car.point.distanceMeters) }}</span>
+              </span>
+
+              <template v-else>
           <span
-              v-if="timingFor(d.car_id)?.isLeader"
+              v-if="timingFor(car.driver.car_id)?.isLeader"
               class="puck-ring absolute inset-0 -m-1 animate-pulse rounded-full border border-accent/40 bg-accent/5"
           />
 
               <span
                   class="relative grid size-7 place-items-center rounded-full border-2 text-xs font-bold shadow-lg"
                   :class="
-              timingFor(d.car_id)?.isLeader
+              timingFor(car.driver.car_id)?.isLeader
                 ? 'border-bg bg-accent text-bg shadow-accent/40'
-                : focusRow?.car_id === d.car_id
+                : focusRow?.car_id === car.driver.car_id
                   ? 'border-accent bg-surface-4 text-accent'
                   : 'border-bg bg-surface-3 text-text'
             "
               >
-            {{ (d.name || 'C' + d.car_id).slice(0, 1).toUpperCase() }}
+            {{ (car.driver.name || 'C' + car.driver.car_id).slice(0, 1).toUpperCase() }}
           </span>
 
               <span
                   class="pointer-events-none absolute left-1/2 top-9 -translate-x-1/2 rounded bg-bg/90 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-tight text-text shadow-sm backdrop-blur-sm">
-            {{ d.name || 'Car ' + d.car_id }}
+            {{ car.driver.name || 'Car ' + car.driver.car_id }}
           </span>
+              </template>
             </button>
-          </template>
           </div>
         </div>
 
@@ -1026,6 +1047,10 @@ onBeforeUnmount(() => {
 .puck:hover,
 .puck-focus {
   z-index: 10;
+}
+
+.puck-offmap {
+  z-index: 15;
 }
 
 /* Leader gets a slow expanding ring. */

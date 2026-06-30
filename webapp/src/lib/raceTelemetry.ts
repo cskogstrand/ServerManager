@@ -159,6 +159,10 @@ function pct(n: number): string {
   return `${Number(n.toFixed(4))}%`;
 }
 
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
 export function positionFrameMs(from: CarPositionState, to: CarPositionState): number {
   const dt = to.updated_at - from.updated_at;
   return dt > 0 ? Math.max(120, Math.min(450, dt)) : 220;
@@ -194,21 +198,34 @@ export interface TrackMapPoint {
   left: string;
   top: string;
   inBounds: boolean;
+  distanceMeters: number;
+  angleDeg: number;
 }
 
 export function trackMapPoint(
   pos: CarPositionState,
   meta: TrackMapProjection,
   natural?: { w: number; h: number } | null,
+  edgeInsetPct = 0,
 ): TrackMapPoint {
   const scale = meta.scale_factor || 1;
   const width = natural?.w || meta.width;
   const height = natural?.h || meta.height;
-  const left = (((pos.x + meta.x_offset) / scale + meta.margin) / width) * 100;
-  const top = (((pos.z + meta.z_offset) / scale + meta.margin) / height) * 100;
+  const px = (pos.x + meta.x_offset) / scale + meta.margin;
+  const py = (pos.z + meta.z_offset) / scale + meta.margin;
+  const edgeX = clamp(px, 0, width);
+  const edgeY = clamp(py, 0, height);
+  const left = (px / width) * 100;
+  const top = (py / height) * 100;
+  const inBounds = left >= 0 && left <= 100 && top >= 0 && top <= 100;
+  const inset = inBounds ? 0 : edgeInsetPct;
+  const dx = px - edgeX;
+  const dy = py - edgeY;
   return {
-    left: pct(Math.max(0, Math.min(100, left))),
-    top: pct(Math.max(0, Math.min(100, top))),
-    inBounds: left >= 0 && left <= 100 && top >= 0 && top <= 100,
+    left: pct(clamp(left, inset, 100 - inset)),
+    top: pct(clamp(top, inset, 100 - inset)),
+    inBounds,
+    distanceMeters: Math.hypot(dx, dy) * scale,
+    angleDeg: dx || dy ? (Math.atan2(dy, dx) * 180) / Math.PI : 0,
   };
 }

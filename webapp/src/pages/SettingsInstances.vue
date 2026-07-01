@@ -5,7 +5,6 @@ import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useServerStore, type InstanceState } from "@/stores/server";
-import { useContentStore } from "@/stores/content";
 import { useSetupSummary } from "@/lib/useSetupSummary";
 import { useConfirmStore } from "@/stores/confirm";
 import Card from "@/components/ui/Card.vue";
@@ -16,11 +15,8 @@ import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Toggle from "@/components/ui/Toggle.vue";
-import Combobox from "@/components/ui/Combobox.vue";
-import Select from "@/components/ui/Select.vue";
 
 const server = useServerStore();
-const content = useContentStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
 const confirm = useConfirmStore();
 
@@ -31,7 +27,6 @@ const setupBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "")
 
 onMounted(() => {
   void server.load();
-  void content.load();
   void reloadSummary();
 });
 
@@ -189,15 +184,6 @@ const remove = (inst: InstanceState) =>
     await server.load();
   });
 
-function skins(carKey: string) {
-  return content.carByKey(carKey)?.skins ?? [];
-}
-
-function onSpectatorCar() {
-  const f = form.value;
-  if (!f) return;
-  f.spectator_skin_key = skins(f.spectator_car_key)[0]?.key ?? "";
-}
 </script>
 
 <template>
@@ -272,10 +258,6 @@ function onSpectatorCar() {
         <dd>{{ inst.plugin_port }} → {{ inst.plugin_listen_port }}</dd>
         <dt class="font-sans text-muted">Start on boot</dt>
         <dd>{{ inst.start_on_boot === 1 ? "On" : "Off" }}</dd>
-        <dt class="font-sans text-muted">Stream</dt>
-        <dd>{{ inst.stream_enabled === 1 ? "Configured" : "Off" }}</dd>
-        <dt class="font-sans text-muted">Spectator slot</dt>
-        <dd>{{ inst.spectator_enabled === 1 ? "Reserved" : "Off" }}</dd>
       </dl>
       <p v-if="inst.running" class="mt-2 text-xs text-dim">Stop the server to edit or delete.</p>
     </Card>
@@ -316,47 +298,6 @@ function onSpectatorCar() {
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.allow_wrong_way" label="Allow driving the wrong way" />
         <p class="mt-1 text-xs text-dim">Writes <code>ALLOW_WRONG_WAY</code> to the CSP extra rules so drivers can go the opposite direction without being teleported back to the pits. Requires the AssettoServer engine and CSP on the client.</p>
-      </div>
-      <div class="mt-2 border-t border-line pt-4">
-        <Toggle v-model="form.stream_enabled" label="Show fixed spectator stream on dashboard" />
-        <div v-if="form.stream_enabled" class="mt-3">
-          <FormRow label="WebRTC player URL" for-id="istream-url" hint="Browser-playable page or WHEP/player URL exposed by OBS, MediaMTX or similar.">
-            <Input id="istream-url" v-model="form.stream_embed_url" placeholder="https://stream.example.com/camera" />
-          </FormRow>
-          <FormRow label="Health URL" for-id="istream-status" hint="Optional URL SM probes to show live/offline status.">
-            <Input id="istream-status" v-model="form.stream_status_url" placeholder="https://stream.example.com/health" />
-          </FormRow>
-        </div>
-      </div>
-
-      <div class="mt-2 border-t border-line pt-4">
-        <Toggle v-model="form.spectator_enabled" label="Reserve a locked spectator slot for the stream client" />
-        <div v-if="form.spectator_enabled" class="mt-3">
-          <div class="grid gap-x-4 sm:grid-cols-2">
-            <FormRow label="Driver name" for-id="ispec-name">
-              <Input id="ispec-name" v-model="form.spectator_driver_name" />
-            </FormRow>
-            <FormRow label="Driver GUID" for-id="ispec-guid">
-              <Input id="ispec-guid" v-model="form.spectator_guid" class="font-mono" />
-            </FormRow>
-          </div>
-          <div class="grid gap-x-4 sm:grid-cols-2">
-            <FormRow label="Car" hint="The full AC client on the stream PC must have this car installed.">
-              <Combobox
-                v-model="form.spectator_car_key"
-                placeholder="Search cars…"
-                :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
-                @update:model-value="onSpectatorCar"
-              />
-            </FormRow>
-            <FormRow label="Skin">
-              <Select
-                v-model="form.spectator_skin_key"
-                :options="skins(form.spectator_car_key).map((s) => ({ value: s.key, label: s.name || s.key }))"
-              />
-            </FormRow>
-          </div>
-        </div>
       </div>
       <p class="text-xs text-dim">
         Docker setups map 9601-9609 (game) and 8082-8090 (http) by default — stay inside those ranges or extend the

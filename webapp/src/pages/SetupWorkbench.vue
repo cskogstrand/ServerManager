@@ -485,7 +485,10 @@ const serverName = computed(() => config.value?.name?.trim() || runInstance.valu
               <Icon name="alert" :size="14" />
               {{ summary.port_conflict }}
             </p>
-            <RouterLink to="/settings/instances" class="inline-block text-xs text-accent hover:underline">Manage ports, streams & spectator slots →</RouterLink>
+            <div class="flex flex-wrap gap-x-3 gap-y-1">
+              <RouterLink to="/settings/instances" class="inline-block text-xs text-accent hover:underline">Manage ports →</RouterLink>
+              <RouterLink to="/settings/streaming" class="inline-block text-xs text-accent hover:underline">Manage streams →</RouterLink>
+            </div>
           </div>
           <div v-else>
             <p class="mb-3 text-sm text-muted">

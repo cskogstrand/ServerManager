@@ -116,6 +116,7 @@ const allSections = [
     label: "Admin",
     items: [
       { to: "/setup", label: "Server Setup", icon: "settings", admin: true },
+      { to: "/settings/installation", label: "Installation", icon: "folder", admin: true },
       { to: "/content", label: "Content Library", icon: "content", admin: true },
       { to: "/settings", label: "Server Configuration", icon: "settings", admin: true },
       { to: "/settings/instances", label: "Server Instances", icon: "instances", admin: true },

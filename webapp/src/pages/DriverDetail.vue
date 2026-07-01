@@ -786,7 +786,7 @@ async function removeSession(session: DriverSession) {
               {{ driver.stream?.status === "offline" ? "Stream offline" : "No stream configured" }}
             </p>
             <p class="mt-0.5 text-xs text-muted">
-              {{ driver.stream?.status === "offline" ? "The driver's stream isn't live right now." : "Add a stream URL under Instances → Driver streams." }}
+              {{ driver.stream?.status === "offline" ? "The driver's stream isn't live right now." : "Add a stream URL under Streaming & Capture." }}
             </p>
           </div>
         </div>

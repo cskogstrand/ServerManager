@@ -287,7 +287,7 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
     </Card>
 
     <Card v-if="(snap?.streams.length ?? 0) === 0">
-      <div class="py-8 text-center text-sm text-muted">No driver streams configured. Add one under Instances → Driver streams.</div>
+      <div class="py-8 text-center text-sm text-muted">No driver streams configured. Add one under Streaming & Capture.</div>
     </Card>
   </div>
 

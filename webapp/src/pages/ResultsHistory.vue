@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { api } from "@/lib/api";
 import { listScores, searchSessions, fmtDate, fmtScore, shortGuid } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
 import type { ScoreEntry, SessionSearchResult } from "@/types/driverStats";
@@ -13,14 +14,33 @@ import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 const q = ref("");
 const sessions = ref<SessionSearchResult[]>([]);
 const scores = ref<ScoreEntry[]>([]);
+const files = ref<ResultFile[]>([]);
 const loading = ref(true);
+
+interface ResultFile {
+  file: string;
+  instance_id: number;
+  modified_at: number;
+  type: string;
+  track: string;
+  winner: string;
+  entries: number;
+  best_lap_ms: number;
+}
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load() {
   loading.value = true;
   try {
-    [sessions.value, scores.value] = await Promise.all([searchSessions({ q: q.value.trim() }), listScores()]);
+    const [sessionRows, scoreRows, resultRows] = await Promise.all([
+      searchSessions({ q: q.value.trim() }),
+      listScores(),
+      api.get<{ items: ResultFile[] }>("/api/results/files"),
+    ]);
+    sessions.value = sessionRows;
+    scores.value = scoreRows;
+    files.value = resultRows.items ?? [];
   } finally {
     loading.value = false;
   }
@@ -42,6 +62,14 @@ const bestLap = computed(() =>
   [...scores.value].filter((s) => s.kind === "lap" && s.best_lap_ms).sort((a, b) => (a.best_lap_ms ?? 0) - (b.best_lap_ms ?? 0))[0] ?? null,
 );
 const recentSessions = computed(() => [...sessions.value].sort((a, b) => b.joined_at - a.joined_at).slice(0, 12));
+const recentFiles = computed(() =>
+  files.value
+    .filter((f) => {
+      const query = q.value.trim().toLowerCase();
+      return !query || `${f.file} ${f.track} ${f.winner} ${f.type}`.toLowerCase().includes(query);
+    })
+    .slice(0, 12),
+);
 
 function durationLabel(r: SessionSearchResult): string {
   const end = r.left_at ?? Date.now();
@@ -83,6 +111,11 @@ function durationLabel(r: SessionSearchResult): string {
       <div class="text-xs text-muted">{{ finishedSessions.length }} finished</div>
     </Card>
     <Card>
+      <div class="text-xs text-dim">Result files</div>
+      <div class="mt-1 font-mono text-2xl font-black">{{ files.length }}</div>
+      <div class="text-xs text-muted">parsed from server work dirs</div>
+    </Card>
+    <Card>
       <div class="text-xs text-dim">Laps</div>
       <div class="mt-1 font-mono text-2xl font-black">{{ totalLaps }}</div>
       <div class="text-xs text-muted">recorded in history</div>
@@ -101,6 +134,7 @@ function durationLabel(r: SessionSearchResult): string {
     </Card>
   </div>
 
+  <div class="grid gap-4 xl:grid-cols-2">
   <Card>
     <template #header>
       <Icon name="clock" :size="15" class="text-accent" />
@@ -153,4 +187,48 @@ function durationLabel(r: SessionSearchResult): string {
       No sessions found.
     </div>
   </Card>
+
+  <Card>
+    <template #header>
+      <Icon name="content" :size="15" class="text-accent" />
+      <h2 class="text-sm font-bold">Result files</h2>
+      <span class="ml-auto text-xs text-dim">{{ recentFiles.length }} shown</span>
+    </template>
+
+    <div v-if="recentFiles.length" class="divide-y divide-line/60">
+      <div v-for="f in recentFiles" :key="`${f.instance_id}:${f.file}`" class="py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-bold">{{ f.track || f.file }}</div>
+            <div class="mt-0.5 truncate font-mono text-xs text-dim">{{ f.file }}</div>
+          </div>
+          <span class="shrink-0 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            {{ f.type }}
+          </span>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-4">
+          <div>
+            <div class="text-dim">Winner</div>
+            <div class="truncate font-medium">{{ f.winner || "-" }}</div>
+          </div>
+          <div>
+            <div class="text-dim">Best lap</div>
+            <div class="font-mono">{{ f.best_lap_ms ? lapTime(f.best_lap_ms) : "-" }}</div>
+          </div>
+          <div>
+            <div class="text-dim">Entries</div>
+            <div class="font-mono">{{ f.entries || "-" }}</div>
+          </div>
+          <div>
+            <div class="text-dim">Date</div>
+            <div>{{ fmtDate(f.modified_at) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="py-10 text-center text-sm text-muted">
+      No result JSON files found in server work dirs.
+    </div>
+  </Card>
+  </div>
 </template>

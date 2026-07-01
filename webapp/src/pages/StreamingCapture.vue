@@ -4,6 +4,8 @@ import { api, ApiError } from "@/lib/api";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useServerStore, type InstanceState } from "@/stores/server";
+import { useContentStore } from "@/stores/content";
 import type { UserConfig } from "@/types/generated";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Card from "@/components/ui/Card.vue";
@@ -13,6 +15,8 @@ import Input from "@/components/ui/Input.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
+import Combobox from "@/components/ui/Combobox.vue";
+import Select from "@/components/ui/Select.vue";
 
 interface DriverStream {
   id?: number;
@@ -34,8 +38,22 @@ interface DriverStreamForm {
   stream_capture_url: string;
 }
 
+interface InstanceStreamForm {
+  id: number;
+  stream_enabled: boolean;
+  stream_embed_url: string;
+  stream_status_url: string;
+  spectator_enabled: boolean;
+  spectator_driver_name: string;
+  spectator_guid: string;
+  spectator_car_key: string;
+  spectator_skin_key: string;
+}
+
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const server = useServerStore();
+const content = useContentStore();
 const form = ref<UserConfig | null>(null);
 const streams = ref<DriverStream[]>([]);
 const busy = ref(false);
@@ -59,14 +77,19 @@ const captureSnapshot = () => {
 
 let captureBaseline = "";
 let driverBaseline = "";
+let instanceBaseline = "";
 const driverOpen = ref(false);
 const driverForm = ref<DriverStreamForm | null>(null);
+const instanceOpen = ref(false);
+const instanceForm = ref<InstanceStreamForm | null>(null);
 const markCaptureClean = () => (captureBaseline = captureSnapshot());
 const markDriverClean = () => (driverBaseline = driverForm.value ? JSON.stringify(driverForm.value) : "");
+const markInstanceClean = () => (instanceBaseline = instanceForm.value ? JSON.stringify(instanceForm.value) : "");
 useUnsavedGuard(
   () =>
     (form.value !== null && captureSnapshot() !== captureBaseline) ||
-    (driverOpen.value && driverForm.value !== null && JSON.stringify(driverForm.value) !== driverBaseline),
+    (driverOpen.value && driverForm.value !== null && JSON.stringify(driverForm.value) !== driverBaseline) ||
+    (instanceOpen.value && instanceForm.value !== null && JSON.stringify(instanceForm.value) !== instanceBaseline),
 );
 
 function intToggle(key: keyof UserConfig) {
@@ -88,6 +111,8 @@ async function load() {
     const [cfg, res] = await Promise.all([
       api.get<UserConfig>("/api/config"),
       api.get<{ streams: DriverStream[] }>("/api/driver-streams"),
+      server.load(),
+      content.load(),
     ]);
     form.value = cfg;
     streams.value = res.streams ?? [];
@@ -96,6 +121,67 @@ async function load() {
     toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
     loading.value = false;
+  }
+}
+
+function skins(carKey: string) {
+  return content.carByKey(carKey)?.skins ?? [];
+}
+
+function openInstanceStream(inst: InstanceState) {
+  instanceForm.value = {
+    id: inst.id,
+    stream_enabled: inst.stream_enabled === 1,
+    stream_embed_url: inst.stream_embed_url ?? "",
+    stream_status_url: inst.stream_status_url ?? "",
+    spectator_enabled: inst.spectator_enabled === 1,
+    spectator_driver_name: inst.spectator_driver_name ?? "Broadcast",
+    spectator_guid: inst.spectator_guid ?? "",
+    spectator_car_key: inst.spectator_car_key ?? "",
+    spectator_skin_key: inst.spectator_skin_key ?? "",
+  };
+  markInstanceClean();
+  instanceOpen.value = true;
+}
+
+function onSpectatorCar() {
+  const f = instanceForm.value;
+  if (!f) return;
+  f.spectator_skin_key = skins(f.spectator_car_key)[0]?.key ?? "";
+}
+
+async function saveInstanceStream() {
+  const f = instanceForm.value;
+  const inst = f ? server.instances[f.id] : null;
+  if (!f || !inst) return;
+  busy.value = true;
+  try {
+    await api.put(`/api/instances/${f.id}`, {
+      name: inst.name,
+      udp_port: inst.udp_port,
+      tcp_port: inst.tcp_port,
+      http_port: inst.http_port,
+      plugin_port: inst.plugin_port,
+      plugin_listen_port: inst.plugin_listen_port,
+      start_on_boot: inst.start_on_boot,
+      drift_score_enabled: inst.drift_score_enabled,
+      allow_wrong_way: inst.allow_wrong_way,
+      stream_enabled: f.stream_enabled ? 1 : 0,
+      stream_embed_url: f.stream_embed_url,
+      stream_status_url: f.stream_status_url,
+      spectator_enabled: f.spectator_enabled ? 1 : 0,
+      spectator_driver_name: f.spectator_driver_name,
+      spectator_guid: f.spectator_guid,
+      spectator_car_key: f.spectator_car_key,
+      spectator_skin_key: f.spectator_skin_key,
+    });
+    instanceOpen.value = false;
+    await server.load();
+    toast.success("Instance stream saved.");
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -243,16 +329,25 @@ onMounted(load);
         </Button>
       </Card>
 
-      <Card title="Fixed spectator stream">
-        <p class="text-sm text-muted">
-          Fixed spectator camera URLs and reserved spectator slots are configured per server instance.
-        </p>
-        <RouterLink to="/settings/instances">
-          <Button class="mt-3" variant="dark" size="sm">
-            <Icon name="instances" :size="14" />
-            Open instances
-          </Button>
-        </RouterLink>
+      <Card title="Fixed spectator streams">
+        <div v-if="server.instanceList.length" class="space-y-2">
+          <div
+            v-for="inst in server.instanceList"
+            :key="inst.id"
+            class="flex items-center gap-2 rounded-md border border-line bg-surface-2/40 px-3 py-2"
+          >
+            <span class="size-2 rounded-full" :class="inst.stream_enabled === 1 ? 'bg-ok' : 'bg-dim'" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-semibold">{{ inst.name }}</div>
+              <div class="text-xs text-dim">
+                {{ inst.stream_enabled === 1 ? "stream configured" : "stream off" }} ·
+                {{ inst.spectator_enabled === 1 ? "spectator reserved" : "no spectator slot" }}
+              </div>
+            </div>
+            <Button variant="dark" size="sm" @click="openInstanceStream(inst)">Edit</Button>
+          </div>
+        </div>
+        <p v-else class="text-sm text-muted">No server instances configured.</p>
       </Card>
     </div>
 
@@ -322,6 +417,54 @@ onMounted(load);
     <template #footer>
       <Button variant="ghost" @click="driverOpen = false">Cancel</Button>
       <Button :disabled="busy" @click="saveDriverStream">{{ driverForm?.id ? "Save" : "Create" }}</Button>
+    </template>
+  </Modal>
+
+  <Modal :open="instanceOpen" title="Fixed spectator stream" @close="instanceOpen = false">
+    <template v-if="instanceForm">
+      <Toggle v-model="instanceForm.stream_enabled" label="Show fixed spectator stream on dashboard" />
+      <div v-if="instanceForm.stream_enabled" class="mt-3">
+        <FormRow label="WebRTC player URL" for-id="istream-url" hint="Browser-playable page or WHEP/player URL exposed by OBS, MediaMTX or similar.">
+          <Input id="istream-url" v-model="instanceForm.stream_embed_url" placeholder="https://stream.example.com/camera" />
+        </FormRow>
+        <FormRow label="Health URL" for-id="istream-status" hint="Optional URL SM probes to show live/offline status.">
+          <Input id="istream-status" v-model="instanceForm.stream_status_url" placeholder="https://stream.example.com/health" />
+        </FormRow>
+      </div>
+
+      <div class="mt-3 border-t border-line pt-3">
+        <Toggle v-model="instanceForm.spectator_enabled" label="Reserve a locked spectator slot for the stream client" />
+        <div v-if="instanceForm.spectator_enabled" class="mt-3">
+          <div class="grid gap-x-4 sm:grid-cols-2">
+            <FormRow label="Driver name" for-id="ispec-name">
+              <Input id="ispec-name" v-model="instanceForm.spectator_driver_name" />
+            </FormRow>
+            <FormRow label="Driver GUID" for-id="ispec-guid">
+              <Input id="ispec-guid" v-model="instanceForm.spectator_guid" class="font-mono" />
+            </FormRow>
+          </div>
+          <div class="grid gap-x-4 sm:grid-cols-2">
+            <FormRow label="Car" hint="The full AC client on the stream PC must have this car installed.">
+              <Combobox
+                v-model="instanceForm.spectator_car_key"
+                placeholder="Search cars..."
+                :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
+                @update:model-value="onSpectatorCar"
+              />
+            </FormRow>
+            <FormRow label="Skin">
+              <Select
+                v-model="instanceForm.spectator_skin_key"
+                :options="skins(instanceForm.spectator_car_key).map((s) => ({ value: s.key, label: s.name || s.key }))"
+              />
+            </FormRow>
+          </div>
+        </div>
+      </div>
+    </template>
+    <template #footer>
+      <Button variant="ghost" @click="instanceOpen = false">Cancel</Button>
+      <Button :disabled="busy" @click="saveInstanceStream">Save stream</Button>
     </template>
   </Modal>
 </template>

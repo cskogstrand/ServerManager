@@ -14,6 +14,7 @@ import Select from "@/components/ui/Select.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const form = ref<UserConfig | null>(null);
 const busy = ref(false);
@@ -105,7 +106,11 @@ async function save() {
     title="Server Configuration"
     subtitle="Global server identity, lobby behavior, access settings, and engine limits."
     icon="settings"
-  />
+  >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
+  </PageHeader>
 
   <p v-if="notice" class="mb-4 rounded-md border border-ok/40 bg-ok-glow px-3 py-2 text-sm text-ok">
     {{ notice }}

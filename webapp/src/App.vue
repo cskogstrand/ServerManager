@@ -85,7 +85,7 @@ function toggleTheme() {
 }
 
 // Navigation follows the user's jobs: operate live servers, build reusable race
-// setups, review driver history, then administer the installation.
+// setups, and review driver history. Admin lives behind the account footer.
 const allSections = [
   {
     label: "Operate",
@@ -112,28 +112,19 @@ const allSections = [
       { to: "/history", label: "Results & History", icon: "trophy" },
     ],
   },
-  {
-    label: "Admin",
-    items: [
-      { to: "/setup", label: "Server Setup", icon: "settings", admin: true },
-      { to: "/settings/installation", label: "Installation", icon: "folder", admin: true },
-      { to: "/content", label: "Content Library", icon: "content", admin: true },
-      { to: "/settings", label: "Server Configuration", icon: "settings", admin: true },
-      { to: "/settings/instances", label: "Server Instances", icon: "instances", admin: true },
-      { to: "/settings/streaming", label: "Streaming & Capture", icon: "broadcast", admin: true },
-      { to: "/settings/streams", label: "Stream Diagnostics", icon: "broadcast", admin: true },
-      { to: "/maintenance", label: "Backup & Restore", icon: "content", admin: true },
-      { to: "/settings/users", label: "Users & Roles", icon: "users", admin: true },
-    ],
-  },
-] as const;
-
-const accountItems = [
-  { to: "/preferences", label: "Preferences", icon: "user" },
-  { to: "/about", label: "About", icon: "info" },
 ] as const;
 
 type NavItem = { to?: string; key?: "race-control"; label: string; icon: string; admin?: boolean; operate?: boolean };
+type AccountItem = { to: string; label: string; icon: string };
+
+const accountItems = computed<AccountItem[]>(() => {
+  const items: AccountItem[] = [
+    { to: "/preferences", label: "Preferences", icon: "user" },
+    { to: "/about", label: "About", icon: "info" },
+  ];
+  if (auth.isAdmin) items.splice(1, 0, { to: "/admin", label: "Admin", icon: "lock" });
+  return items;
+});
 
 // Item visibility: admin items need admin; operate items need steward-or-admin;
 // everything else is open to any role.
@@ -244,7 +235,7 @@ watch(
               active-class="bg-accent-dim !text-accent"
             >
               <Icon :name="item.icon" :size="15" />
-              {{ item.label }}
+              <span class="truncate">{{ item.label }}</span>
             </RouterLink>
           </div>
           <div class="flex items-center gap-1">

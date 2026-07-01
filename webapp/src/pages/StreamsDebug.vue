@@ -10,6 +10,7 @@ import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 interface CaptureInfo {
   ffmpeg_available: boolean;
@@ -179,6 +180,9 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
     subtitle="Recorder state, buffers, logs, and source probes for driver streams."
     icon="broadcast"
   >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <Button size="sm" :variant="live ? 'ghost' : 'ghost'" :title="live ? 'Auto-refreshing every 4s' : 'Auto-refresh paused'" @click="toggleLive">
         <span class="size-1.5 rounded-full" :class="live ? 'bg-ok live-dot' : 'bg-dim'" />

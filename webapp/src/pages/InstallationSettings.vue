@@ -11,6 +11,7 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Input from "@/components/ui/Input.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import Icon from "@/components/ui/Icon.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const toast = useToastStore();
 const form = ref<UserConfig | null>(null);
@@ -89,6 +90,9 @@ async function save() {
     subtitle="Assetto Corsa install path and CSP requirements used when building server configs."
     icon="folder"
   >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <RouterLink to="/content">
         <Button variant="ghost" size="sm">

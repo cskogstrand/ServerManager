@@ -10,6 +10,7 @@ import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const toast = useToastStore();
 const confirm = useConfirmStore();
@@ -72,7 +73,11 @@ async function restore() {
 </script>
 
 <template>
-  <PageHeader title="Backup & Restore" subtitle="Download a full backup, or restore a database from a previous backup." icon="content" />
+  <PageHeader title="Backup & Restore" subtitle="Download a full backup, or restore a database from a previous backup." icon="content">
+    <template #prefix>
+      <AdminBackButton />
+    </template>
+  </PageHeader>
 
   <div class="grid items-start gap-5 md:grid-cols-2">
     <Card title="Backup" class="min-w-0">

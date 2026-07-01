@@ -19,6 +19,7 @@ const router = createRouter({
     { path: "/guest-drivers", name: "guest-drivers", component: () => import("@/pages/GuestDrivers.vue"), meta: { operate: true } },
     { path: "/guest-drivers/:id", name: "guest-driver-detail", component: () => import("@/pages/GuestDriverDetail.vue"), meta: { operate: true } },
     { path: "/history", name: "results-history", component: () => import("@/pages/ResultsHistory.vue") },
+    { path: "/admin", name: "admin", component: () => import("@/pages/Admin.vue"), meta: { admin: true } },
     { path: "/content", name: "content", component: () => import("@/pages/Content.vue"), meta: { admin: true } },
     { path: "/presets", name: "preset-templates", component: () => import("@/pages/PresetTemplates.vue"), meta: { operate: true } },
     { path: "/presets/difficulty", name: "preset-difficulty", component: () => import("@/pages/PresetDifficulty.vue"), meta: { admin: true } },

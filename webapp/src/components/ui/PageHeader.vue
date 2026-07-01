@@ -10,6 +10,9 @@ defineProps<{
 
 <template>
   <header class="mb-5 flex flex-wrap items-start gap-3">
+    <div v-if="$slots.prefix" class="shrink-0">
+      <slot name="prefix" />
+    </div>
     <div
       v-if="icon"
       class="grid size-10 shrink-0 place-items-center rounded-md border border-line bg-surface-2 text-accent"

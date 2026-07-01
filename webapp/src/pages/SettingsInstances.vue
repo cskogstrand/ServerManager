@@ -15,6 +15,7 @@ import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Toggle from "@/components/ui/Toggle.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const server = useServerStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
@@ -192,6 +193,9 @@ const remove = (inst: InstanceState) =>
     subtitle="Create and maintain independent acServer processes, ports, plugin pairs, and queues."
     icon="instances"
   >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <RouterLink v-if="!setupHealthy" to="/setup">
         <Button variant="dark" size="sm">

@@ -17,6 +17,7 @@ import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Combobox from "@/components/ui/Combobox.vue";
 import Select from "@/components/ui/Select.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 interface DriverStream {
   id?: number;
@@ -283,6 +284,9 @@ onMounted(load);
     subtitle="Driver stream links, capture sources, and automatic highlight capture."
     icon="broadcast"
   >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <RouterLink to="/settings/streams">
         <Button variant="ghost" size="sm">

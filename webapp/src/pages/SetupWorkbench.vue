@@ -30,6 +30,7 @@ import FormRow from "@/components/ui/FormRow.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -315,6 +316,9 @@ const serverName = computed(() => config.value?.name?.trim() || runInstance.valu
     subtitle="Everything from a fresh install to a running server, in one guided workbench."
     icon="settings"
   >
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <Button variant="dark" size="sm" :disabled="busy || loading" @click="refresh">
         <Icon name="activity" :size="15" />

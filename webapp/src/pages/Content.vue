@@ -18,6 +18,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import TrackImage from "@/components/TrackImage.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 const content = useContentStore();
 const toast = useToastStore();
@@ -201,6 +202,9 @@ function jobTone(status: string) {
   >
     <!-- Global content actions — apply across tracks, cars and weather, so they
          live here rather than inside the library's tab selector. -->
+    <template #prefix>
+      <AdminBackButton />
+    </template>
     <template #actions>
       <span class="text-xs text-dim">{{ content.cachedImages }} images cached</span>
       <Button variant="dark" :disabled="recaching || compressing" @click="recache">

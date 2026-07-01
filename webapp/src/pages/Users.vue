@@ -14,6 +14,7 @@ import Select from "@/components/ui/Select.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Modal from "@/components/ui/Modal.vue";
+import AdminBackButton from "@/components/AdminBackButton.vue";
 
 interface UserRow {
   name: string;
@@ -113,7 +114,11 @@ onMounted(() => guard(load));
 </script>
 
 <template>
-  <PageHeader title="Users & Roles" subtitle="Manage who can sign in and what they can do." icon="users" />
+  <PageHeader title="Users & Roles" subtitle="Manage who can sign in and what they can do." icon="users">
+    <template #prefix>
+      <AdminBackButton />
+    </template>
+  </PageHeader>
 
   <div class="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
     <Card title="Users" class="min-w-0">

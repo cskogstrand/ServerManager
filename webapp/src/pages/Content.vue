@@ -177,10 +177,10 @@ async function compressImages() {
   }
 }
 
-// Empty-state CTAs: install path now lives on the Configuration page; upload
-// stays here in the right column.
+// Empty-state CTAs: install path belongs in the guided setup flow; upload stays
+// here in the right column.
 function focusInstall() {
-  void router.push("/settings");
+  void router.push({ name: "setup", query: { step: "install" } });
 }
 function focusUpload() {
   document.getElementById("upload-content")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -207,9 +207,9 @@ function jobTone(status: string) {
         <Icon name="repeat" :size="15" />
         {{ recaching ? "Rebuilding…" : "Rebuild cache" }}
       </Button>
-      <Button variant="dark" :disabled="recaching || compressing" @click="compressImages">
+      <Button variant="ghost" :disabled="recaching || compressing" @click="compressImages">
         <Icon name="minimize" :size="15" />
-        {{ compressing ? "Compressing…" : "Compress images" }}
+        {{ compressing ? "Optimizing…" : "Optimize images" }}
       </Button>
     </template>
   </PageHeader>

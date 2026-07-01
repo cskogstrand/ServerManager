@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { useServerStore, type InstanceState } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useAuthStore } from "@/stores/auth";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
@@ -62,6 +63,7 @@ interface StatusPayload {
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const auth = useAuthStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
 
 const details = ref<Record<number, StatusPayload>>({});
@@ -323,7 +325,7 @@ onMounted(async () => {
       </template>
       <template #actions>
         <Button
-          v-if="inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
+          v-if="auth.canOperate && inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
           variant="ghost"
           size="sm"
           :disabled="busy[inst.id]"
@@ -339,7 +341,7 @@ onMounted(async () => {
           </Button>
         </RouterLink>
         <Button
-          v-if="inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
+          v-if="auth.canOperate && inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
           variant="ghost"
           size="sm"
           :disabled="busy[inst.id]"
@@ -348,12 +350,12 @@ onMounted(async () => {
           <Icon name="skip" :size="15" />
           Skip
         </Button>
-        <Button v-if="inst.running" variant="danger" size="sm" :disabled="busy[inst.id]" @click="toggle(inst.id, true)">
+        <Button v-if="auth.canOperate && inst.running" variant="danger" size="sm" :disabled="busy[inst.id]" @click="toggle(inst.id, true)">
           <Icon name="stop" :size="15" />
           {{ busy[inst.id] ? "Working" : "Stop" }}
         </Button>
         <Button
-          v-else-if="startable(inst)"
+          v-else-if="auth.canOperate && startable(inst)"
           variant="success"
           size="sm"
           :disabled="busy[inst.id]"
@@ -362,13 +364,13 @@ onMounted(async () => {
           <Icon name="power" :size="15" />
           {{ busy[inst.id] ? "Working" : inst.run_mode === "repeat_event" ? "Start repeat" : "Start" }}
         </Button>
-        <RouterLink v-else-if="!canStart" to="/setup">
+        <RouterLink v-else-if="auth.isAdmin && !canStart" to="/setup">
           <Button variant="dark" size="sm">
             <Icon name="settings" :size="15" />
             Finish setup
           </Button>
         </RouterLink>
-        <RouterLink v-else to="/setup">
+        <RouterLink v-else-if="auth.canOperate" to="/setup">
           <Button variant="dark" size="sm">
             <Icon name="plus" :size="15" />
             Set up a race
@@ -424,7 +426,7 @@ onMounted(async () => {
           <div class="min-w-0 text-sm">
             <span class="font-semibold text-warn">Can't start yet.</span>
             <span class="text-muted"> {{ firstBlocker }}</span>
-            <RouterLink to="/setup" class="ml-1 font-semibold text-accent hover:underline">Open setup →</RouterLink>
+            <RouterLink v-if="auth.isAdmin" to="/setup" class="ml-1 font-semibold text-accent hover:underline">Open setup →</RouterLink>
           </div>
         </div>
 
@@ -451,13 +453,13 @@ onMounted(async () => {
         <!-- Ready but nothing to run: queue something -->
         <div v-else class="flex flex-wrap items-center gap-2 text-sm text-dim">
           <span>Nothing queued for this instance.</span>
-          <RouterLink to="/setup">
+          <RouterLink v-if="auth.canOperate" to="/setup">
             <Button variant="dark" size="sm">
               <Icon name="plus" :size="14" />
               Set up a race
             </Button>
           </RouterLink>
-          <RouterLink to="/events">
+          <RouterLink v-if="auth.canOperate" to="/events">
             <Button variant="ghost" size="sm">
               <Icon name="queue" :size="14" />
               Queue a saved setup

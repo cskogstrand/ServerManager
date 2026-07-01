@@ -9,11 +9,12 @@ import { emptyRaceSetup, raceSetupBody, raceSetupValid, type RaceSetupDraft } fr
 import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useAuthStore } from "@/stores/auth";
 import type { DropDownList, UserEventList } from "@/types/generated";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
-import Select from "@/components/ui/Select.vue";
+import Combobox from "@/components/ui/Combobox.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Modal from "@/components/ui/Modal.vue";
 import Sheet from "@/components/ui/Sheet.vue";
@@ -40,6 +41,7 @@ interface QueueRow {
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const auth = useAuthStore();
 
 // Selected instance is mirrored to ?instance so refresh/back restores the tab.
 const instanceId = useQueryParam<number | null>("instance", null, numberParam());
@@ -308,12 +310,12 @@ watch(
     icon="queue"
   >
     <template #actions>
-      <Button v-if="activeRow" variant="ghost" size="sm" :disabled="busy" @click="skip">
+      <Button v-if="auth.canOperate && activeRow" variant="ghost" size="sm" :disabled="busy" @click="skip">
         <Icon name="skip" :size="15" />
         Skip
       </Button>
       <Button
-        v-if="instance && !instance.running && (pendingRows.length || repeatMode)"
+        v-if="auth.canOperate && instance && !instance.running && (pendingRows.length || repeatMode)"
         variant="dark"
         :disabled="busy"
         @click="openSchedule"
@@ -322,7 +324,7 @@ watch(
         {{ instance?.scheduled_start ? "Reschedule" : "Schedule" }}
       </Button>
       <Button
-        v-if="instance && !instance.running && (pendingRows.length || repeatMode)"
+        v-if="auth.canOperate && instance && !instance.running && (pendingRows.length || repeatMode)"
         variant="success"
         :disabled="busy"
         @click="start"
@@ -330,7 +332,7 @@ watch(
         <Icon name="power" :size="15" />
         Start
       </Button>
-      <Button v-if="instance?.running" variant="danger" :disabled="busy" @click="stop">
+      <Button v-if="auth.canOperate && instance?.running" variant="danger" :disabled="busy" @click="stop">
         <Icon name="stop" :size="15" />
         Stop
       </Button>
@@ -361,7 +363,12 @@ watch(
   >
     <Icon name="calendar" :size="16" class="shrink-0 text-accent" />
     <span>Scheduled to start {{ scheduledLabel }}.</span>
-    <button type="button" class="ml-auto cursor-pointer text-xs font-semibold text-accent hover:underline" @click="clearSchedule">
+    <button
+      v-if="auth.canOperate"
+      type="button"
+      class="ml-auto cursor-pointer text-xs font-semibold text-accent hover:underline"
+      @click="clearSchedule"
+    >
       Cancel
     </button>
   </p>
@@ -374,7 +381,7 @@ watch(
       <span v-if="instance" class="text-xs text-dim">{{ instance.name }}</span>
     </template>
     <template #actions>
-      <Button variant="dark" size="sm" :disabled="busy" @click="switchToManual">
+      <Button v-if="auth.canOperate" variant="dark" size="sm" :disabled="busy" @click="switchToManual">
         <Icon name="queue" :size="14" />
         Switch to manual queue
       </Button>
@@ -407,7 +414,7 @@ watch(
         <span v-if="instance" class="text-xs text-dim">{{ instance.name }}</span>
       </template>
       <template #actions>
-        <Button v-if="rows.some((r) => r.finished)" variant="ghost" size="sm" @click="clearCompleted">
+        <Button v-if="auth.canOperate && rows.some((r) => r.finished)" variant="ghost" size="sm" @click="clearCompleted">
           <Icon name="trash" :size="14" />
           Clear completed
         </Button>
@@ -428,12 +435,12 @@ watch(
           <tr
             v-for="(r, i) in rows"
             :key="r.id"
-            :draggable="rowState(r) === 'pending'"
+            :draggable="auth.canOperate && rowState(r) === 'pending'"
             class="border-b border-line/60"
             :class="{
               'opacity-45': rowState(r) === 'done',
               'bg-accent-dim/40': rowState(r) === 'active',
-              'cursor-grab': rowState(r) === 'pending',
+              'cursor-grab': auth.canOperate && rowState(r) === 'pending',
               'border-t-2 border-t-accent': dragOverId === r.id && dragId !== r.id,
               'opacity-60': dragId === r.id,
             }"
@@ -451,7 +458,9 @@ watch(
               <Icon v-else name="check" :size="15" class="text-dim" />
             </td>
             <td class="py-2 pr-2">
-              <div class="font-medium">{{ r.name || r.track }}</div>
+              <RouterLink :to="`/server/${r.instance_id}`" class="font-medium transition-colors hover:text-accent">
+                {{ r.name || r.track }}
+              </RouterLink>
               <div class="text-xs text-dim">{{ r.name ? `${r.track} · ${r.category}` : r.category }}</div>
               <div v-if="rowState(r) === 'pending'" class="mt-0.5 flex items-center gap-1 text-[11px] text-accent/80">
                 <Icon name="clock" :size="11" />
@@ -463,7 +472,7 @@ watch(
               {{ r.session }} · {{ r.time }} · {{ r.difficulty }}
             </td>
             <td class="py-2 text-right whitespace-nowrap">
-              <template v-if="rowState(r) === 'pending'">
+              <template v-if="auth.canOperate && rowState(r) === 'pending'">
                 <Button variant="dark" size="sm" :disabled="i === 0 || busy" aria-label="Move up" @click="moveUp(r.id)">
                   <Icon name="arrowUp" :size="14" />
                 </Button>
@@ -495,7 +504,7 @@ watch(
       />
     </Card>
 
-    <Card title="Add to queue">
+    <Card v-if="auth.canOperate" title="Add to queue">
       <Button class="mb-4 w-full" @click="openNewSetup">
         <Icon name="plus" :size="15" />
         New race setup
@@ -507,9 +516,10 @@ watch(
       </div>
 
       <FormRow label="Event group" for-id="qcat">
-        <Select
+        <Combobox
           id="qcat"
           v-model="addCategory"
+          placeholder="Search event groups..."
           :options="categories.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))"
         />
       </FormRow>
@@ -519,9 +529,10 @@ watch(
       </Button>
 
       <FormRow label="Single event" for-id="qevent">
-        <Select
+        <Combobox
           id="qevent"
           v-model="addEvent"
+          placeholder="Search race setups..."
           :options="eventsInCategory.map((e) => ({ value: e.id ?? 0, label: e.name || e.track_name || '' }))"
         />
       </FormRow>

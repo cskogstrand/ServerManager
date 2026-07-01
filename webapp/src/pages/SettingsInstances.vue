@@ -32,7 +32,6 @@ const setupBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "")
 onMounted(() => {
   void server.load();
   void content.load();
-  void loadDriverStreams();
   void reloadSummary();
 });
 
@@ -61,40 +60,13 @@ interface InstanceForm {
   spectator_skin_key: string;
 }
 
-interface DriverStream {
-  id?: number;
-  driver_guid?: string;
-  display_name?: string;
-  enabled?: number;
-  stream_embed_url?: string;
-  stream_status_url?: string;
-  stream_capture_url?: string;
-}
-
-interface DriverStreamForm {
-  id: number | null;
-  driver_guid: string;
-  display_name: string;
-  enabled: boolean;
-  stream_embed_url: string;
-  stream_status_url: string;
-  stream_capture_url: string;
-}
-
 const editorOpen = ref(false);
 const form = ref<InstanceForm | null>(null);
 
-// Unsaved-changes guards for the two modal editors. Each open() snapshots the
-// form; the route guard fires only while an editor is open and edited.
+// Unsaved-changes guard for the modal editor.
 let instanceBaseline = "";
-let driverBaseline = "";
 const markInstanceClean = () => (instanceBaseline = form.value ? JSON.stringify(form.value) : "");
-const markDriverClean = () => (driverBaseline = driverForm.value ? JSON.stringify(driverForm.value) : "");
-useUnsavedGuard(
-  () =>
-    (editorOpen.value && form.value !== null && JSON.stringify(form.value) !== instanceBaseline) ||
-    (driverEditorOpen.value && driverForm.value !== null && JSON.stringify(driverForm.value) !== driverBaseline),
-);
+useUnsavedGuard(() => editorOpen.value && form.value !== null && JSON.stringify(form.value) !== instanceBaseline);
 
 function nextFree(values: (number | null)[], fallback: number): number {
   const used = values.filter((v): v is number => v !== null);
@@ -226,86 +198,6 @@ function onSpectatorCar() {
   if (!f) return;
   f.spectator_skin_key = skins(f.spectator_car_key)[0]?.key ?? "";
 }
-
-const driverStreams = ref<DriverStream[]>([]);
-const driverEditorOpen = ref(false);
-const driverForm = ref<DriverStreamForm | null>(null);
-
-async function loadDriverStreams() {
-  try {
-    const res = await api.get<{ streams: DriverStream[] }>("/api/driver-streams");
-    driverStreams.value = res.streams ?? [];
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : String(e);
-  }
-}
-
-function openDriverCreate() {
-  driverForm.value = {
-    id: null,
-    driver_guid: "",
-    display_name: "",
-    enabled: true,
-    stream_embed_url: "",
-    stream_status_url: "",
-    stream_capture_url: "",
-  };
-  markDriverClean();
-  driverEditorOpen.value = true;
-}
-
-function openDriverEdit(stream: DriverStream) {
-  driverForm.value = {
-    id: stream.id ?? null,
-    driver_guid: stream.driver_guid ?? "",
-    display_name: stream.display_name ?? "",
-    enabled: stream.enabled !== 0,
-    stream_embed_url: stream.stream_embed_url ?? "",
-    stream_status_url: stream.stream_status_url ?? "",
-    stream_capture_url: stream.stream_capture_url ?? "",
-  };
-  markDriverClean();
-  driverEditorOpen.value = true;
-}
-
-const saveDriverStream = () =>
-  guard(async () => {
-    const f = driverForm.value;
-    if (!f) return;
-    const body = {
-      driver_guid: f.driver_guid,
-      display_name: f.display_name,
-      enabled: f.enabled ? 1 : 0,
-      stream_embed_url: f.stream_embed_url,
-      stream_status_url: f.stream_status_url,
-      stream_capture_url: f.stream_capture_url,
-    };
-    if (f.id) {
-      await api.put(`/api/driver-streams/${f.id}`, body);
-      notice.value = "Driver stream updated.";
-    } else {
-      await api.post("/api/driver-streams", body);
-      notice.value = "Driver stream created.";
-    }
-    driverEditorOpen.value = false;
-    await loadDriverStreams();
-  });
-
-const removeDriverStream = (stream: DriverStream) =>
-  guard(async () => {
-    if (!stream.id) return;
-    const ok = await confirm.ask({
-      title: "Delete driver stream",
-      message: `Delete stream for "${stream.display_name || stream.driver_guid}"?`,
-      detail: "The driver will no longer appear with a linked stream or capture source.",
-      confirmLabel: "Delete stream",
-      tone: "danger",
-    });
-    if (!ok) return;
-    await api.delete(`/api/driver-streams/${stream.id}`);
-    notice.value = "Driver stream deleted.";
-    await loadDriverStreams();
-  });
 </script>
 
 <template>
@@ -319,6 +211,12 @@ const removeDriverStream = (stream: DriverStream) =>
         <Button variant="dark" size="sm">
           <Icon name="alert" :size="14" class="text-warn" />
           Setup needed
+        </Button>
+      </RouterLink>
+      <RouterLink to="/settings/streaming">
+        <Button variant="ghost" size="sm">
+          <Icon name="broadcast" :size="14" />
+          Streaming
         </Button>
       </RouterLink>
       <Button @click="openCreate">
@@ -381,43 +279,6 @@ const removeDriverStream = (stream: DriverStream) =>
       </dl>
       <p v-if="inst.running" class="mt-2 text-xs text-dim">Stop the server to edit or delete.</p>
     </Card>
-  </div>
-
-  <div class="mt-6">
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-      <div class="min-w-0">
-        <h2 class="text-sm font-bold">Driver Streams</h2>
-        <p class="text-xs text-dim">Map driver GUIDs to external WebRTC player URLs for dashboard watch actions.</p>
-      </div>
-      <Button size="sm" @click="openDriverCreate">
-        <Icon name="plus" :size="14" />
-        Add driver stream
-      </Button>
-    </div>
-
-    <div v-if="driverStreams.length" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <Card v-for="stream in driverStreams" :key="stream.id">
-        <template #header>
-          <span class="size-2 rounded-full" :class="stream.enabled !== 0 ? 'bg-ok' : 'bg-dim'" />
-          <h3 class="min-w-0 truncate text-sm font-bold">{{ stream.display_name || stream.driver_guid }}</h3>
-        </template>
-        <template #actions>
-          <Button variant="dark" size="sm" @click="openDriverEdit(stream)">Edit</Button>
-          <Button variant="ghost" size="sm" @click="removeDriverStream(stream)">Delete</Button>
-        </template>
-        <dl class="grid gap-y-1.5 text-xs">
-          <dt class="text-muted">GUID</dt>
-          <dd class="min-w-0 truncate font-mono">{{ stream.driver_guid }}</dd>
-          <dt class="text-muted">Player URL</dt>
-          <dd class="min-w-0 truncate font-mono">{{ stream.stream_embed_url }}</dd>
-          <dt class="text-muted">Health URL</dt>
-          <dd class="min-w-0 truncate font-mono">{{ stream.stream_status_url || "—" }}</dd>
-        </dl>
-      </Card>
-    </div>
-    <p v-else class="rounded-md border border-line bg-surface px-3 py-3 text-sm text-dim">
-      No driver streams configured.
-    </p>
   </div>
 
   <Modal :open="editorOpen" :title="form?.id ? 'Edit instance' : 'New instance'" @close="editorOpen = false">
@@ -508,34 +369,4 @@ const removeDriverStream = (stream: DriverStream) =>
     </template>
   </Modal>
 
-  <Modal :open="driverEditorOpen" :title="driverForm?.id ? 'Edit driver stream' : 'New driver stream'" @close="driverEditorOpen = false">
-    <template v-if="driverForm">
-      <Toggle v-model="driverForm.enabled" label="Show this stream when the driver is connected" />
-      <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
-        <FormRow label="Driver GUID" for-id="dsguid">
-          <Input id="dsguid" v-model="driverForm.driver_guid" class="font-mono" />
-        </FormRow>
-        <FormRow label="Display name" for-id="dsname">
-          <Input id="dsname" v-model="driverForm.display_name" />
-        </FormRow>
-      </div>
-      <FormRow label="WebRTC player URL" for-id="dsurl">
-        <Input id="dsurl" v-model="driverForm.stream_embed_url" placeholder="https://stream.example.com/driver" />
-      </FormRow>
-      <FormRow label="Health URL" for-id="dsstatus" hint="Optional URL SM probes to show live/offline status.">
-        <Input id="dsstatus" v-model="driverForm.stream_status_url" placeholder="https://stream.example.com/driver/health" />
-      </FormRow>
-      <FormRow
-        label="Capture URL"
-        for-id="dscapture"
-        hint="Optional raw stream (HLS/RTMP/RTSP/SRT) ffmpeg pulls from to auto-capture drift-spike screenshots & clips. Leave blank to disable capture."
-      >
-        <Input id="dscapture" v-model="driverForm.stream_capture_url" placeholder="https://stream.example.com/driver/index.m3u8" />
-      </FormRow>
-    </template>
-    <template #footer>
-      <Button variant="ghost" @click="driverEditorOpen = false">Cancel</Button>
-      <Button :disabled="busy" @click="saveDriverStream">{{ driverForm?.id ? "Save" : "Create" }}</Button>
-    </template>
-  </Modal>
 </template>

@@ -17,6 +17,7 @@ import {
 import { useServerStore } from "@/stores/server";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useAuthStore } from "@/stores/auth";
 import type { DropDownList } from "@/types/generated";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
@@ -37,6 +38,7 @@ type LibrarySetup = RaceSetupDraft & { group_id: number; group_name: string };
 const server = useServerStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const auth = useAuthStore();
 
 const groups = ref<DropDownList[]>([]);
 const setups = ref<LibrarySetup[]>([]);
@@ -70,6 +72,8 @@ const filtered = computed(() => {
     return !q || `${s.name} ${s.track_name} ${s.class_name} ${s.group_name}`.toLowerCase().includes(q);
   });
 });
+const selectedIds = ref<number[]>([]);
+const selectedSetups = computed(() => setups.value.filter((s) => s.id != null && selectedIds.value.includes(s.id)));
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
@@ -95,6 +99,8 @@ async function loadAll() {
       .filter((e) => e.Id != null)
       .map((e) => ({ ...normalizeRaceSetup(e), group_id: g.id ?? 0, group_name: g.name ?? "" })),
   );
+  const ids = new Set(setups.value.map((s) => s.id).filter((id): id is number => id != null));
+  selectedIds.value = selectedIds.value.filter((id) => ids.has(id));
 }
 
 // --- Builder ---
@@ -167,6 +173,64 @@ const duplicateSetup = (s: LibrarySetup) =>
     await api.post("/api/events", raceSetupBody({ ...s, name: s.name ? `${s.name} (copy)` : "" }, s.group_id));
     await loadAll();
     toast.success("Race setup duplicated.");
+  });
+
+async function templateGroupId(): Promise<number> {
+  const existing = groups.value.find((g) => (g.name ?? "").toLowerCase() === "templates");
+  if (existing?.id) return existing.id;
+  const { id } = await api.post<{ id: number }>("/api/categories", { name: "Templates" });
+  return id;
+}
+
+const saveAsTemplate = (s: LibrarySetup) =>
+  guard(async () => {
+    const gid = await templateGroupId();
+    await api.post(
+      "/api/events",
+      raceSetupBody({ ...s, name: s.name ? `${s.name} template` : `${s.track_name} template` }, gid),
+    );
+    await loadAll();
+    groupFilter.value = gid;
+    toast.success("Saved as template.");
+  });
+
+const bulkInstanceOpen = ref(false);
+const bulkInstanceId = ref<number | null>(null);
+
+function openBulkQueue() {
+  bulkInstanceId.value = server.instanceList[0]?.id ?? null;
+  bulkInstanceOpen.value = true;
+}
+
+const queueSelected = () =>
+  guard(async () => {
+    const iid = bulkInstanceId.value;
+    if (iid === null) return;
+    for (const s of selectedSetups.value) {
+      if (s.id) await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+    }
+    selectedIds.value = [];
+    bulkInstanceOpen.value = false;
+    toast.success("Selected setups queued.");
+  });
+
+const deleteSelected = () =>
+  guard(async () => {
+    if (!selectedSetups.value.length) return;
+    const ok = await confirm.ask({
+      title: "Delete selected setups",
+      message: `Delete ${selectedSetups.value.length} selected race setup${selectedSetups.value.length === 1 ? "" : "s"}?`,
+      detail: "Queue entries for those setups are removed too. This cannot be undone.",
+      confirmLabel: "Delete selected",
+      tone: "danger",
+    });
+    if (!ok) return;
+    for (const s of selectedSetups.value) {
+      if (s.id) await api.delete(`/api/event/${s.id}`);
+    }
+    selectedIds.value = [];
+    await loadAll();
+    toast.success("Selected setups deleted.");
   });
 
 // --- Instance action picker (queue / start / repeat) ---
@@ -258,6 +322,15 @@ const deleteGroup = () =>
     toast.success("Group deleted.");
   });
 
+const duplicateGroup = () =>
+  guard(async () => {
+    if (groupFilter.value === "all") return;
+    const { id } = await api.post<{ id: number }>(`/api/category/${groupFilter.value}/duplicate`, {});
+    await loadAll();
+    groupFilter.value = id;
+    toast.success("Group duplicated.");
+  });
+
 onMounted(() =>
   guard(async () => {
     await Promise.all([loadAll(), server.load()]);
@@ -273,7 +346,7 @@ onMounted(() =>
     icon="events"
   >
     <template #actions>
-      <Button :disabled="busy" @click="openCreate">
+      <Button v-if="auth.canOperate" :disabled="busy" @click="openCreate">
         <Icon name="plus" :size="15" />
         New race setup
       </Button>
@@ -309,11 +382,15 @@ onMounted(() =>
         Repeating
       </button>
     </div>
-    <Button variant="dark" size="sm" @click="groupModalOpen = true">
+    <Button v-if="auth.canOperate" variant="dark" size="sm" @click="groupModalOpen = true">
       <Icon name="folder" :size="14" />
       New group
     </Button>
-    <template v-if="groupFilter !== 'all'">
+    <template v-if="auth.canOperate && groupFilter !== 'all'">
+      <Button variant="ghost" size="sm" title="Duplicate group" @click="duplicateGroup">
+        <Icon name="copy" :size="14" />
+        Duplicate group
+      </Button>
       <Button variant="ghost" size="sm" aria-label="Rename group" @click="openRenameGroup">
         <Icon name="edit" :size="14" />
       </Button>
@@ -321,6 +398,22 @@ onMounted(() =>
         <Icon name="trash" :size="14" />
       </Button>
     </template>
+  </div>
+
+  <div
+    v-if="auth.canOperate && selectedIds.length"
+    class="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-dim px-3 py-2"
+  >
+    <span class="text-sm font-semibold text-accent">{{ selectedIds.length }} selected</span>
+    <Button variant="dark" size="sm" :disabled="busy" @click="openBulkQueue">
+      <Icon name="queue" :size="14" />
+      Queue selected
+    </Button>
+    <Button variant="ghost" size="sm" :disabled="busy" @click="deleteSelected">
+      <Icon name="trash" :size="14" />
+      Delete selected
+    </Button>
+    <Button variant="ghost" size="sm" @click="selectedIds = []">Clear</Button>
   </div>
 
   <div v-if="loading" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -339,6 +432,12 @@ onMounted(() =>
           <Icon name="repeat" :size="11" />
           Repeating
         </span>
+      </template>
+      <template #actions>
+        <label v-if="auth.canOperate && s.id" class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
+          <input v-model="selectedIds" type="checkbox" :value="s.id" class="accent-accent" />
+          Select
+        </label>
       </template>
 
       <TrackImage :track-key="s.track_key" :config="s.track_config" class="mb-2 aspect-video w-full rounded-sm border border-line" />
@@ -361,7 +460,7 @@ onMounted(() =>
         </span>
       </div>
 
-      <div class="mt-3 flex flex-wrap gap-1.5">
+      <div v-if="auth.canOperate" class="mt-3 flex flex-wrap gap-1.5">
         <Button variant="success" size="sm" @click="openAction(s, 'start')">
           <Icon name="power" :size="14" />
           Start
@@ -370,13 +469,15 @@ onMounted(() =>
           <Icon name="queue" :size="14" />
           Queue
         </Button>
-        <Button variant="dark" size="sm" aria-label="Repeat on instance" title="Run repeatedly" @click="openAction(s, 'repeat')">
+        <Button variant="dark" size="sm" title="Run repeatedly" @click="openAction(s, 'repeat')">
           <Icon name="repeat" :size="14" />
+          Repeat
         </Button>
         <Button variant="ghost" size="sm" @click="openEdit(s)">Edit</Button>
         <Button variant="ghost" size="sm" aria-label="Duplicate" @click="duplicateSetup(s)">
           <Icon name="copy" :size="14" />
         </Button>
+        <Button variant="ghost" size="sm" @click="saveAsTemplate(s)">Template</Button>
         <Button variant="ghost" size="sm" aria-label="Delete" @click="deleteSetup(s)">
           <Icon name="trash" :size="14" />
         </Button>
@@ -394,7 +495,7 @@ onMounted(() =>
         : 'A race setup bundles a track and presets into one runnable race. Add your first one.'
     "
   >
-    <Button :disabled="busy" @click="openCreate">
+    <Button v-if="auth.canOperate" :disabled="busy" @click="openCreate">
       <Icon name="plus" :size="15" />
       New race setup
     </Button>
@@ -462,6 +563,24 @@ onMounted(() =>
     <template #footer>
       <Button variant="ghost" @click="renameModalOpen = false">Cancel</Button>
       <Button :disabled="busy || !renameGroupName.trim()" @click="renameGroup">Rename group</Button>
+    </template>
+  </Modal>
+
+  <!-- Bulk queue -->
+  <Modal :open="bulkInstanceOpen" title="Queue selected setups" @close="bulkInstanceOpen = false">
+    <p class="mb-3 text-sm text-muted">
+      Add {{ selectedIds.length }} selected setup{{ selectedIds.length === 1 ? "" : "s" }} to one instance.
+    </p>
+    <FormRow label="Instance" for-id="bulkinst">
+      <Select
+        id="bulkinst"
+        v-model="bulkInstanceId"
+        :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
+      />
+    </FormRow>
+    <template #footer>
+      <Button variant="ghost" @click="bulkInstanceOpen = false">Cancel</Button>
+      <Button :disabled="busy || bulkInstanceId === null || !selectedIds.length" @click="queueSelected">Queue selected</Button>
     </template>
   </Modal>
 </template>

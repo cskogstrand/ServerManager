@@ -100,10 +100,7 @@ const allSections = [
     label: "Build",
     items: [
       { to: "/events", label: "Race Setups", icon: "events" },
-      { to: "/presets/classes", label: "Car Classes", icon: "car", operate: true },
-      { to: "/presets/sessions", label: "Sessions", icon: "clock", admin: true },
-      { to: "/presets/time", label: "Time & Weather", icon: "weather", admin: true },
-      { to: "/presets/difficulty", label: "Difficulty", icon: "difficulty", admin: true },
+      { to: "/presets", label: "Advanced Templates", icon: "settings", operate: true },
     ],
   },
   {
@@ -112,6 +109,7 @@ const allSections = [
       { to: "/drivers", label: "Driver Stats", icon: "trophy" },
       { to: "/sessions", label: "Session Search", icon: "search" },
       { to: "/guest-drivers", label: "Guest Drivers", icon: "users", operate: true },
+      { to: "/history", label: "Results & History", icon: "trophy" },
     ],
   },
   {
@@ -121,6 +119,7 @@ const allSections = [
       { to: "/content", label: "Content Library", icon: "content", admin: true },
       { to: "/settings", label: "Server Configuration", icon: "settings", admin: true },
       { to: "/settings/instances", label: "Server Instances", icon: "instances", admin: true },
+      { to: "/settings/streaming", label: "Streaming & Capture", icon: "broadcast", admin: true },
       { to: "/settings/streams", label: "Stream Diagnostics", icon: "broadcast", admin: true },
       { to: "/maintenance", label: "Backup & Restore", icon: "content", admin: true },
       { to: "/settings/users", label: "Users & Roles", icon: "users", admin: true },
@@ -308,7 +307,7 @@ watch(
         active-class="bg-accent-dim !text-accent"
       >
         <Icon :name="item.icon" :size="18" />
-        <span>{{ item.label }}</span>
+        <span class="max-w-[68px] truncate">{{ item.label }}</span>
       </RouterLink>
       <button
         type="button"

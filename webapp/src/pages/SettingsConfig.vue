@@ -98,9 +98,6 @@ const appendEventname = intToggle("append_eventname");
 const appendModlinks = intToggle("append_modlinks");
 const relaxChecksums = intToggle("as_relax_checksums");
 const autoStart = intToggle("auto_start_server");
-const captureEnabled = intToggle("capture_enabled");
-const captureScreenshots = intToggle("capture_screenshots");
-const captureClips = intToggle("capture_clips");
 const cspRequired = intToggle("csp_required");
 const cspPhycars = intToggle("csp_phycars");
 const cspPhytracks = intToggle("csp_phytracks");
@@ -277,32 +274,6 @@ async function saveInstall() {
           }}
         </Button>
         <p v-if="installError" class="text-sm text-danger">{{ installError }}</p>
-      </div>
-    </Card>
-
-    <Card title="Stream highlight capture">
-      <p class="mb-3 text-xs text-muted">
-        Auto-capture screenshots and clips from a driver's stream when they land a big drift run. Requires a
-        per-driver capture URL set under Instances → Driver streams, and ffmpeg installed on the server.
-      </p>
-      <Toggle v-model="captureEnabled" label="Enable automatic capture" />
-      <div class="mt-2 grid gap-2 sm:grid-cols-2">
-        <Toggle v-model="captureScreenshots" label="Capture screenshots" />
-        <Toggle v-model="captureClips" label="Capture clips" />
-      </div>
-      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-        <FormRow label="Trigger score" for-id="captrigger" hint="Minimum drift run score that fires a capture.">
-          <Input id="captrigger" v-model="form.capture_trigger_score" type="number" :min="0" />
-        </FormRow>
-        <FormRow label="Clip length (s)" for-id="capclip" hint="Auto-clip duration, max 120.">
-          <Input id="capclip" v-model="form.capture_clip_seconds" type="number" :min="1" :max="120" />
-        </FormRow>
-        <FormRow label="Cooldown (s)" for-id="capcool" hint="Minimum gap between captures for one driver.">
-          <Input id="capcool" v-model="form.capture_cooldown_seconds" type="number" :min="0" />
-        </FormRow>
-        <FormRow label="Max per session" for-id="capmax" hint="Cap on captures per driver each session.">
-          <Input id="capmax" v-model="form.capture_max_per_session" type="number" :min="1" />
-        </FormRow>
       </div>
     </Card>
 

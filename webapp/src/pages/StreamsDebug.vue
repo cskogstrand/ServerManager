@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Stream debug — everything SM knows about each driver stream: the capture
+// Stream diagnostics — everything SM knows about each driver stream: the capture
 // subsystem, the per-stream rolling-buffer recorder + on-disk segment buffer,
 // recent capture logs, and a live ffmpeg probe to test a capture URL straight
 // from the server. Admin-only (capture URLs can carry tokens).
@@ -9,6 +9,7 @@ import { useToastStore } from "@/stores/toast";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 
 interface CaptureInfo {
   ffmpeg_available: boolean;
@@ -173,14 +174,12 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
 </script>
 
 <template>
-  <div class="mb-4 flex items-center justify-between gap-3">
-    <div>
-      <h1 class="flex items-center gap-2 text-lg font-bold tracking-tight">
-        <Icon name="broadcast" :size="20" class="text-accent" /> Stream Debug
-      </h1>
-      <p class="mt-0.5 text-sm text-muted">What SM sees for each driver stream — recorders, buffers, logs, and a live source probe.</p>
-    </div>
-    <div class="flex items-center gap-2">
+  <PageHeader
+    title="Stream Diagnostics"
+    subtitle="Recorder state, buffers, logs, and source probes for driver streams."
+    icon="broadcast"
+  >
+    <template #actions>
       <Button size="sm" :variant="live ? 'ghost' : 'ghost'" :title="live ? 'Auto-refreshing every 4s' : 'Auto-refresh paused'" @click="toggleLive">
         <span class="size-1.5 rounded-full" :class="live ? 'bg-ok live-dot' : 'bg-dim'" />
         {{ live ? "Live" : "Paused" }}
@@ -188,8 +187,8 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
       <Button size="sm" variant="ghost" @click="load()">
         <Icon name="repeat" :size="14" /> Refresh
       </Button>
-    </div>
-  </div>
+    </template>
+  </PageHeader>
 
   <!-- Capture subsystem -->
   <Card v-if="cap">

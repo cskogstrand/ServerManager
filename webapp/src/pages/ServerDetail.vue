@@ -10,7 +10,9 @@ import { useServerStore, type CarPositionState, type DriverState, type InstanceS
 import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
+import { useAuthStore } from "@/stores/auth";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
+import { useSetupSummary } from "@/lib/useSetupSummary";
 import {
   normalizeRaceSetup,
   raceSetupBody,
@@ -115,6 +117,8 @@ const server = useServerStore();
 const content = useContentStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
+const auth = useAuthStore();
+const { summary, reload: reloadSummary } = useSetupSummary();
 
 const instanceId = computed(() => Number(route.params.id));
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
@@ -169,6 +173,15 @@ function trackUrl(kind: "map" | "mapmeta" | "outline" | "preview", key: string, 
 }
 
 const upcoming = computed(() => queue.value.filter((q) => !q.finished).slice(0, 6));
+const instanceSetup = computed(() => summary.value?.instances.find((i) => i.id === instanceId.value) ?? null);
+const setupReady = computed(() => summary.value?.can_start ?? false);
+const startBlocker = computed(() => {
+  if (inst.value?.running) return "";
+  if (!setupReady.value) return summary.value?.blocking?.[0]?.message ?? "Setup is not ready.";
+  if (inst.value?.run_mode === "repeat_event") return "";
+  if ((instanceSetup.value?.queue_pending ?? 0) <= 0) return "Nothing is queued for this server.";
+  return "";
+});
 
 const positions = computed(() => inst.value?.positions ?? []);
 const drivers = computed(() => inst.value?.drivers ?? []);
@@ -303,7 +316,7 @@ watch(instanceId, async (id) => {
   mapImageOk.value = true;
   consoleOpen.value = false;
   loading.value = true;
-  await Promise.all([fetchDetail(), fetchQueue()]);
+  await Promise.all([fetchDetail(), fetchQueue(), reloadSummary()]);
   await fetchMapMeta();
   loading.value = false;
 });
@@ -314,11 +327,13 @@ watch(
   () => {
     void fetchDetail();
     void fetchQueue();
+    void reloadSummary();
   },
 );
 
 async function toggleServer() {
   const running = inst.value?.running ?? false;
+  if (!running && startBlocker.value) return;
   if (running) {
     const ok = await confirm.ask({
       title: "Stop server",
@@ -332,7 +347,7 @@ async function toggleServer() {
   busy.value = true;
   try {
     await (running ? server.stop(instanceId.value) : server.start(instanceId.value));
-    await Promise.all([fetchDetail(), fetchQueue()]);
+    await Promise.all([fetchDetail(), fetchQueue(), reloadSummary()]);
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
   } finally {
@@ -864,7 +879,7 @@ onMounted(async () => {
   void content.load();
   void driverStreams.loadStreams();
   driverStreams.startHealthPoll(() => instanceId.value);
-  await Promise.all([fetchDetail(), fetchQueue()]);
+  await Promise.all([fetchDetail(), fetchQueue(), reloadSummary()]);
   await fetchMapMeta();
   loading.value = false;
 });
@@ -942,7 +957,7 @@ onBeforeUnmount(() => {
           Broadcast
         </RouterLink>
         <Button
-          v-if="inst.running && (detail?.current_event?.id ?? 0) > 0"
+          v-if="auth.canOperate && inst.running && (detail?.current_event?.id ?? 0) > 0"
           variant="ghost"
           size="sm"
           :disabled="busy"
@@ -951,12 +966,43 @@ onBeforeUnmount(() => {
           <Icon name="skip" :size="15" />
           Skip
         </Button>
-        <Button :variant="inst.running ? 'danger' : 'success'" size="sm" :disabled="busy" @click="toggleServer">
+        <Button
+          v-if="auth.canOperate"
+          :variant="inst.running ? 'danger' : 'success'"
+          size="sm"
+          :disabled="busy || (!inst.running && !!startBlocker)"
+          :title="!inst.running && startBlocker ? startBlocker : ''"
+          @click="toggleServer"
+        >
           <Icon :name="inst.running ? 'stop' : 'power'" :size="15" />
           {{ busy ? "Working" : inst.running ? "Stop" : "Start" }}
         </Button>
       </div>
     </header>
+
+    <!-- Start blocker banner -->
+    <div
+      v-if="auth.canOperate && !inst.running && startBlocker"
+      class="page-enter mb-4 flex flex-wrap items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2.5 text-sm text-warn"
+    >
+      <Icon name="alert" :size="16" class="shrink-0" />
+      <span class="font-semibold">Can't start yet.</span>
+      <span class="min-w-0 flex-1 text-muted">{{ startBlocker }}</span>
+      <RouterLink
+        v-if="!setupReady && auth.isAdmin"
+        to="/setup"
+        class="text-xs font-semibold text-warn underline-offset-2 hover:underline"
+      >
+        Open setup
+      </RouterLink>
+      <RouterLink
+        v-else
+        :to="{ name: 'queue', query: { instance: instanceId } }"
+        class="text-xs font-semibold text-warn underline-offset-2 hover:underline"
+      >
+        Open run plan
+      </RouterLink>
+    </div>
 
     <!-- Telemetry fault banner -->
     <div
@@ -1268,6 +1314,7 @@ onBeforeUnmount(() => {
                   <Icon name="play" :size="14" />
                 </button>
                 <button
+                  v-if="auth.canOperate"
                   type="button"
                   class="shrink-0 rounded-md p-1 text-dim opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
                   :disabled="busy"
@@ -1352,7 +1399,7 @@ onBeforeUnmount(() => {
           <span class="truncate text-xs text-dim">{{ detail.current_event.category }}</span>
         </template>
         <template #actions>
-          <Button variant="dark" size="sm" :disabled="busy" @click="openEditSetup">
+          <Button v-if="auth.canOperate" variant="dark" size="sm" :disabled="busy" @click="openEditSetup">
             <Icon name="edit" :size="14" />
             Edit race setup
           </Button>
@@ -1390,7 +1437,7 @@ onBeforeUnmount(() => {
         <template #header>
           <Icon name="queue" :size="15" class="text-dim" />
           <h2 class="text-sm font-bold">Up next</h2>
-          <RouterLink to="/queue" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
+          <RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
         </template>
         <ul v-if="upcoming.length" class="divide-y divide-line/60">
           <li v-for="(q, i) in upcoming" :key="q.id" class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
@@ -1417,7 +1464,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Race control: live UDP commands, surfaced near the top while running -->
-    <Card v-if="inst.running" class="page-enter mt-4" style="animation-delay: 120ms">
+    <Card v-if="auth.canOperate && inst.running" class="page-enter mt-4" style="animation-delay: 120ms">
       <template #header>
         <Icon name="broadcast" :size="15" class="text-accent" />
         <h2 class="text-sm font-bold">Race control</h2>

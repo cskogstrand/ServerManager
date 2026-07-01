@@ -1,5 +1,5 @@
 // Client-only demo feed for the broadcast screen. When toggled on it fabricates
-// a fake running session — a random real track from the content library plus a
+// a fake running session — one fixed real track from the content library plus a
 // random grid of drivers, each on a random real car + livery and a random video
 // stream — and animates their telemetry so the two-column layout can be
 // exercised without a live Assetto Corsa server. Track maps and car/livery
@@ -37,6 +37,108 @@ const STREAMS = [
 const FALLBACK_META: DemoMapMeta = { width: 1200, height: 800, x_offset: 0, z_offset: 0, scale_factor: 1, margin: 0 };
 
 const TICK_MS = 250;
+const DEMO_TRACK = { key: "driftplayground", config: "", name: "Drift Playground" };
+
+// Sampled from driftplayground/ai/fast_lane.ai and stored as map-image fractions.
+// ponytail: static demo route; add spline parsing only if demo tracks become selectable.
+const DEMO_PATH = [
+  [0.8793, 0.6564],
+  [0.8999, 0.6936],
+  [0.9127, 0.7320],
+  [0.9151, 0.7732],
+  [0.9072, 0.8142],
+  [0.8766, 0.8551],
+  [0.8438, 0.8618],
+  [0.8108, 0.8570],
+  [0.7791, 0.8422],
+  [0.7479, 0.8250],
+  [0.7149, 0.8133],
+  [0.6815, 0.8129],
+  [0.6490, 0.8237],
+  [0.6176, 0.8396],
+  [0.5878, 0.8610],
+  [0.5572, 0.8791],
+  [0.5240, 0.8841],
+  [0.4933, 0.8676],
+  [0.4696, 0.8356],
+  [0.4583, 0.7935],
+  [0.4697, 0.7521],
+  [0.4953, 0.7231],
+  [0.5256, 0.7036],
+  [0.5585, 0.6963],
+  [0.5918, 0.6993],
+  [0.6251, 0.7015],
+  [0.6566, 0.6888],
+  [0.6758, 0.6526],
+  [0.6744, 0.6086],
+  [0.6477, 0.5835],
+  [0.6145, 0.5780],
+  [0.5810, 0.5800],
+  [0.5479, 0.5867],
+  [0.5151, 0.5962],
+  [0.4828, 0.6090],
+  [0.4502, 0.6194],
+  [0.4168, 0.6190],
+  [0.3850, 0.6048],
+  [0.3536, 0.5892],
+  [0.3208, 0.5842],
+  [0.2906, 0.6031],
+  [0.2719, 0.6405],
+  [0.2579, 0.6822],
+  [0.2433, 0.7237],
+  [0.2262, 0.7631],
+  [0.2041, 0.7975],
+  [0.1747, 0.8187],
+  [0.1413, 0.8212],
+  [0.1105, 0.8040],
+  [0.0903, 0.7683],
+  [0.0846, 0.7242],
+  [0.0933, 0.6801],
+  [0.1054, 0.6376],
+  [0.1175, 0.5948],
+  [0.1257, 0.5504],
+  [0.1299, 0.5048],
+  [0.1328, 0.4591],
+  [0.1403, 0.4147],
+  [0.1557, 0.3743],
+  [0.1806, 0.3441],
+  [0.2123, 0.3302],
+  [0.2450, 0.3369],
+  [0.2731, 0.3613],
+  [0.2997, 0.3889],
+  [0.3293, 0.4091],
+  [0.3621, 0.4076],
+  [0.3878, 0.3801],
+  [0.4048, 0.3411],
+  [0.4181, 0.2993],
+  [0.4293, 0.2564],
+  [0.4408, 0.2134],
+  [0.4578, 0.1742],
+  [0.4813, 0.1413],
+  [0.5105, 0.1193],
+  [0.5434, 0.1181],
+  [0.5699, 0.1441],
+  [0.5779, 0.1872],
+  [0.5663, 0.2297],
+  [0.5454, 0.2653],
+  [0.5243, 0.3003],
+  [0.5054, 0.3383],
+  [0.4963, 0.3817],
+  [0.5038, 0.4259],
+  [0.5285, 0.4545],
+  [0.5611, 0.4525],
+  [0.5912, 0.4332],
+  [0.6222, 0.4162],
+  [0.6550, 0.4085],
+  [0.6883, 0.4143],
+  [0.7196, 0.4302],
+  [0.7473, 0.4555],
+  [0.7708, 0.4878],
+  [0.7919, 0.5217],
+  [0.8132, 0.5549],
+  [0.8347, 0.5877],
+  [0.8564, 0.6208],
+] as const;
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -52,6 +154,24 @@ function trackPath(kind: "map" | "mapmeta", key: string, config: string): string
   return `/api/track/${kind}/${encodeURIComponent(key)}${cfg}`;
 }
 
+export function demoPathPoint(phase: number): { fx: number; fy: number } {
+  const lap = ((phase % 1) + 1) % 1;
+  const scaled = lap * DEMO_PATH.length;
+  const i = Math.floor(scaled);
+  const t = scaled - i;
+  const a = DEMO_PATH[i]!;
+  const b = DEMO_PATH[(i + 1) % DEMO_PATH.length]!;
+  return { fx: a[0] + (b[0] - a[0]) * t, fy: a[1] + (b[1] - a[1]) * t };
+}
+
+export function demoTrackPosition(phase: number, meta: DemoMapMeta): { x: number; z: number } {
+  const p = demoPathPoint(phase);
+  return {
+    x: (p.fx * meta.width - meta.margin) * meta.scale_factor - meta.x_offset,
+    z: (p.fy * meta.height - meta.margin) * meta.scale_factor - meta.z_offset,
+  };
+}
+
 export function useBroadcastDemo(content: ContentStore) {
   const drivers = ref<DriverState[]>([]);
   const positions = ref<CarPositionState[]>([]);
@@ -60,7 +180,7 @@ export function useBroadcastDemo(content: ContentStore) {
   const mapMeta = ref<DemoMapMeta | null>(null);
 
   // Per-car lap phase: a fixed offset plus a per-car advance rate. tick() walks
-  // each car around an ellipse mapped onto the real track and rolls the lap
+  // each car around the fixed demo track route and rolls the lap
   // counter on wrap.
   let anim: Array<{ phase: number; rate: number }> = [];
   // guid → its assigned stream (some drivers are deliberately left "offline").
@@ -102,13 +222,8 @@ export function useBroadcastDemo(content: ContentStore) {
       }
       // Live score ramps 0 → best across the lap, resetting each new run.
       d.drift_live = Math.round((d.drift_best ?? 0) * a.phase);
-      // Ellipse in image-fraction space, inverted through the AC projection so
-      // mapPoint() lands each puck back on that fraction of the real map.
       const th = a.phase * Math.PI * 2;
-      const fx = 0.5 + 0.4 * Math.cos(th) + 0.05 * Math.cos(th * 2);
-      const fy = 0.5 + 0.38 * Math.sin(th);
-      const x = (fx * m.width - m.margin) * m.scale_factor - m.x_offset;
-      const z = (fy * m.height - m.margin) * m.scale_factor - m.z_offset;
+      const { x, z } = demoTrackPosition(a.phase, m);
       const speed = 32 + Math.abs(Math.sin(th * 2)) * 76; // ~m/s
       return {
         car_id: d.car_id,
@@ -129,12 +244,11 @@ export function useBroadcastDemo(content: ContentStore) {
   // Build a brand-new random grid from the current content library. Safe to
   // call while running.
   function regenerate() {
-    const tracks = (content.tracks ?? []).filter((t) => t.key);
     const cars = (content.cars ?? []).filter((c) => c.key && c.skins?.length);
 
-    const t = tracks.length ? pick(tracks) : null;
-    track.value = t ? { key: t.key!, config: t.config ?? "", name: t.name || t.key! } : null;
-    mapMeta.value = t ? FALLBACK_META : null; // show the map at once; refine below
+    const t = (content.tracks ?? []).find((item) => item.key === DEMO_TRACK.key && (item.config ?? "") === DEMO_TRACK.config);
+    track.value = { ...DEMO_TRACK, name: t?.name || DEMO_TRACK.name };
+    mapMeta.value = FALLBACK_META; // show the map at once; refine below
     void loadTrackMeta();
 
     const count = randInt(4, 8);

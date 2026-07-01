@@ -8,6 +8,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useQueryParam, enumParam } from "@/lib/useQueryParam";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
 import { useServerStore } from "@/stores/server";
 import {
@@ -63,6 +64,63 @@ const savedEventName = ref("");
 const runInstanceId = ref<number | null>(null);
 const runAction = ref<"start" | "queue" | "repeat">("start");
 
+const DRAFT_AUTOSAVE_KEY = "sm.setup.raceDraft.v1";
+
+function hasDraftValue(d: RaceSetupDraft): boolean {
+  return !!(d.name || d.track_key || d.class_id || d.session_id || d.time_id || d.difficulty_id);
+}
+
+function restoreDraftAutosave() {
+  try {
+    const raw = localStorage.getItem(DRAFT_AUTOSAVE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw) as {
+      draft?: Partial<RaceSetupDraft>;
+      raceGroupId?: number | null;
+      savedEventId?: number | null;
+      savedEventName?: string;
+    };
+    if (saved.draft) draft.value = { ...emptyRaceSetup(), ...saved.draft };
+    raceGroupId.value = saved.raceGroupId ?? null;
+    savedEventId.value = saved.savedEventId ?? null;
+    savedEventName.value = saved.savedEventName ?? "";
+  } catch {
+    localStorage.removeItem(DRAFT_AUTOSAVE_KEY);
+  }
+}
+
+function persistDraftAutosave() {
+  if (!hasDraftValue(draft.value)) {
+    localStorage.removeItem(DRAFT_AUTOSAVE_KEY);
+    return;
+  }
+  localStorage.setItem(
+    DRAFT_AUTOSAVE_KEY,
+    JSON.stringify({
+      draft: draft.value,
+      raceGroupId: raceGroupId.value,
+      savedEventId: savedEventId.value,
+      savedEventName: savedEventName.value,
+    }),
+  );
+}
+
+function clearDraftAutosave() {
+  localStorage.removeItem(DRAFT_AUTOSAVE_KEY);
+}
+
+restoreDraftAutosave();
+watch([draft, raceGroupId], persistDraftAutosave, { deep: true });
+
+let configBaseline = "";
+let draftBaseline = "";
+const configSnapshot = () => (config.value ? JSON.stringify(config.value) : "");
+const draftSnapshot = () => JSON.stringify(draft.value);
+const markConfigClean = () => (configBaseline = configSnapshot());
+const markDraftClean = () => (draftBaseline = draftSnapshot());
+markDraftClean();
+useUnsavedGuard(() => configSnapshot() !== configBaseline || draftSnapshot() !== draftBaseline);
+
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
   try {
@@ -76,6 +134,7 @@ async function guard(fn: () => Promise<void>) {
 
 async function loadConfig() {
   config.value = await api.get<UserConfig>("/api/config");
+  markConfigClean();
 }
 
 onMounted(async () => {
@@ -83,7 +142,7 @@ onMounted(async () => {
   // URL wins on resume; otherwise land on the first incomplete step.
   if (!route.query.step) step.value = firstIncompleteStep(summary.value);
   runInstanceId.value = summary.value?.instances[0]?.id ?? null;
-  raceGroupId.value = summary.value?.groups[0]?.id ?? null;
+  raceGroupId.value ??= summary.value?.groups[0]?.id ?? null;
 });
 
 // Keep run-instance selection valid as instances appear.
@@ -137,6 +196,7 @@ const saveInstall = () =>
   guard(async () => {
     if (!config.value) return;
     await api.put("/api/config/content", config.value);
+    markConfigClean();
     toast.success("Install path saved.");
     await refresh();
   });
@@ -163,6 +223,7 @@ const saveServer = () =>
   guard(async () => {
     if (!config.value) return;
     await api.put("/api/config", config.value);
+    markConfigClean();
     toast.success("Server configuration saved.");
     await refresh();
   });
@@ -210,6 +271,8 @@ const saveRaceSetup = () =>
       savedEventId.value = res.id ?? null;
     }
     savedEventName.value = draft.value.name || draft.value.track_name;
+    clearDraftAutosave();
+    markDraftClean();
     toast.success("Race setup saved.");
     await refresh();
     if (savedEventId.value) step.value = "run";

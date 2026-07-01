@@ -60,7 +60,16 @@ const selectedUses = computed(() => uses(props.selectedId));
     :title="title"
     :subtitle="subtitle ?? 'Create, select, and maintain reusable server presets.'"
     :icon="icon ?? 'settings'"
-  />
+  >
+    <template #prefix>
+      <RouterLink to="/presets">
+        <Button variant="ghost" size="sm">
+          <Icon name="arrowLeft" :size="14" />
+          Back to templates
+        </Button>
+      </RouterLink>
+    </template>
+  </PageHeader>
 
   <div class="flex flex-col gap-5 lg:flex-row">
     <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">

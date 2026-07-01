@@ -301,11 +301,11 @@ onMounted(load);
           {{ i + 1 }}
         </span>
 
-        <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="56" />
+        <DriverAvatar :name="d.name" :guid="d.is_guest ? undefined : d.guid" :src="d.avatar_url" :size="112" />
 
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="truncate text-sm font-bold text-text group-hover:text-accent">{{ d.name }}</span>
+            <span class="truncate text-lg font-bold text-text group-hover:text-accent">{{ d.name }}</span>
             <span
               v-if="d.is_guest"
               class="inline-flex shrink-0 items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-1.5 py-px text-[10px] font-bold tracking-wide text-warn uppercase"
@@ -330,7 +330,7 @@ onMounted(load);
         </div>
 
         <div class="hidden shrink-0 text-accent/80 md:block" :title="`${d.drift_trend.length} recent drift runs`">
-          <Sparkline :values="d.drift_trend" :width="92" :height="28" />
+          <Sparkline :values="d.drift_trend" :width="164" :height="64" />
         </div>
 
         <div class="w-[8rem] shrink-0 text-right">

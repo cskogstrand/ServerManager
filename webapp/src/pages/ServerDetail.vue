@@ -392,17 +392,30 @@ function mapCanvasStyle(meta: TrackMapMeta) {
   };
 }
 
-function mapPoint(pos: CarPositionState, meta: TrackMapMeta) {
-  const point = trackMapPoint(pos, meta);
-  return {
-    left: point.left,
-    top: point.top,
-    visibility: point.inBounds ? ("visible" as const) : ("hidden" as const),
-  };
+const MAP_EDGE_INSET_PCT = 6;
+
+const mapCars = computed(() => {
+  const meta = mapMeta.value;
+  if (!meta) return [];
+  return drivers.value.flatMap((driver) => {
+    const pos = positions.value.find((p) => p.car_id === driver.car_id);
+    return pos ? [{ driver, pos, point: trackMapPoint(pos, meta, MAP_EDGE_INSET_PCT) }] : [];
+  });
+});
+
+const offMapCarIds = computed(() => new Set(mapCars.value.filter((c) => !c.point.inBounds).map((c) => c.driver.car_id)));
+
+function isOffMap(carId: number): boolean {
+  return offMapCarIds.value.has(carId);
 }
 
-function positionFor(carId: number): CarPositionState | undefined {
-  return positions.value.find((p) => p.car_id === carId);
+function offMapArrowStyle(angleDeg: number) {
+  return { transform: `rotate(${angleDeg + 90}deg)` };
+}
+
+function distanceLabel(meters: number): string {
+  if (meters >= 950) return `${Number((meters / 1000).toFixed(1))} km`;
+  return `${Math.max(1, Math.round(meters))} m`;
 }
 
 function speedKmh(pos?: CarPositionState): number {
@@ -1194,22 +1207,38 @@ onBeforeUnmount(() => {
                 class="absolute inset-0 size-full object-fill opacity-85"
                 @error="mapImageOk = false"
               />
-              <template v-for="d in drivers" :key="d.car_id">
-                <button
-                  v-if="positionFor(d.car_id)"
-                  type="button"
-                  class="map-puck absolute grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[9px] font-black transition-[left,top] duration-200 ease-linear hover:z-20 hover:scale-110"
+              <button
+                v-for="car in mapCars"
+                :key="car.driver.car_id"
+                type="button"
+                class="map-puck absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top,transform] duration-200 ease-linear hover:z-20 hover:scale-110"
+                :class="{ 'z-20': !car.point.inBounds }"
+                :style="{ left: car.point.left, top: car.point.top }"
+                :title="`P${timingFor(car.driver.car_id)?.position ?? '?'} · ${car.driver.name || 'car ' + car.driver.car_id} · ${speedKmh(car.pos)} km/h · gear ${gearLabel(car.pos)}`"
+              >
+                <span
+                  v-if="!car.point.inBounds"
+                  class="relative inline-flex h-7 items-center gap-1 rounded-full border border-warn/70 bg-bg/90 px-2 font-mono text-[10px] font-bold text-warn shadow-lg backdrop-blur-sm"
+                >
+                  <Icon name="arrowUp" :size="13" class="shrink-0" :style="offMapArrowStyle(car.point.angleDeg)" />
+                  <span class="grid size-4 place-items-center rounded-full bg-warn text-[9px] font-black text-bg">
+                    {{ (car.driver.name || 'C' + car.driver.car_id).slice(0, 1).toUpperCase() }}
+                  </span>
+                  <span>{{ distanceLabel(car.point.distanceMeters) }}</span>
+                </span>
+
+                <span
+                  v-else
+                  class="grid size-6 place-items-center rounded-full border text-[9px] font-black"
                   :class="
-                    timingFor(d.car_id)?.isLeader
+                    timingFor(car.driver.car_id)?.isLeader
                       ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
                       : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
                   "
-                  :style="mapPoint(positionFor(d.car_id)!, mapMeta)"
-                  :title="`P${timingFor(d.car_id)?.position ?? '?'} · ${d.name || 'car ' + d.car_id} · ${speedKmh(positionFor(d.car_id))} km/h · gear ${gearLabel(positionFor(d.car_id))}`"
                 >
-                  {{ (d.name || String(d.car_id)).slice(0, 1).toUpperCase() }}
-                </button>
-              </template>
+                  {{ (car.driver.name || String(car.driver.car_id)).slice(0, 1).toUpperCase() }}
+                </span>
+              </button>
               <span
                 v-if="!positions.length"
                 class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm"
@@ -1272,12 +1301,12 @@ onBeforeUnmount(() => {
               v-for="row in timingRows"
               :key="row.car_id"
               class="group rounded-md border p-2.5 transition-colors"
-              :class="row.isLeader ? 'border-accent/45 bg-accent-dim' : 'border-line bg-surface-2/40'"
+              :class="isOffMap(row.car_id) ? 'border-warn/50 bg-warn-glow' : row.isLeader ? 'border-accent/45 bg-accent-dim' : 'border-line bg-surface-2/40'"
             >
               <div class="flex items-center gap-2.5">
                 <span
                   class="grid size-7 shrink-0 place-items-center rounded-md font-mono text-sm font-black tabular-nums"
-                  :class="row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
+                  :class="isOffMap(row.car_id) ? 'bg-warn text-bg' : row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
                 >
                   {{ row.position }}
                 </span>

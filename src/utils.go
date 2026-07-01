@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"html/template"
 	"os/exec"
 	"regexp"
@@ -27,11 +25,6 @@ func OpenURL(url string) error {
 	}
 	args = append(args, url)
 	return exec.Command(cmd, args...).Start()
-}
-
-func PrintInterface(t interface{}) {
-	s, _ := json.MarshalIndent(t, "", "\t")
-	fmt.Print(string(s))
 }
 
 func FormatErrorHTML(err error) template.HTML {

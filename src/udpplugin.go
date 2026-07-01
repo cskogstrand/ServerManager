@@ -424,8 +424,7 @@ func (inst *Instance) udpReceive() bool {
 		ce.impactSpeed = r.ReadFloat()
 		ce.worldPos = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
 		ce.relPos = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
-		log.Print("ACSP_CLIENT_EVENT: ")
-		PrintInterface(ce)
+		log.Printf("ACSP_CLIENT_EVENT: %+v", ce)
 
 	case acspCarInfo:
 		var ci CarInfo
@@ -436,8 +435,7 @@ func (inst *Instance) udpReceive() bool {
 		ci.driverName = r.ReadUTF32String()
 		ci.driverTeam = r.ReadUTF32String()
 		ci.driverGuid = r.ReadUTF32String()
-		log.Print("ACSP_CAR_INFO: ")
-		PrintInterface(ci)
+		log.Printf("ACSP_CAR_INFO: %+v", ci)
 
 	case acspCarUpdate:
 		var cu CarUpdate
@@ -461,8 +459,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.mu.Unlock()
 		inst.publishPlayers()
 		inst.driverJoin(nc)
-		log.Print("ACSP_NEW_CONNECTION: ")
-		PrintInterface(nc)
+		log.Printf("ACSP_NEW_CONNECTION: %+v", nc)
 
 	case acspConnectionClosed:
 		var cc ConnectionClosed
@@ -476,8 +473,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.mu.Unlock()
 		inst.publishPlayers()
 		inst.driverLeave(cc.carId)
-		log.Print("ACSP_CONNECTION_CLOSED: ")
-		PrintInterface(cc)
+		log.Printf("ACSP_CONNECTION_CLOSED: %+v", cc)
 
 	case acspLapCompleted:
 		var lc LapCompleted
@@ -485,8 +481,7 @@ func (inst *Instance) udpReceive() bool {
 		lc.laptime = r.ReadUint32()
 		lc.cuts = r.ReadUint8()
 		inst.driverLap(lc)
-		log.Print("ACSP_LAP_COMPLETED: ")
-		PrintInterface(lc)
+		log.Printf("ACSP_LAP_COMPLETED: %+v", lc)
 
 	default:
 		log.Print("ACSP Unknown code: "+strconv.Itoa(acsp), data)

@@ -303,7 +303,12 @@ onMounted(async () => {
   </EmptyState>
 
   <div v-else class="grid gap-3 min-[1600px]:grid-cols-2">
-    <Card v-for="inst in server.instanceList" :key="inst.id" class="transition-colors hover:border-line-hi">
+    <Card
+      v-for="inst in server.instanceList"
+      :key="inst.id"
+      class="transition-colors hover:border-line-hi"
+      :class="inst.players > 0 ? 'ring-1 ring-ok/60 shadow-[0_0_24px_rgba(79,174,116,0.16)]' : ''"
+    >
       <template #header>
         <span
           class="size-2 rounded-full"
@@ -311,8 +316,16 @@ onMounted(async () => {
         />
         <RouterLink :to="`/server/${inst.id}`" class="text-sm font-bold hover:text-accent">{{ inst.name }}</RouterLink>
         <span class="font-mono text-xs text-dim">:{{ inst.tcp_port }}</span>
-        <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
-          {{ inst.players }} player{{ inst.players === 1 ? "" : "s" }}
+        <span
+          v-if="inst.players > 0"
+          class="inline-flex items-center gap-1.5 rounded-md border border-ok/45 bg-ok-glow px-2 py-1 text-xs font-bold text-ok"
+          title="Drivers connected"
+        >
+          <span class="size-1.5 rounded-full bg-ok shadow-[0_0_10px_rgba(79,174,116,0.75)]" />
+          {{ inst.players }} driver{{ inst.players === 1 ? "" : "s" }} active
+        </span>
+        <span v-else-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          0 drivers
         </span>
         <span
           v-if="inst.run_mode === 'repeat_event'"

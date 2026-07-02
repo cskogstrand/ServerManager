@@ -1586,7 +1586,7 @@ onBeforeUnmount(() => {
           <RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
         </template>
         <ul v-if="upcoming.length" class="space-y-3">
-          <li v-for="(q, i) in upcoming" :key="q.id" class="overflow-hidden rounded-md border border-line bg-surface-2/35 sm:flex">
+          <li v-for="(q, i) in upcoming" :key="q.id" class="relative overflow-hidden rounded-md border border-line bg-surface-2/35 sm:flex">
             <div class="relative h-24 shrink-0 border-b border-line bg-surface-3 sm:h-auto sm:w-32 sm:border-r sm:border-b-0">
               <TrackImage
                 v-if="q.track_key"
@@ -1600,12 +1600,12 @@ onBeforeUnmount(() => {
               <span class="absolute top-2 left-2 grid size-6 place-items-center rounded-md border border-line bg-bg/80 font-mono text-xs font-black text-muted backdrop-blur-sm">
                 {{ i + 1 }}
               </span>
-              <span v-if="q.started_at" class="absolute right-2 bottom-2 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
-                In progress
-              </span>
             </div>
+            <span v-if="q.started_at" class="absolute top-2 right-2 z-10 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
+              In progress
+            </span>
 
-            <div class="min-w-0 flex-1 p-3">
+            <div class="min-w-0 flex-1 p-3 sm:pr-24">
               <div class="min-w-0">
                 <p class="text-[11px] font-bold tracking-wide text-accent uppercase">{{ q.category }}</p>
                 <p class="mt-0.5 break-words text-sm font-black text-text">{{ q.name || q.track }}</p>

@@ -26,6 +26,7 @@ const router = createRouter({
     { path: "/presets/sessions", name: "preset-sessions", component: () => import("@/pages/PresetSession.vue"), meta: { admin: true } },
     { path: "/presets/time", name: "preset-time", component: () => import("@/pages/PresetTime.vue"), meta: { admin: true } },
     { path: "/presets/classes", name: "preset-classes", component: () => import("@/pages/PresetClass.vue"), meta: { operate: true } },
+    { path: "/presets/drift-scoring", name: "drift-scoring", component: () => import("@/pages/DriftScoringModes.vue"), meta: { operate: true } },
     { path: "/setup", name: "setup", component: () => import("@/pages/SetupWorkbench.vue"), meta: { admin: true } },
     { path: "/settings/installation", name: "installation", component: () => import("@/pages/InstallationSettings.vue"), meta: { admin: true } },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue"), meta: { admin: true } },

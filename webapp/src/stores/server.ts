@@ -106,6 +106,7 @@ export interface InstanceState {
   scheduled_start: number | null;
   start_on_boot: number | null;
   drift_score_enabled: number | null;
+  drift_scoring_mode_id: number | null;
   allow_wrong_way: number | null;
   stream_enabled: number | null;
   stream_embed_url: string | null;
@@ -133,6 +134,7 @@ interface InstanceListItem {
   scheduled_start: number | null;
   start_on_boot: number | null;
   drift_score_enabled: number | null;
+  drift_scoring_mode_id: number | null;
   allow_wrong_way: number | null;
   stream_enabled: number | null;
   stream_embed_url: string | null;
@@ -205,6 +207,7 @@ export const useServerStore = defineStore("server", {
           scheduled_start: item.scheduled_start ?? null,
           start_on_boot: item.start_on_boot ?? 0,
           drift_score_enabled: item.drift_score_enabled ?? 0,
+          drift_scoring_mode_id: item.drift_scoring_mode_id ?? 1,
           allow_wrong_way: item.allow_wrong_way ?? 0,
           stream_enabled: item.stream_enabled ?? 0,
           stream_embed_url: item.stream_embed_url ?? null,

@@ -64,6 +64,7 @@ func initDriftIngestToken() {
 // rate-independent and fair across clients regardless of their frame rate or
 // our telemetry sample rate. At a true 60 fps this is identical to upstream.
 type driftScorer struct {
+	mode          DriftScoringMode
 	totalScore    float64 // current run score; floor() is the live score
 	comboProgress float64 // fractional combo; floor() is comboMeter
 	comboMeter    int
@@ -73,40 +74,81 @@ type driftScorer struct {
 	slowFor       float64 // seconds spent slow & not sliding (run-end timer)
 }
 
-func newDriftScorer() *driftScorer {
+func newDriftScorer(mode DriftScoringMode) *driftScorer {
 	// Match the upstream initial state: combo starts at 1, not 0.
-	return &driftScorer{comboProgress: 1, comboMeter: 1}
+	return &driftScorer{mode: normalizeDriftScoringMode(mode), comboProgress: 1, comboMeter: 1}
 }
 
 const (
-	driftRequiredSpeed = 40.0 // km/h, from the upstream script
-	driftFpsRef        = 60.0 // reference frame rate for accumulation normalization
+	driftFpsRef = 60.0 // reference frame rate for accumulation normalization
 )
+
+func modeFloat(v *float64, fallback float64) float64 {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+func modeInt(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+func modeOn(v *int) bool {
+	return v != nil && *v == 1
+}
+
+func (s *driftScorer) resetCurrentRun(resetMultiplier bool) {
+	s.totalScore = 0
+	s.slowFor = 0
+	if resetMultiplier {
+		s.comboMeter = 1
+		s.comboProgress = 1
+	}
+}
 
 // step folds one telemetry sample into the run. lvx is car-local lateral
 // velocity (m/s), speedMs/speedKmh the car speed, dt the seconds elapsed since
 // the previous sample. It returns the live score, the best (max of completed PB
 // and the live run), whether a run just ended, and that ended run's final
 // score.
-func (s *driftScorer) step(lvx, speedMs, speedKmh, dt float64) (live, best int, runEnded bool, last int) {
+func (s *driftScorer) step(lvx, speedMs, speedKmh, dt, proximityM float64) (live, best int, runEnded bool, last int) {
 	frames := dt * driftFpsRef
+	mode := normalizeDriftScoringMode(s.mode)
 
-	sliding := lvx / math.Max(3, speedMs)
-	slidingMult := math.Abs(sliding) * 10
+	slipAngle := math.Atan(math.Abs(lvx)/math.Max(3, speedMs)) * 180 / math.Pi
 
-	if speedKmh > driftRequiredSpeed && slidingMult > 1 {
-		driftPoints := slidingMult * 0.05
+	if speedKmh > modeFloat(mode.MinSpeedKmh, 40) && slipAngle >= modeFloat(mode.MinAngleDeg, 5.7) {
+		proximity := 0.0
+		proximityRange := modeFloat(mode.ProximityRangeM, 5)
+		if proximityM > 0 && proximityM < proximityRange {
+			proximity = (proximityRange - proximityM) / proximityRange
+		}
+		driftPoints := slipAngle*modeFloat(mode.AngleWeight, 0.009) +
+			speedKmh*modeFloat(mode.SpeedWeight, 0) +
+			proximity*modeFloat(mode.ProximityWeight, 0)
 		s.totalScore += driftPoints * float64(s.comboMeter) * frames
-		s.comboProgress += speedKmh * 0.00005 * frames
+		s.comboProgress += speedKmh * modeFloat(mode.MultiplierGain, 0.00005) * frames
 		s.comboMeter = int(math.Floor(s.comboProgress))
+		if cap := modeInt(mode.MultiplierCap, 20); s.comboMeter > cap {
+			s.comboMeter = cap
+			s.comboProgress = float64(cap)
+		}
 		if s.comboMeter > s.highestCombo {
 			s.highestCombo = s.comboMeter
 		}
 	}
 
-	if speedKmh < driftRequiredSpeed && slidingMult < 1 {
-		// Slow and not sliding: after a 2s grace period the run ends.
-		if s.slowFor > 2 {
+	if speedKmh <= modeFloat(mode.MinSpeedKmh, 40) || slipAngle < modeFloat(mode.MinAngleDeg, 5.7) {
+		s.slowFor += dt
+		if modeOn(mode.ResetMultiplierEnabled) && s.slowFor > modeFloat(mode.ResetMultiplierSeconds, 2) {
+			s.comboMeter = 1
+			s.comboProgress = 1
+		}
+		if modeOn(mode.ResetScoreEnabled) && s.slowFor > modeFloat(mode.ResetScoreSeconds, 2) {
 			cur := int(math.Floor(s.totalScore))
 			if cur > s.highestScore {
 				s.highestScore = cur
@@ -116,11 +158,8 @@ func (s *driftScorer) step(lvx, speedMs, speedKmh, dt float64) (live, best int, 
 				last = cur
 				runEnded = true
 			}
-			s.totalScore = 0
-			s.comboMeter = 1
-			s.comboProgress = 1
+			s.resetCurrentRun(false)
 		}
-		s.slowFor += dt
 	} else {
 		s.slowFor = 0
 	}

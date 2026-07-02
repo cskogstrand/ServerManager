@@ -96,6 +96,7 @@ export interface ServerInstance {
    * delivery channel).
    */
   drift_score_enabled?: number /* int */;
+  drift_scoring_mode_id?: number /* int */;
   /**
    * AllowWrongWay writes [EXTRA_RULES] ALLOW_WRONG_WAY=1 into csp_extra_options.ini,
    * letting drivers go the wrong way without the CSP "back to pits" teleport.
@@ -151,6 +152,7 @@ export interface UserEvent {
   session?: number /* int */;
   class?: number /* int */;
   time?: number /* int */;
+  drift_scoring_mode_id?: number /* int */;
 }
 export interface UserEventList {
   id?: number /* int */;
@@ -162,6 +164,24 @@ export interface UserEventCategory {
   id?: number /* int */;
   name?: string;
   events: UserEvent[];
+}
+export interface DriftScoringMode {
+  id?: number /* int */;
+  name?: string;
+  collision_reset_score?: number /* int */;
+  car_collision_reset_score?: number /* int */;
+  reset_score_enabled?: number /* int */;
+  reset_score_seconds?: number;
+  reset_multiplier_enabled?: number /* int */;
+  reset_multiplier_seconds?: number;
+  min_speed_kmh?: number;
+  min_angle_deg?: number;
+  angle_weight?: number;
+  speed_weight?: number;
+  proximity_weight?: number;
+  proximity_range_m?: number;
+  multiplier_gain?: number;
+  multiplier_cap?: number /* int */;
 }
 export interface UserDifficulty {
   id?: number /* int */;

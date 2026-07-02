@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -380,12 +381,13 @@ func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) (live
 	}
 	sc := inst.driftScorers[carId]
 	if sc == nil {
-		sc = newDriftScorer()
+		sc = newDriftScorer(inst.driftMode)
 		inst.driftScorers[carId] = sc
 	}
+	proximityM := inst.nearestCarDistanceLocked(carId)
 	var ended bool
 	var lastRun int
-	live, best, ended, lastRun = sc.step(lvx, kmh/3.6, kmh, dt)
+	live, best, ended, lastRun = sc.step(lvx, kmh/3.6, kmh, dt, proximityM)
 	last = sc.lastScore
 	combo = sc.comboMeter
 	publishNow := ended || time.Since(inst.lastDriftPublish) >= 100*time.Millisecond
@@ -400,6 +402,48 @@ func (inst *Instance) applyDriftTelemetry(carId int, lvx, kmh, dt float64) (live
 		inst.recordDrift(carId, true, live, best, publishNow)
 	}
 	return live, last, best, combo, true
+}
+
+func (inst *Instance) nearestCarDistanceLocked(carId int) float64 {
+	pos := inst.positions[carId]
+	if pos == nil {
+		return 0
+	}
+	best := 0.0
+	for id, other := range inst.positions {
+		if id == carId || other == nil {
+			continue
+		}
+		dx := float64(pos.X - other.X)
+		dy := float64(pos.Y - other.Y)
+		dz := float64(pos.Z - other.Z)
+		dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+		if best == 0 || dist < best {
+			best = dist
+		}
+	}
+	return best
+}
+
+func (inst *Instance) resetDriftForCollision(carId int, withCar bool) {
+	inst.mu.Lock()
+	mode := normalizeDriftScoringMode(inst.driftMode)
+	if (withCar && !modeOn(mode.CarCollisionResetScore)) || (!withCar && !modeOn(mode.CollisionResetScore)) {
+		inst.mu.Unlock()
+		return
+	}
+	if sc := inst.driftScorers[carId]; sc != nil {
+		sc.resetCurrentRun(modeOn(mode.ResetMultiplierEnabled))
+	}
+	if d := inst.drivers[carId]; d != nil {
+		d.DriftLive = 0
+		d.driftRunBaseline = 0
+		d.driftRunStartMs = 0
+		d.driftRunPeak = 0
+		d.driftRunPeakMs = 0
+	}
+	inst.mu.Unlock()
+	inst.publishDrivers()
 }
 
 func (inst *Instance) clearDrivers() {

@@ -425,6 +425,12 @@ func (inst *Instance) udpReceive() bool {
 		ce.worldPos = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
 		ce.relPos = Vector{r.ReadFloat(), r.ReadFloat(), r.ReadFloat()}
 		log.Printf("ACSP_CLIENT_EVENT: %+v", ce)
+		if ce.eventType == acspCeCollisionWithCar {
+			inst.resetDriftForCollision(ce.carId, true)
+			inst.resetDriftForCollision(ce.otherCarId, true)
+		} else if ce.eventType == acspCeCollisionWithEnv {
+			inst.resetDriftForCollision(ce.carId, false)
+		}
 
 	case acspCarInfo:
 		var ci CarInfo

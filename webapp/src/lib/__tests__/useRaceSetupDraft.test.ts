@@ -12,6 +12,7 @@ describe("useRaceSetupDraft", () => {
     expect(d.id).toBeNull();
     expect(d.race_laps).toBe(0);
     expect(d.strategy).toBe(1);
+    expect(d.drift_scoring_mode_id).toBeNull();
     expect(raceSetupValid(d)).toBe(false);
   });
 
@@ -32,6 +33,7 @@ describe("useRaceSetupDraft", () => {
       Entries: "12",
       time: "4",
       TimeName: "Afternoon",
+      drift_scoring_mode_id: "6",
       race_laps: "10",
       strategy: "1",
     });
@@ -43,6 +45,7 @@ describe("useRaceSetupDraft", () => {
     expect(d.difficulty_id).toBe(3);
     expect(d.class_id).toBe(5);
     expect(d.entries).toBe(12);
+    expect(d.drift_scoring_mode_id).toBe(6);
     expect(d.race_laps).toBe(10);
     expect(raceSetupValid(d)).toBe(true);
   });
@@ -64,7 +67,9 @@ describe("useRaceSetupDraft", () => {
     expect(body.track_key).toBe("spa");
     expect(body.track_config).toBe("gp");
     expect(body.class_id).toBe(5);
+    expect(body.drift_scoring_mode_id).toBeNull();
     expect(body.race_laps).toBe(0); // null → 0
     expect(body.strategy).toBe(1); // null → 1
+    expect(raceSetupBody({ ...d, drift_scoring_mode_id: 7 }, 9).drift_scoring_mode_id).toBe(7);
   });
 });

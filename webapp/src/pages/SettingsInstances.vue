@@ -14,8 +14,10 @@ import Input from "@/components/ui/Input.vue";
 import Modal from "@/components/ui/Modal.vue";
 import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import Select from "@/components/ui/Select.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 import AdminBackButton from "@/components/AdminBackButton.vue";
+import type { DropDownList } from "@/types/generated";
 
 const server = useServerStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
@@ -29,11 +31,13 @@ const setupBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "")
 onMounted(() => {
   void server.load();
   void reloadSummary();
+  void loadDriftModes();
 });
 
 const notice = ref("");
 const error = ref("");
 const busy = ref(false);
+const driftModes = ref<DropDownList[]>([]);
 
 interface InstanceForm {
   id: number | null;
@@ -45,6 +49,7 @@ interface InstanceForm {
   plugin_listen_port: number | null;
   start_on_boot: boolean;
   drift_score_enabled: boolean;
+  drift_scoring_mode_id: number | null;
   allow_wrong_way: boolean;
   stream_enabled: boolean;
   stream_embed_url: string;
@@ -84,6 +89,7 @@ function openCreate() {
       nextFree([...list.map((i) => i.plugin_port), ...list.map((i) => i.plugin_listen_port)], 5000) + 1,
     start_on_boot: false,
     drift_score_enabled: false,
+    drift_scoring_mode_id: 1,
     allow_wrong_way: false,
     stream_enabled: false,
     stream_embed_url: "",
@@ -109,6 +115,7 @@ function openEdit(inst: InstanceState) {
     plugin_listen_port: inst.plugin_listen_port,
     start_on_boot: inst.start_on_boot === 1,
     drift_score_enabled: inst.drift_score_enabled === 1,
+    drift_scoring_mode_id: inst.drift_scoring_mode_id ?? 1,
     allow_wrong_way: inst.allow_wrong_way === 1,
     stream_enabled: inst.stream_enabled === 1,
     stream_embed_url: inst.stream_embed_url ?? "",
@@ -149,6 +156,7 @@ const save = () =>
       plugin_listen_port: f.plugin_listen_port,
       start_on_boot: f.start_on_boot ? 1 : 0,
       drift_score_enabled: f.drift_score_enabled ? 1 : 0,
+      drift_scoring_mode_id: f.drift_scoring_mode_id ?? 1,
       allow_wrong_way: f.allow_wrong_way ? 1 : 0,
       stream_enabled: f.stream_enabled ? 1 : 0,
       stream_embed_url: f.stream_embed_url,
@@ -184,6 +192,11 @@ const remove = (inst: InstanceState) =>
     notice.value = "Instance deleted.";
     await server.load();
   });
+
+async function loadDriftModes() {
+  const res = await api.get<{ items: DropDownList[] }>("/api/drift-scoring-modes?filled=1");
+  driftModes.value = res.items ?? [];
+}
 
 </script>
 
@@ -298,6 +311,12 @@ const remove = (inst: InstanceState) =>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.drift_score_enabled" label="Enable drift scoring HUD" />
         <p class="mt-1 text-xs text-dim">Serves a CSP Lua drift-score overlay to players. Requires the AssettoServer engine and CSP on the client; players without CSP simply won't see it.</p>
+        <FormRow v-if="form.drift_score_enabled" label="Scoring mode" class="mt-3">
+          <Select
+            v-model="form.drift_scoring_mode_id"
+            :options="driftModes.map((m) => ({ value: m.id ?? 1, label: m.name ?? '' }))"
+          />
+        </FormRow>
       </div>
       <div class="mt-2 border-t border-line pt-4">
         <Toggle v-model="form.allow_wrong_way" label="Allow driving the wrong way" />

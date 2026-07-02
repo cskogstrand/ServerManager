@@ -84,6 +84,78 @@ func apiDifficultyDelete(c *gin.Context) {
 	c.PureJSON(http.StatusOK, gin.H{"id": id})
 }
 
+// --- Drift scoring modes ---
+
+func apiDriftScoringModeList(c *gin.Context) {
+	list, err := Dba.selectDriftScoringModeList(listFilled(c))
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	usage, err := Dba.driftScoringModeUsageCounts()
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"items": list, "usage": usage})
+}
+
+func apiDriftScoringModeGet(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	mode, err := Dba.selectDriftScoringMode(id)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"data": mode})
+}
+
+func apiDriftScoringModeCreate(c *gin.Context) {
+	name, ok := bindName(c)
+	if !ok {
+		return
+	}
+	id, err := Dba.insertDriftScoringMode(name)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": id})
+}
+
+func apiDriftScoringModeUpdate(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	var mode DriftScoringMode
+	if err := c.ShouldBindJSON(&mode); err != nil {
+		apiBadRequest(c, "Invalid drift scoring mode payload: "+err.Error())
+		return
+	}
+	mode.Id = &id
+	if _, err := Dba.updateDriftScoringMode(mode); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": id})
+}
+
+func apiDriftScoringModeDelete(c *gin.Context) {
+	id, ok := pathId(c)
+	if !ok {
+		return
+	}
+	if _, err := Dba.deleteDriftScoringMode(id); err != nil {
+		apiError(c, http.StatusConflict, "in_use", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, gin.H{"id": id})
+}
+
 // --- Session ---
 
 func apiSessionList(c *gin.Context) {
@@ -413,16 +485,17 @@ func apiCategoryDelete(c *gin.Context) {
 // eventRequest is a clean DTO: plain numbers, separate track key/config.
 // (UserEvent's json tags carry ",string" quirks the old dashboard relies on.)
 type eventRequest struct {
-	EventCategoryId int    `json:"event_category_id"`
-	Name            string `json:"name"`
-	TrackKey        string `json:"track_key"`
-	TrackConfig     string `json:"track_config"`
-	DifficultyId    int    `json:"difficulty_id"`
-	SessionId       int    `json:"session_id"`
-	ClassId         int    `json:"class_id"`
-	TimeId          int    `json:"time_id"`
-	RaceLaps        int    `json:"race_laps"`
-	Strategy        int    `json:"strategy"`
+	EventCategoryId    int    `json:"event_category_id"`
+	Name               string `json:"name"`
+	TrackKey           string `json:"track_key"`
+	TrackConfig        string `json:"track_config"`
+	DifficultyId       int    `json:"difficulty_id"`
+	SessionId          int    `json:"session_id"`
+	ClassId            int    `json:"class_id"`
+	TimeId             int    `json:"time_id"`
+	DriftScoringModeId *int   `json:"drift_scoring_mode_id"`
+	RaceLaps           int    `json:"race_laps"`
+	Strategy           int    `json:"strategy"`
 }
 
 func (req eventRequest) toUserEvent() (UserEvent, string) {
@@ -433,15 +506,23 @@ func (req eventRequest) toUserEvent() (UserEvent, string) {
 		return UserEvent{}, "event_category_id, difficulty_id, session_id, class_id and time_id are required"
 	}
 	evt := UserEvent{
-		EventCategoryId:  &req.EventCategoryId,
-		CacheTrackKey:    &req.TrackKey,
-		CacheTrackConfig: &req.TrackConfig,
-		DifficultyId:     &req.DifficultyId,
-		SessionId:        &req.SessionId,
-		ClassId:          &req.ClassId,
-		TimeId:           &req.TimeId,
-		RaceLaps:         &req.RaceLaps,
-		Strategy:         &req.Strategy,
+		EventCategoryId:    &req.EventCategoryId,
+		CacheTrackKey:      &req.TrackKey,
+		CacheTrackConfig:   &req.TrackConfig,
+		DifficultyId:       &req.DifficultyId,
+		SessionId:          &req.SessionId,
+		ClassId:            &req.ClassId,
+		TimeId:             &req.TimeId,
+		DriftScoringModeId: req.DriftScoringModeId,
+		RaceLaps:           &req.RaceLaps,
+		Strategy:           &req.Strategy,
+	}
+	if evt.DriftScoringModeId != nil {
+		if *evt.DriftScoringModeId <= 0 {
+			evt.DriftScoringModeId = nil
+		} else if _, err := Dba.selectDriftScoringMode(*evt.DriftScoringModeId); err != nil {
+			return UserEvent{}, "drift_scoring_mode_id does not exist"
+		}
 	}
 	// Empty name stays NULL so the lobby title falls back to the category name.
 	if name := strings.TrimSpace(req.Name); name != "" {
@@ -532,10 +613,11 @@ func apiEventDelete(c *gin.Context) {
 // a shared preset. Column names come from a fixed whitelist, never user input.
 func apiPresetUsage(c *gin.Context) {
 	cols := map[string]string{
-		"classes":      "class_id",
-		"sessions":     "session_id",
-		"times":        "time_id",
-		"difficulties": "difficulty_id",
+		"classes":             "class_id",
+		"sessions":            "session_id",
+		"times":               "time_id",
+		"difficulties":        "difficulty_id",
+		"drift-scoring-modes": "drift_scoring_mode_id",
 	}
 	out := gin.H{}
 	for key, col := range cols {

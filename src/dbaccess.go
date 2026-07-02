@@ -27,6 +27,88 @@ func derefOrEmpty(s *string) string {
 	return *s
 }
 
+func driftModeDefaults() DriftScoringMode {
+	name := "Classic Drift"
+	collisionResetScore, carCollisionResetScore := 0, 0
+	resetScoreEnabled, resetMultiplierEnabled := 1, 1
+	resetScoreSeconds, resetMultiplierSeconds := 2.0, 2.0
+	minSpeedKmh, minAngleDeg := 40.0, 5.7
+	angleWeight, speedWeight := 0.009, 0.0
+	proximityWeight, proximityRangeM := 0.0, 5.0
+	multiplierGain := 0.00005
+	multiplierCap := 20
+	return DriftScoringMode{
+		Name:                   &name,
+		CollisionResetScore:    &collisionResetScore,
+		CarCollisionResetScore: &carCollisionResetScore,
+		ResetScoreEnabled:      &resetScoreEnabled,
+		ResetScoreSeconds:      &resetScoreSeconds,
+		ResetMultiplierEnabled: &resetMultiplierEnabled,
+		ResetMultiplierSeconds: &resetMultiplierSeconds,
+		MinSpeedKmh:            &minSpeedKmh,
+		MinAngleDeg:            &minAngleDeg,
+		AngleWeight:            &angleWeight,
+		SpeedWeight:            &speedWeight,
+		ProximityWeight:        &proximityWeight,
+		ProximityRangeM:        &proximityRangeM,
+		MultiplierGain:         &multiplierGain,
+		MultiplierCap:          &multiplierCap,
+	}
+}
+
+func normalizeDriftScoringMode(mode DriftScoringMode) DriftScoringMode {
+	def := driftModeDefaults()
+	if mode.Name == nil || strings.TrimSpace(*mode.Name) == "" {
+		mode.Name = def.Name
+	} else {
+		name := strings.TrimSpace(*mode.Name)
+		mode.Name = &name
+	}
+	if mode.CollisionResetScore == nil {
+		mode.CollisionResetScore = def.CollisionResetScore
+	}
+	if mode.CarCollisionResetScore == nil {
+		mode.CarCollisionResetScore = def.CarCollisionResetScore
+	}
+	if mode.ResetScoreEnabled == nil {
+		mode.ResetScoreEnabled = def.ResetScoreEnabled
+	}
+	if mode.ResetScoreSeconds == nil || *mode.ResetScoreSeconds < 0 {
+		mode.ResetScoreSeconds = def.ResetScoreSeconds
+	}
+	if mode.ResetMultiplierEnabled == nil {
+		mode.ResetMultiplierEnabled = def.ResetMultiplierEnabled
+	}
+	if mode.ResetMultiplierSeconds == nil || *mode.ResetMultiplierSeconds < 0 {
+		mode.ResetMultiplierSeconds = def.ResetMultiplierSeconds
+	}
+	if mode.MinSpeedKmh == nil || *mode.MinSpeedKmh < 0 {
+		mode.MinSpeedKmh = def.MinSpeedKmh
+	}
+	if mode.MinAngleDeg == nil || *mode.MinAngleDeg < 0 {
+		mode.MinAngleDeg = def.MinAngleDeg
+	}
+	if mode.AngleWeight == nil || *mode.AngleWeight < 0 {
+		mode.AngleWeight = def.AngleWeight
+	}
+	if mode.SpeedWeight == nil || *mode.SpeedWeight < 0 {
+		mode.SpeedWeight = def.SpeedWeight
+	}
+	if mode.ProximityWeight == nil || *mode.ProximityWeight < 0 {
+		mode.ProximityWeight = def.ProximityWeight
+	}
+	if mode.ProximityRangeM == nil || *mode.ProximityRangeM <= 0 {
+		mode.ProximityRangeM = def.ProximityRangeM
+	}
+	if mode.MultiplierGain == nil || *mode.MultiplierGain < 0 {
+		mode.MultiplierGain = def.MultiplierGain
+	}
+	if mode.MultiplierCap == nil || *mode.MultiplierCap < 1 {
+		mode.MultiplierCap = def.MultiplierCap
+	}
+	return mode
+}
+
 func open(name string) Dbaccess {
 	db, err := sql.Open("sqlite3", "file:"+name+"?_foreign_keys=on")
 	if err != nil {
@@ -99,8 +181,10 @@ func (dba Dbaccess) applySchema(filePath string) {
 		{"server_instance", "spectator_skin_key", "TEXT"},
 		{"server_instance", "start_on_boot", "INTEGER NOT NULL DEFAULT 0"},
 		{"server_instance", "drift_score_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"server_instance", "drift_scoring_mode_id", "INTEGER NOT NULL DEFAULT 1"},
 		{"server_instance", "allow_wrong_way", "INTEGER NOT NULL DEFAULT 0"},
 		{"user_event", "name", "TEXT"},
+		{"user_event", "drift_scoring_mode_id", "INTEGER"},
 		// Existing single-user installs default to admin so nobody is locked out.
 		{"users", "role", "TEXT NOT NULL DEFAULT 'admin'"},
 		{"driver_stream", "stream_capture_url", "TEXT"},
@@ -563,7 +647,8 @@ SELECT
 	e.practice_enabled, e.practice_time,
 	e.qualify_enabled, e.qualify_time,
 	e.race_enabled, e.race_time,
-	u.race_laps
+	u.race_laps,
+	u.drift_scoring_mode_id
 FROM server_event s
 JOIN user_event u
 	on s.user_event_id = u.id
@@ -595,7 +680,7 @@ JOIN user_time tw
 	for rows.Next() {
 		se := ServerEvent{}
 		err = rows.Scan(&se.Id, &se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.CacheTrackKey, &se.UserEvent.CacheTrackConfig, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.StartedAt, &se.Finished, &se.InstanceId,
-			&se.UserEvent.BookingEnabled, &se.UserEvent.BookingTime, &se.UserEvent.PracticeEnabled, &se.UserEvent.PracticeTime, &se.UserEvent.QualifyEnabled, &se.UserEvent.QualifyTime, &se.UserEvent.RaceEnabled, &se.UserEvent.RaceTime, &se.UserEvent.RaceLaps)
+			&se.UserEvent.BookingEnabled, &se.UserEvent.BookingTime, &se.UserEvent.PracticeEnabled, &se.UserEvent.PracticeTime, &se.UserEvent.QualifyEnabled, &se.UserEvent.QualifyTime, &se.UserEvent.RaceEnabled, &se.UserEvent.RaceTime, &se.UserEvent.RaceLaps, &se.UserEvent.DriftScoringModeId)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -886,12 +971,12 @@ func (dba Dbaccess) deleteServerEventsByUserEvent(id int) (int64, error) {
 
 func (dba Dbaccess) selectEvent(id int) (UserEvent, error) {
 	evt := UserEvent{}
-	stmt, err := dba.db.Prepare("SELECT id, event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy FROM user_event WHERE id = ? LIMIT 1")
+	stmt, err := dba.db.Prepare("SELECT id, event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy, drift_scoring_mode_id FROM user_event WHERE id = ? LIMIT 1")
 	if err != nil {
 		return evt, err
 	}
 	defer stmt.Close()
-	err = stmt.QueryRow(id).Scan(&evt.Id, &evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy)
+	err = stmt.QueryRow(id).Scan(&evt.Id, &evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy, &evt.DriftScoringModeId)
 	if err != nil {
 		return evt, err
 	}
@@ -932,11 +1017,11 @@ func (dba Dbaccess) selectEventList() ([]UserEventList, error) {
 }
 
 func (dba Dbaccess) insertEvent(evt UserEvent) (int64, error) {
-	stmt, err := dba.db.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := dba.db.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, name, race_laps, strategy, drift_scoring_mode_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
-	res, err := stmt.Exec(&evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy)
+	res, err := stmt.Exec(&evt.EventCategoryId, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.Name, &evt.RaceLaps, &evt.Strategy, &evt.DriftScoringModeId)
 	defer stmt.Close()
 
 	if err != nil {
@@ -952,11 +1037,11 @@ func (dba Dbaccess) insertEvent(evt UserEvent) (int64, error) {
 }
 
 func (dba Dbaccess) updateEvent(evt UserEvent) (int64, error) {
-	stmt, err := dba.db.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, name = ?, race_laps = ?, strategy = ? WHERE id = ?")
+	stmt, err := dba.db.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, name = ?, race_laps = ?, strategy = ?, drift_scoring_mode_id = ? WHERE id = ?")
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
-	res, err := stmt.Exec(evt.CacheTrackKey, evt.CacheTrackConfig, evt.DifficultyId, evt.SessionId, evt.ClassId, evt.TimeId, evt.Name, evt.RaceLaps, evt.Strategy, evt.Id)
+	res, err := stmt.Exec(evt.CacheTrackKey, evt.CacheTrackConfig, evt.DifficultyId, evt.SessionId, evt.ClassId, evt.TimeId, evt.Name, evt.RaceLaps, evt.Strategy, evt.DriftScoringModeId, evt.Id)
 	defer stmt.Close()
 
 	if err != nil {
@@ -1000,6 +1085,116 @@ func (dba Dbaccess) presetUsageCounts(column string) (map[int]int, error) {
 	return counts, rows.Err()
 }
 
+func (dba Dbaccess) selectDriftScoringModeList(filled bool) ([]DropDownList, error) {
+	return dba.selectDropDownList(filled, "drift_scoring_mode")
+}
+
+func (dba Dbaccess) insertDriftScoringMode(name string) (int64, error) {
+	return dba.insertNameInto(name, "drift_scoring_mode")
+}
+
+func (dba Dbaccess) selectDriftScoringMode(id int) (DriftScoringMode, error) {
+	mode := DriftScoringMode{}
+	row := dba.db.QueryRow(`
+SELECT id, name, collision_reset_score, car_collision_reset_score,
+       reset_score_enabled, reset_score_seconds,
+       reset_multiplier_enabled, reset_multiplier_seconds,
+       min_speed_kmh, min_angle_deg, angle_weight, speed_weight,
+       proximity_weight, proximity_range_m, multiplier_gain, multiplier_cap
+FROM drift_scoring_mode
+WHERE id = ?
+LIMIT 1`, id)
+	err := row.Scan(
+		&mode.Id, &mode.Name, &mode.CollisionResetScore, &mode.CarCollisionResetScore,
+		&mode.ResetScoreEnabled, &mode.ResetScoreSeconds,
+		&mode.ResetMultiplierEnabled, &mode.ResetMultiplierSeconds,
+		&mode.MinSpeedKmh, &mode.MinAngleDeg, &mode.AngleWeight, &mode.SpeedWeight,
+		&mode.ProximityWeight, &mode.ProximityRangeM, &mode.MultiplierGain, &mode.MultiplierCap,
+	)
+	if err != nil {
+		return mode, err
+	}
+	return normalizeDriftScoringMode(mode), nil
+}
+
+func (dba Dbaccess) updateDriftScoringMode(mode DriftScoringMode) (int64, error) {
+	mode = normalizeDriftScoringMode(mode)
+	stmt, err := dba.db.Prepare(`
+UPDATE drift_scoring_mode
+SET name = ?, collision_reset_score = ?, car_collision_reset_score = ?,
+    reset_score_enabled = ?, reset_score_seconds = ?,
+    reset_multiplier_enabled = ?, reset_multiplier_seconds = ?,
+    min_speed_kmh = ?, min_angle_deg = ?, angle_weight = ?, speed_weight = ?,
+    proximity_weight = ?, proximity_range_m = ?, multiplier_gain = ?, multiplier_cap = ?,
+    filled = 1
+WHERE id = ?`)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	defer stmt.Close()
+	res, err := stmt.Exec(
+		mode.Name, mode.CollisionResetScore, mode.CarCollisionResetScore,
+		mode.ResetScoreEnabled, mode.ResetScoreSeconds,
+		mode.ResetMultiplierEnabled, mode.ResetMultiplierSeconds,
+		mode.MinSpeedKmh, mode.MinAngleDeg, mode.AngleWeight, mode.SpeedWeight,
+		mode.ProximityWeight, mode.ProximityRangeM, mode.MultiplierGain, mode.MultiplierCap,
+		mode.Id,
+	)
+	if err != nil {
+		return -1, tracerr.Wrap(err)
+	}
+	return res.RowsAffected()
+}
+
+func (dba Dbaccess) driftScoringModeUsageCounts() (map[int]int, error) {
+	counts, err := dba.presetUsageCounts("drift_scoring_mode_id")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dba.db.Query("SELECT drift_scoring_mode_id, COUNT(*) FROM server_instance WHERE drift_scoring_mode_id IS NOT NULL GROUP BY drift_scoring_mode_id")
+	if err != nil {
+		return nil, tracerr.Wrap(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, tracerr.Wrap(err)
+		}
+		counts[id] += n
+	}
+	return counts, rows.Err()
+}
+
+func (dba Dbaccess) deleteDriftScoringMode(id int) (int64, error) {
+	if id == 1 {
+		return -1, errors.New("the default scoring mode cannot be deleted")
+	}
+	usage, err := dba.driftScoringModeUsageCounts()
+	if err != nil {
+		return -1, err
+	}
+	if usage[id] > 0 {
+		return -1, errors.New("scoring mode is used by a server or race setup")
+	}
+	return dba.deleteFrom(id, "drift_scoring_mode")
+}
+
+func (dba Dbaccess) activeDriftScoringMode(eventModeId *int, instanceModeId *int) DriftScoringMode {
+	for _, id := range []*int{eventModeId, instanceModeId} {
+		if id == nil || *id <= 0 {
+			continue
+		}
+		if mode, err := dba.selectDriftScoringMode(*id); err == nil {
+			return mode
+		}
+	}
+	if mode, err := dba.selectDriftScoringMode(1); err == nil {
+		return mode
+	}
+	return driftModeDefaults()
+}
+
 func (dba Dbaccess) selectEventCategory(id int) (UserEventCategory, error) {
 	cat := UserEventCategory{}
 	stmt, err := dba.db.Prepare("SELECT id, name FROM user_event_category WHERE id = ? LIMIT 1")
@@ -1028,6 +1223,7 @@ SELECT
 	s.name as name,
 	s.race_laps as race_laps,
 	s.strategy as strategy,
+	s.drift_scoring_mode_id as drift_scoring_mode_id,
 	t.name as track_name,
 	t.length as track_length,
 	t.pitboxes as pitboxes,
@@ -1097,7 +1293,7 @@ GROUP BY s.id`
 
 	for rows.Next() {
 		evt := UserEvent{}
-		err = rows.Scan(&evt.Id, &evt.Name, &evt.RaceLaps, &evt.Strategy, &evt.TrackName, &evt.TrackLength, &evt.Pitboxes, &evt.CacheTrack, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.DifficultyName, &evt.AbsAllowed, &evt.TcAllowed, &evt.StabilityAllowed, &evt.AutoclutchAllowed, &evt.SessionId, &evt.SessionName, &evt.BookingEnabled, &evt.BookingTime, &evt.PracticeEnabled, &evt.PracticeTime, &evt.QualifyEnabled, &evt.QualifyTime, &evt.RaceEnabled, &evt.RaceTime, &evt.ClassId, &evt.ClassName, &evt.Entries, &evt.TimeId, &evt.TimeName, &evt.Time, &evt.Graphics, &evt.TruncWeather, &evt.CspWeather)
+		err = rows.Scan(&evt.Id, &evt.Name, &evt.RaceLaps, &evt.Strategy, &evt.DriftScoringModeId, &evt.TrackName, &evt.TrackLength, &evt.Pitboxes, &evt.CacheTrack, &evt.CacheTrackKey, &evt.CacheTrackConfig, &evt.DifficultyId, &evt.DifficultyName, &evt.AbsAllowed, &evt.TcAllowed, &evt.StabilityAllowed, &evt.AutoclutchAllowed, &evt.SessionId, &evt.SessionName, &evt.BookingEnabled, &evt.BookingTime, &evt.PracticeEnabled, &evt.PracticeTime, &evt.QualifyEnabled, &evt.QualifyTime, &evt.RaceEnabled, &evt.RaceTime, &evt.ClassId, &evt.ClassName, &evt.Entries, &evt.TimeId, &evt.TimeName, &evt.Time, &evt.Graphics, &evt.TruncWeather, &evt.CspWeather)
 		if err != nil {
 			return cat, err
 		}
@@ -1218,11 +1414,11 @@ func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 		if evt.Id != nil {
 			if _, ok := existing[*evt.Id]; ok {
 				seen[*evt.Id] = struct{}{}
-				stmt, err = tx.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, race_laps = ?, strategy = ? WHERE id = ? AND event_category_id = ?")
+				stmt, err = tx.Prepare("UPDATE user_event SET cache_track_key = ?, cache_track_config = ?, difficulty_id = ?, session_id = ?, class_id = ?, time_id = ?, race_laps = ?, strategy = ?, drift_scoring_mode_id = ? WHERE id = ? AND event_category_id = ?")
 				if err != nil {
 					return -1, tracerr.Wrap(err)
 				}
-				_, err = stmt.Exec(trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy, evt.Id, cat.Id)
+				_, err = stmt.Exec(trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy, &evt.DriftScoringModeId, evt.Id, cat.Id)
 				stmt.Close()
 				if err != nil {
 					return -1, tracerr.Wrap(err)
@@ -1231,11 +1427,11 @@ func (dba Dbaccess) updateEventCategory(cat UserEventCategory) (int64, error) {
 			}
 		}
 
-		stmt, err = tx.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err = tx.Prepare("INSERT INTO user_event (event_category_id, cache_track_key, cache_track_config, difficulty_id, session_id, class_id, time_id, race_laps, strategy, drift_scoring_mode_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-		_, err = stmt.Exec(cat.Id, trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy)
+		_, err = stmt.Exec(cat.Id, trackKey, trackConfig, &evt.DifficultyId, &evt.SessionId, &evt.ClassId, &evt.TimeId, &evt.RaceLaps, &evt.Strategy, &evt.DriftScoringModeId)
 		stmt.Close()
 		if err != nil {
 			return -1, tracerr.Wrap(err)
@@ -1660,7 +1856,7 @@ SELECT id, name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port,
        run_mode, repeat_event_id, scheduled_start,
        stream_enabled, stream_embed_url, stream_status_url,
        spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key,
-       start_on_boot, drift_score_enabled, allow_wrong_way
+       start_on_boot, drift_score_enabled, drift_scoring_mode_id, allow_wrong_way
 FROM server_instance
 ORDER BY id ASC`)
 	if err != nil {
@@ -1676,7 +1872,7 @@ ORDER BY id ASC`)
 			&si.RunMode, &si.RepeatEventId, &si.ScheduledStart,
 			&si.StreamEnabled, &si.StreamEmbedUrl, &si.StreamStatusUrl,
 			&si.SpectatorEnabled, &si.SpectatorName, &si.SpectatorGuid, &si.SpectatorCarKey, &si.SpectatorSkinKey,
-			&si.StartOnBoot, &si.DriftScoreEnabled, &si.AllowWrongWay,
+			&si.StartOnBoot, &si.DriftScoreEnabled, &si.DriftScoringModeId, &si.AllowWrongWay,
 		)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
@@ -1696,8 +1892,8 @@ INSERT INTO server_instance (
   name, udp_port, tcp_port, http_port, plugin_port, plugin_listen_port, enabled,
   stream_enabled, stream_embed_url, stream_status_url,
   spectator_enabled, spectator_driver_name, spectator_guid, spectator_car_key, spectator_skin_key,
-  start_on_boot, drift_score_enabled, allow_wrong_way
-) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  start_on_boot, drift_score_enabled, drift_scoring_mode_id, allow_wrong_way
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
 	}
@@ -1707,7 +1903,7 @@ INSERT INTO server_instance (
 		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
 		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
 		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
-		si.StartOnBoot, si.DriftScoreEnabled, si.AllowWrongWay,
+		si.StartOnBoot, si.DriftScoreEnabled, si.DriftScoringModeId, si.AllowWrongWay,
 	)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
@@ -1722,7 +1918,7 @@ UPDATE server_instance
 SET name = ?, udp_port = ?, tcp_port = ?, http_port = ?, plugin_port = ?, plugin_listen_port = ?,
     stream_enabled = ?, stream_embed_url = ?, stream_status_url = ?,
     spectator_enabled = ?, spectator_driver_name = ?, spectator_guid = ?, spectator_car_key = ?, spectator_skin_key = ?,
-    start_on_boot = ?, drift_score_enabled = ?, allow_wrong_way = ?
+    start_on_boot = ?, drift_score_enabled = ?, drift_scoring_mode_id = ?, allow_wrong_way = ?
 WHERE id = ?`)
 	if err != nil {
 		return -1, tracerr.Wrap(err)
@@ -1733,7 +1929,7 @@ WHERE id = ?`)
 		si.Name, si.UdpPort, si.TcpPort, si.HttpPort, si.PluginPort, si.PluginListenPort,
 		si.StreamEnabled, si.StreamEmbedUrl, si.StreamStatusUrl,
 		si.SpectatorEnabled, si.SpectatorName, si.SpectatorGuid, si.SpectatorCarKey, si.SpectatorSkinKey,
-		si.StartOnBoot, si.DriftScoreEnabled, si.AllowWrongWay,
+		si.StartOnBoot, si.DriftScoreEnabled, si.DriftScoringModeId, si.AllowWrongWay,
 		si.Id,
 	)
 	if err != nil {
@@ -1780,7 +1976,7 @@ func (dba Dbaccess) updateServerInstanceSchedule(id int, ts *int64) (int64, erro
 // which re-applies the same event without consuming the queue.
 func (dba Dbaccess) selectServerEventForEvent(eventId int) (ServerEvent, error) {
 	row := dba.db.QueryRow(`
-SELECT u.id, u.name, t.name, d.name, e.name, c.name, tw.name, ct.name
+SELECT u.id, u.name, t.name, d.name, e.name, c.name, tw.name, ct.name, u.drift_scoring_mode_id
 FROM user_event u
 JOIN user_event_category ct on u.event_category_id = ct.id
 JOIN cache_track t on u.cache_track_key = t.key AND u.cache_track_config = t.config
@@ -1791,7 +1987,7 @@ JOIN user_time tw on u.time_id = tw.id
 WHERE u.id = ?`, eventId)
 
 	se := ServerEvent{}
-	err := row.Scan(&se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName)
+	err := row.Scan(&se.UserEvent.Id, &se.UserEvent.Name, &se.UserEvent.TrackName, &se.UserEvent.DifficultyName, &se.UserEvent.SessionName, &se.UserEvent.ClassName, &se.UserEvent.TimeName, &se.UserEvent.CategoryName, &se.UserEvent.DriftScoringModeId)
 	if err != nil {
 		return ServerEvent{}, tracerr.Wrap(err)
 	}

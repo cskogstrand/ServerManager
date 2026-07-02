@@ -38,13 +38,20 @@ const templates = computed(() =>
       icon: "difficulty",
       visible: auth.isAdmin,
     },
+    {
+      to: "/presets/drift-scoring",
+      label: "Drift Scoring",
+      detail: "Reusable scoring modes, reset rules, multipliers and weights.",
+      icon: "gauge",
+      visible: auth.canOperate,
+    },
   ].filter((t) => t.visible),
 );
 </script>
 
 <template>
   <PageHeader
-    title="Advanced Templates"
+    title="Templates"
     subtitle="Reusable preset building blocks for race setups. Most changes affect every race setup using the template."
     icon="settings"
   />

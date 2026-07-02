@@ -95,7 +95,8 @@ type ServerInstance struct {
 	// DriftScoreEnabled serves the drift-score CSP Lua HUD to clients. Only has
 	// an effect on the AssettoServer engine (vanilla acServer has no CSP-script
 	// delivery channel).
-	DriftScoreEnabled *int `json:"drift_score_enabled" form:"drift_score_enabled"`
+	DriftScoreEnabled  *int `json:"drift_score_enabled" form:"drift_score_enabled"`
+	DriftScoringModeId *int `json:"drift_scoring_mode_id" form:"drift_scoring_mode_id"`
 	// AllowWrongWay writes [EXTRA_RULES] ALLOW_WRONG_WAY=1 into csp_extra_options.ini,
 	// letting drivers go the wrong way without the CSP "back to pits" teleport.
 	// Only has an effect on the AssettoServer engine (it delivers the extra
@@ -162,11 +163,12 @@ type UserEvent struct {
 	CspWeather        *int
 	CacheTrackKey     *string
 	CacheTrackConfig  *string
-	CacheTrack        *string `form:"track" json:"track"`
-	DifficultyId      *int    `form:"difficulty" json:"difficulty,string"`
-	SessionId         *int    `form:"session" json:"session,string"`
-	ClassId           *int    `form:"class" json:"class,string"`
-	TimeId            *int    `form:"time" json:"time,string"`
+	CacheTrack         *string `form:"track" json:"track"`
+	DifficultyId       *int    `form:"difficulty" json:"difficulty,string"`
+	SessionId          *int    `form:"session" json:"session,string"`
+	ClassId            *int    `form:"class" json:"class,string"`
+	TimeId             *int    `form:"time" json:"time,string"`
+	DriftScoringModeId *int    `form:"drift_scoring_mode_id" json:"drift_scoring_mode_id"`
 }
 
 type UserEventList struct {
@@ -180,6 +182,25 @@ type UserEventCategory struct {
 	Id     *int        `json:"id"`
 	Name   *string     `form:"name" json:"name"`
 	Events []UserEvent `json:"events"`
+}
+
+type DriftScoringMode struct {
+	Id                       *int     `form:"id" json:"id"`
+	Name                     *string  `form:"name" json:"name"`
+	CollisionResetScore      *int     `form:"collision_reset_score" json:"collision_reset_score"`
+	CarCollisionResetScore   *int     `form:"car_collision_reset_score" json:"car_collision_reset_score"`
+	ResetScoreEnabled        *int     `form:"reset_score_enabled" json:"reset_score_enabled"`
+	ResetScoreSeconds        *float64 `form:"reset_score_seconds" json:"reset_score_seconds"`
+	ResetMultiplierEnabled   *int     `form:"reset_multiplier_enabled" json:"reset_multiplier_enabled"`
+	ResetMultiplierSeconds   *float64 `form:"reset_multiplier_seconds" json:"reset_multiplier_seconds"`
+	MinSpeedKmh              *float64 `form:"min_speed_kmh" json:"min_speed_kmh"`
+	MinAngleDeg              *float64 `form:"min_angle_deg" json:"min_angle_deg"`
+	AngleWeight              *float64 `form:"angle_weight" json:"angle_weight"`
+	SpeedWeight              *float64 `form:"speed_weight" json:"speed_weight"`
+	ProximityWeight          *float64 `form:"proximity_weight" json:"proximity_weight"`
+	ProximityRangeM          *float64 `form:"proximity_range_m" json:"proximity_range_m"`
+	MultiplierGain           *float64 `form:"multiplier_gain" json:"multiplier_gain"`
+	MultiplierCap            *int     `form:"multiplier_cap" json:"multiplier_cap"`
 }
 
 type UserDifficulty struct {

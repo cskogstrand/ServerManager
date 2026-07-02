@@ -30,13 +30,15 @@ const difficulties = ref<DropDownList[]>([]);
 const sessions = ref<DropDownList[]>([]);
 const classes = ref<DropDownList[]>([]);
 const times = ref<DropDownList[]>([]);
+const driftModes = ref<DropDownList[]>([]);
 
 async function loadPresetLists() {
-  [difficulties.value, sessions.value, classes.value, times.value] = await Promise.all([
+  [difficulties.value, sessions.value, classes.value, times.value, driftModes.value] = await Promise.all([
     api.get<{ items: DropDownList[] }>("/api/difficulties?filled=1").then((r) => r.items),
     api.get<{ items: DropDownList[] }>("/api/sessions?filled=1").then((r) => r.items),
     api.get<{ items: DropDownList[] }>("/api/classes?filled=1").then((r) => r.items),
     api.get<{ items: DropDownList[] }>("/api/times?filled=1").then((r) => r.items),
+    api.get<{ items: DropDownList[] }>("/api/drift-scoring-modes?filled=1").then((r) => r.items),
   ]);
 }
 
@@ -181,6 +183,16 @@ async function runReview() {
           New
         </Button>
       </div>
+    </FormRow>
+    <FormRow label="Drift scoring">
+      <Combobox
+        v-model="draft.drift_scoring_mode_id"
+        placeholder="Use server default..."
+        :options="[
+          { value: 0, label: 'Use server default' },
+          ...driftModes.map((m) => ({ value: m.id ?? 0, label: m.name ?? '' })),
+        ]"
+      />
     </FormRow>
 
     <div class="grid gap-x-4 sm:grid-cols-2">

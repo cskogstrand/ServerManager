@@ -218,6 +218,12 @@ func main() {
 		api.PUT("/difficulty/:id", apiDifficultyUpdate)
 		api.DELETE("/difficulty/:id", apiDifficultyDelete)
 
+		api.GET("/drift-scoring-modes", apiDriftScoringModeList)
+		api.POST("/drift-scoring-modes", apiDriftScoringModeCreate)
+		api.GET("/drift-scoring-mode/:id", apiDriftScoringModeGet)
+		api.PUT("/drift-scoring-mode/:id", apiDriftScoringModeUpdate)
+		api.DELETE("/drift-scoring-mode/:id", apiDriftScoringModeDelete)
+
 		api.GET("/sessions", apiSessionList)
 		api.POST("/sessions", apiSessionCreate)
 		api.GET("/session/:id", apiSession)

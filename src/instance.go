@@ -28,6 +28,7 @@ type Instance struct {
 	// telemetry ingest WebSocket. lastDriftPublish throttles the high-rate live
 	// drift updates pushed to SSE subscribers. See drivers.go / telemetryingest.go.
 	driftScorers     map[int]*driftScorer
+	driftMode        DriftScoringMode
 	lastDriftPublish time.Time
 	tel              telemetryHealth
 

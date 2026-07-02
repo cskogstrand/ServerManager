@@ -94,6 +94,21 @@ func validateStreamURL(label string, raw *string, required bool) error {
 }
 
 func normalizeServerInstanceStreams(si *ServerInstance) error {
+	if si.StartOnBoot == nil {
+		si.StartOnBoot = intPtr(0)
+	}
+	if si.DriftScoreEnabled == nil {
+		si.DriftScoreEnabled = intPtr(0)
+	}
+	if si.DriftScoringModeId == nil || *si.DriftScoringModeId <= 0 {
+		si.DriftScoringModeId = intPtr(1)
+	}
+	if _, err := Dba.selectDriftScoringMode(*si.DriftScoringModeId); err != nil {
+		return errors.New("drift_scoring_mode_id does not exist")
+	}
+	if si.AllowWrongWay == nil {
+		si.AllowWrongWay = intPtr(0)
+	}
 	if si.StreamEnabled == nil {
 		si.StreamEnabled = intPtr(0)
 	}
@@ -575,7 +590,12 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 		cfg = ensureAssettoServerAdminPassword(cfg)
 	}
 
+	mode := Dba.activeDriftScoringMode(serverEvent.UserEvent.DriftScoringModeId, inst.Conf.DriftScoringModeId)
 	inst.Cr.serverEvent = serverEvent
+	inst.mu.Lock()
+	inst.driftMode = mode
+	inst.driftScorers = make(map[int]*driftScorer)
+	inst.mu.Unlock()
 	inst.Cr.renderIni(*serverEvent.UserEvent.Id, inst.Conf)
 	if inst.Cr.renderErr != nil {
 		return false, inst.Cr.renderErr
@@ -2241,26 +2261,27 @@ func apiInstances(c *gin.Context) {
 		}
 
 		list = append(list, gin.H{
-			"id":                 inst.Id(),
-			"name":               inst.Name(),
-			"udp_port":           inst.Conf.UdpPort,
-			"tcp_port":           inst.Conf.TcpPort,
-			"http_port":          inst.Conf.HttpPort,
-			"plugin_port":        inst.Conf.PluginPort,
-			"plugin_listen_port": inst.Conf.PluginListenPort,
-			"is_running":         st.Status,
-			"players":            st.Players,
-			"run_mode":           runMode,
-			"repeat_event_id":    inst.Conf.RepeatEventId,
-			"repeat_event":       repeatEvent,
-			"scheduled_start":    inst.Conf.ScheduledStart,
-			"start_on_boot":      inst.Conf.StartOnBoot,
-			"drift_score_enabled": inst.Conf.DriftScoreEnabled,
-			"allow_wrong_way":    inst.Conf.AllowWrongWay,
-			"stream_enabled":     inst.Conf.StreamEnabled,
-			"stream_embed_url":   inst.Conf.StreamEmbedUrl,
-			"stream_status_url":  inst.Conf.StreamStatusUrl,
-			"spectator_enabled":  inst.Conf.SpectatorEnabled,
+			"id":                    inst.Id(),
+			"name":                  inst.Name(),
+			"udp_port":              inst.Conf.UdpPort,
+			"tcp_port":              inst.Conf.TcpPort,
+			"http_port":             inst.Conf.HttpPort,
+			"plugin_port":           inst.Conf.PluginPort,
+			"plugin_listen_port":    inst.Conf.PluginListenPort,
+			"is_running":            st.Status,
+			"players":               st.Players,
+			"run_mode":              runMode,
+			"repeat_event_id":       inst.Conf.RepeatEventId,
+			"repeat_event":          repeatEvent,
+			"scheduled_start":       inst.Conf.ScheduledStart,
+			"start_on_boot":         inst.Conf.StartOnBoot,
+			"drift_score_enabled":   inst.Conf.DriftScoreEnabled,
+			"drift_scoring_mode_id": inst.Conf.DriftScoringModeId,
+			"allow_wrong_way":       inst.Conf.AllowWrongWay,
+			"stream_enabled":        inst.Conf.StreamEnabled,
+			"stream_embed_url":      inst.Conf.StreamEmbedUrl,
+			"stream_status_url":     inst.Conf.StreamStatusUrl,
+			"spectator_enabled":     inst.Conf.SpectatorEnabled,
 			"spectator_driver_name": inst.Conf.SpectatorName,
 			"spectator_guid":        inst.Conf.SpectatorGuid,
 			"spectator_car_key":     inst.Conf.SpectatorCarKey,

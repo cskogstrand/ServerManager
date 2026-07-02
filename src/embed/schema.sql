@@ -221,6 +221,38 @@ CREATE TABLE IF NOT EXISTS user_event_category (
   filled INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS drift_scoring_mode (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  collision_reset_score INTEGER NOT NULL DEFAULT 0,
+  car_collision_reset_score INTEGER NOT NULL DEFAULT 0,
+  reset_score_enabled INTEGER NOT NULL DEFAULT 1,
+  reset_score_seconds REAL NOT NULL DEFAULT 2,
+  reset_multiplier_enabled INTEGER NOT NULL DEFAULT 1,
+  reset_multiplier_seconds REAL NOT NULL DEFAULT 2,
+  min_speed_kmh REAL NOT NULL DEFAULT 40,
+  min_angle_deg REAL NOT NULL DEFAULT 5.7,
+  angle_weight REAL NOT NULL DEFAULT 0.009,
+  speed_weight REAL NOT NULL DEFAULT 0,
+  proximity_weight REAL NOT NULL DEFAULT 0,
+  proximity_range_m REAL NOT NULL DEFAULT 5,
+  multiplier_gain REAL NOT NULL DEFAULT 0.00005,
+  multiplier_cap INTEGER NOT NULL DEFAULT 20,
+  filled INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT OR IGNORE INTO drift_scoring_mode (
+  id, name, collision_reset_score, car_collision_reset_score, reset_score_enabled,
+  reset_score_seconds, reset_multiplier_enabled, reset_multiplier_seconds,
+  min_speed_kmh, min_angle_deg, angle_weight, speed_weight, proximity_weight,
+  proximity_range_m, multiplier_gain, multiplier_cap, filled
+) VALUES (
+  1, 'Classic Drift', 0, 0, 1,
+  2, 1, 2,
+  40, 5.7, 0.009, 0, 0,
+  5, 0.00005, 20, 1
+);
+
 CREATE TABLE IF NOT EXISTS user_event (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_category_id INTEGER NOT NULL,
@@ -234,13 +266,15 @@ CREATE TABLE IF NOT EXISTS user_event (
   name TEXT,
   race_laps INTEGER,
   strategy INTEGER,
+  drift_scoring_mode_id INTEGER,
 
   FOREIGN KEY (event_category_id) REFERENCES user_event_category(id) ON DELETE RESTRICT,
   FOREIGN KEY (cache_track_key, cache_track_config) REFERENCES cache_track(key, config) ON DELETE RESTRICT,
   FOREIGN KEY (difficulty_id) REFERENCES user_difficulty(id) ON DELETE RESTRICT,
   FOREIGN KEY (session_id) REFERENCES user_session(id) ON DELETE RESTRICT,
   FOREIGN KEY (class_id) REFERENCES user_class(id) ON DELETE RESTRICT,
-  FOREIGN KEY (time_id) REFERENCES user_time(id) ON DELETE RESTRICT
+  FOREIGN KEY (time_id) REFERENCES user_time(id) ON DELETE RESTRICT,
+  FOREIGN KEY (drift_scoring_mode_id) REFERENCES drift_scoring_mode(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS server_event (
@@ -277,6 +311,7 @@ CREATE TABLE IF NOT EXISTS server_instance (
   spectator_skin_key TEXT,
   start_on_boot INTEGER NOT NULL DEFAULT 0,
   drift_score_enabled INTEGER NOT NULL DEFAULT 0,
+  drift_scoring_mode_id INTEGER NOT NULL DEFAULT 1,
   allow_wrong_way INTEGER NOT NULL DEFAULT 0
 );
 

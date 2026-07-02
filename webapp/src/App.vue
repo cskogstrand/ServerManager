@@ -100,7 +100,7 @@ const allSections = [
     label: "Build",
     items: [
       { to: "/events", label: "Race Setups", icon: "events" },
-      { to: "/presets", label: "Advanced Templates", icon: "settings", operate: true },
+      { to: "/presets", label: "Templates", icon: "settings", operate: true },
     ],
   },
   {

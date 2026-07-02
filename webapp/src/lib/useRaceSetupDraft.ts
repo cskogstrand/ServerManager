@@ -18,6 +18,7 @@ export interface RaceSetupDraft {
   entries: number | null;
   time_id: number | null;
   time_name: string;
+  drift_scoring_mode_id: number | null;
   race_laps: number | null;
   strategy: number | null;
 }
@@ -39,6 +40,7 @@ export function emptyRaceSetup(): RaceSetupDraft {
     entries: null,
     time_id: null,
     time_name: "",
+    drift_scoring_mode_id: null,
     race_laps: 0,
     strategy: 1,
   };
@@ -65,6 +67,7 @@ export function normalizeRaceSetup(raw: Record<string, unknown>): RaceSetupDraft
     entries: num(raw.Entries),
     time_id: num(raw.time),
     time_name: str(raw.TimeName),
+    drift_scoring_mode_id: num(raw.drift_scoring_mode_id),
     race_laps: num(raw.race_laps),
     strategy: num(raw.strategy),
   };
@@ -81,6 +84,7 @@ export function raceSetupBody(d: RaceSetupDraft, categoryId: number) {
     session_id: d.session_id,
     class_id: d.class_id,
     time_id: d.time_id,
+    drift_scoring_mode_id: d.drift_scoring_mode_id && d.drift_scoring_mode_id > 0 ? d.drift_scoring_mode_id : null,
     race_laps: d.race_laps ?? 0,
     strategy: d.strategy ?? 1,
   };

@@ -166,6 +166,7 @@ async function saveInstanceStream() {
       plugin_listen_port: inst.plugin_listen_port,
       start_on_boot: inst.start_on_boot,
       drift_score_enabled: inst.drift_score_enabled,
+      drift_scoring_mode_id: inst.drift_scoring_mode_id,
       allow_wrong_way: inst.allow_wrong_way,
       stream_enabled: f.stream_enabled ? 1 : 0,
       stream_embed_url: f.stream_embed_url,

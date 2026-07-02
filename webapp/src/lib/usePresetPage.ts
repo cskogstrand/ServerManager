@@ -1,5 +1,6 @@
 import { onMounted, ref, type Ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { restartServersUsingTemplate } from "@/lib/restartServersForTemplate";
 import { useQueryParam, numberParam } from "@/lib/useQueryParam";
 import { useConfirmStore } from "@/stores/confirm";
 import type { presetResource } from "@/lib/presets";
@@ -97,7 +98,8 @@ export function usePresetPage<T extends { id?: number }>(
       await resource.update(selectedId.value, form.value);
       await reloadList();
       markClean();
-      notice.value = "Saved.";
+      const restarted = await restartServersUsingTemplate(resource.plural, selectedId.value);
+      notice.value = restarted ? "Saved and restarted." : "Saved.";
     });
 
   // Clone-before-edit: copy a preset and switch to the new one so a shared

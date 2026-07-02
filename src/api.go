@@ -454,11 +454,14 @@ func serverStatusPayload(inst *Instance) gin.H {
 		"track_key":  "",
 		"track_config": "",
 		"difficulty": "",
+		"difficulty_id": 0,
 		"session":    "",
+		"session_id": 0,
 		"class":      "",
 		"class_id":   0,
 		"time":       "",
 		"time_id":    0,
+		"drift_scoring_mode_id": 0,
 		"weather":    "",
 		"weather_key": "",
 		"started_at": int64(0),
@@ -508,16 +511,31 @@ func serverStatusPayload(inst *Instance) gin.H {
 	}
 	if inst.Cr.serverEvent.UserEvent.Id != nil {
 		event, err := Dba.selectEvent(*inst.Cr.serverEvent.UserEvent.Id)
-		if err == nil && event.TimeId != nil {
-			currentEvent["time_id"] = *event.TimeId
-			tim, err := Dba.selectTimeWeather(*event.TimeId)
-			if err == nil && len(tim.Weathers) > 0 {
-				weather := tim.Weathers[0]
-				if weather.Name != nil {
-					currentEvent["weather"] = *weather.Name
-				}
-				if weather.Graphics != nil {
-					currentEvent["weather_key"] = *weather.Graphics
+		if err == nil {
+			if event.DifficultyId != nil {
+				currentEvent["difficulty_id"] = *event.DifficultyId
+			}
+			if event.SessionId != nil {
+				currentEvent["session_id"] = *event.SessionId
+			}
+			if event.ClassId != nil {
+				currentEvent["class_id"] = *event.ClassId
+			}
+			mode := Dba.activeDriftScoringMode(event.DriftScoringModeId, inst.Conf.DriftScoringModeId)
+			if mode.Id != nil {
+				currentEvent["drift_scoring_mode_id"] = *mode.Id
+			}
+			if event.TimeId != nil {
+				currentEvent["time_id"] = *event.TimeId
+				tim, err := Dba.selectTimeWeather(*event.TimeId)
+				if err == nil && len(tim.Weathers) > 0 {
+					weather := tim.Weathers[0]
+					if weather.Name != nil {
+						currentEvent["weather"] = *weather.Name
+					}
+					if weather.Graphics != nil {
+						currentEvent["weather_key"] = *weather.Graphics
+					}
 				}
 			}
 		}
@@ -1445,6 +1463,54 @@ func apiServerStop(c *gin.Context) {
 	c.PureJSON(http.StatusOK, serverStatusPayload(inst))
 }
 
+func restartCurrentServerEvent(inst *Instance) error {
+	if !inst.isRunning() {
+		return errors.New("server is not running")
+	}
+	if inst.Cr.serverEvent.UserEvent.Id == nil {
+		return errors.New("server has no current event")
+	}
+
+	serverEvent := inst.Cr.serverEvent
+	if serverEvent.Id != nil {
+		updated, err := Dba.selectServerEvent(*serverEvent.Id)
+		if err != nil {
+			return err
+		}
+		serverEvent = updated
+	} else {
+		updated, err := Dba.selectServerEventForEvent(*serverEvent.UserEvent.Id)
+		if err != nil {
+			return err
+		}
+		serverEvent = updated
+	}
+
+	inst.stop()
+	ok, err := applyServerEvent(inst, serverEvent)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("could not reapply current event")
+	}
+	inst.start()
+	return nil
+}
+
+func apiServerRestart(c *gin.Context) {
+	inst, err := instanceFromRequest(c)
+	if err != nil {
+		apiInstanceError(c, err)
+		return
+	}
+	if err := restartCurrentServerEvent(inst); err != nil {
+		apiError(c, http.StatusConflict, "server_restart_failed", err.Error())
+		return
+	}
+	c.PureJSON(http.StatusOK, serverStatusPayload(inst))
+}
+
 func apiServerStatus(c *gin.Context) {
 	inst, err := instanceFromRequest(c)
 	if err != nil {
@@ -1581,21 +1647,11 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 
 	restarted := false
 	if payload.RestartNow && inst.isRunning() && inst.Cr.serverEvent.UserEvent.Id != nil && *inst.Cr.serverEvent.UserEvent.Id == payload.EventID {
-		serverEvent := inst.Cr.serverEvent
-		if serverEvent.Id != nil {
-			updatedServerEvent, err := Dba.selectServerEvent(*serverEvent.Id)
-			if err == nil {
-				serverEvent = updatedServerEvent
-			}
-		}
-		inst.stop()
-		if ok, err := applyServerEvent(inst, serverEvent); err == nil && ok {
-			inst.start()
-			restarted = true
-		} else if err != nil {
+		if err := restartCurrentServerEvent(inst); err != nil {
 			apiError(c, http.StatusConflict, "server_restart_failed", err.Error())
 			return
 		}
+		restarted = true
 	}
 
 	response := serverStatusPayload(inst)

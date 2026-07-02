@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError } from "@/lib/api";
+import { restartServersUsingTemplate } from "@/lib/restartServersForTemplate";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useConfirmStore } from "@/stores/confirm";
 import type { DriftScoringMode, DropDownList } from "@/types/generated";
@@ -91,7 +92,8 @@ const save = () =>
     await api.put(`/api/drift-scoring-mode/${selectedId.value}`, form.value);
     await reloadList();
     markClean();
-    notice.value = "Saved.";
+    const restarted = await restartServersUsingTemplate("drift-scoring-modes", selectedId.value);
+    notice.value = restarted ? "Saved and restarted." : "Saved.";
   });
 
 const remove = (id: number) =>

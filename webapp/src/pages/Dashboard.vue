@@ -172,6 +172,27 @@ async function toggle(id: number, running: boolean) {
   }
 }
 
+async function restart(id: number) {
+  const inst = server.instanceList.find((i) => i.id === id);
+  const ok = await confirm.ask({
+    title: "Restart server",
+    message: `Restart ${inst?.name ?? "this instance"} now?`,
+    detail: "Connected players are disconnected while the current event reloads.",
+    confirmLabel: "Restart server",
+    tone: "danger",
+  });
+  if (!ok) return;
+  busy.value[id] = true;
+  try {
+    await server.restart(id);
+    await fetchDetail(id);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value[id] = false;
+  }
+}
+
 async function skip(id: number) {
   const ok = await confirm.ask({
     title: "Skip current event",
@@ -362,6 +383,16 @@ onMounted(async () => {
         >
           <Icon name="skip" :size="15" />
           Skip
+        </Button>
+        <Button
+          v-if="auth.canOperate && inst.running"
+          variant="dark"
+          size="sm"
+          :disabled="busy[inst.id]"
+          @click="restart(inst.id)"
+        >
+          <Icon name="repeat" :size="15" />
+          Restart
         </Button>
         <Button v-if="auth.canOperate && inst.running" variant="danger" size="sm" :disabled="busy[inst.id]" @click="toggle(inst.id, true)">
           <Icon name="stop" :size="15" />

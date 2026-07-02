@@ -355,6 +355,27 @@ async function toggleServer() {
   }
 }
 
+async function restartServer() {
+  if (!inst.value?.running) return;
+  const ok = await confirm.ask({
+    title: "Restart server",
+    message: `Restart ${inst.value?.name ?? "this instance"} now?`,
+    detail: "Connected players are disconnected while the current event reloads.",
+    confirmLabel: "Restart server",
+    tone: "danger",
+  });
+  if (!ok) return;
+  busy.value = true;
+  try {
+    await server.restart(instanceId.value);
+    await Promise.all([fetchDetail(), fetchQueue(), reloadSummary()]);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : String(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
 function kick(carId: number, name: string) {
   void confirm
     .ask({
@@ -978,6 +999,16 @@ onBeforeUnmount(() => {
         >
           <Icon name="skip" :size="15" />
           Skip
+        </Button>
+        <Button
+          v-if="auth.canOperate && inst.running"
+          variant="dark"
+          size="sm"
+          :disabled="busy"
+          @click="restartServer"
+        >
+          <Icon name="repeat" :size="15" />
+          Restart
         </Button>
         <Button
           v-if="auth.canOperate"

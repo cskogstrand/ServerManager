@@ -395,6 +395,11 @@ export const useServerStore = defineStore("server", {
       await this.load();
     },
 
+    async restart(id: number) {
+      await api.post(`/api/server/restart?instance=${id}`);
+      await this.load();
+    },
+
     async setRunMode(id: number, mode: RunMode, eventId?: number) {
       await api.put(`/api/instances/${id}/runmode`, {
         run_mode: mode,

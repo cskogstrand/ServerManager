@@ -289,6 +289,7 @@ func main() {
 
 		api.POST("/server/start", apiServerStart)
 		api.POST("/server/stop", apiServerStop)
+		api.POST("/server/restart", apiServerRestart)
 		api.GET("/server/status", apiServerStatus)
 		api.GET("/server/readiness", apiServerReadiness)
 		api.GET("/setup/summary", apiSetupSummary)

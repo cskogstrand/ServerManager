@@ -1129,9 +1129,18 @@ onBeforeUnmount(() => {
 
     <!-- Live region: spatial track map (a supporting view) beside the timing tower -->
     <div class="page-enter grid gap-4 lg:grid-cols-3" style="animation-delay: 60ms">
-      <section class="overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] lg:col-span-2">
+      <section class="relative overflow-hidden rounded-md border border-line bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] lg:col-span-2">
+        <template v-if="activeTrack">
+          <img
+            :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
+            alt=""
+            class="absolute inset-0 size-full object-cover opacity-75"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <div class="absolute inset-0 bg-surface/80" />
+        </template>
         <!-- Compact track header: photo backdrop + name, location, live status -->
-        <div v-if="activeTrack" class="relative">
+        <div v-if="activeTrack" class="relative z-10">
           <img
             :src="trackUrl('preview', activeTrack.key, activeTrack.config)"
             alt=""
@@ -1194,7 +1203,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Map canvas (height-capped so it never dominates the page) -->
-        <div class="p-4">
+        <div class="relative z-10 p-4">
           <template v-if="activeTrack">
             <div
               v-if="mapMeta && mapImageOk"
@@ -1204,14 +1213,14 @@ onBeforeUnmount(() => {
               <img
                 :src="trackUrl('map', activeTrack.key, activeTrack.config)"
                 alt=""
-                class="absolute inset-0 size-full object-fill opacity-85"
+                class="absolute inset-0 z-10 size-full object-fill opacity-85"
                 @error="mapImageOk = false"
               />
               <button
                 v-for="car in mapCars"
                 :key="car.driver.car_id"
                 type="button"
-                class="map-puck absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top,transform] duration-200 ease-linear hover:z-20 hover:scale-110"
+                class="map-puck absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-[left,top,transform] duration-200 ease-linear hover:z-30 hover:scale-110"
                 :class="{ 'z-20': !car.point.inBounds }"
                 :style="{ left: car.point.left, top: car.point.top }"
                 :title="`P${timingFor(car.driver.car_id)?.position ?? '?'} · ${car.driver.name || 'car ' + car.driver.car_id} · ${speedKmh(car.pos)} km/h · gear ${gearLabel(car.pos)}`"
@@ -1241,14 +1250,14 @@ onBeforeUnmount(() => {
               </button>
               <span
                 v-if="!positions.length"
-                class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm"
+                class="absolute bottom-2 left-2 z-20 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm"
               >
                 Cars appear here once drivers are on track
               </span>
               <RouterLink
                 v-if="inst.running"
                 :to="broadcastTo"
-                class="absolute right-2 bottom-2 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
+                class="absolute right-2 bottom-2 z-20 inline-flex items-center gap-1.5 rounded-md border border-accent/45 bg-bg/80 px-2.5 py-1 text-xs font-semibold text-accent backdrop-blur-sm transition-colors hover:border-accent/70 hover:bg-accent/15"
               >
                 <Icon name="maximize" :size="13" />
                 Broadcast view
@@ -1260,10 +1269,10 @@ onBeforeUnmount(() => {
               <img
                 :src="trackUrl('outline', activeTrack.key, activeTrack.config)"
                 alt=""
-                class="max-h-64 opacity-80"
+                class="relative z-10 max-h-64 opacity-80"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
               />
-              <span class="absolute bottom-2 left-2 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm">
+              <span class="absolute bottom-2 left-2 z-20 rounded-md border border-line bg-bg/80 px-2 py-1 text-xs text-dim backdrop-blur-sm">
                 This layout ships no live-map metadata — outline only
               </span>
             </div>
@@ -2027,7 +2036,7 @@ onBeforeUnmount(() => {
 /* Map panel atmosphere: subtle blueprint grid over the page bg so the track
    artwork floats instead of sitting on flat black. */
 .map-canvas {
-  background-color: var(--color-bg);
+  background-color: color-mix(in srgb, var(--color-bg) 76%, transparent);
   background-image:
     radial-gradient(ellipse at 30% 0%, rgba(98, 179, 232, 0.07), transparent 60%),
     linear-gradient(var(--color-line) 1px, transparent 1px),

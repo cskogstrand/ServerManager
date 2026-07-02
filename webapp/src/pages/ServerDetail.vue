@@ -1676,43 +1676,94 @@ onBeforeUnmount(() => {
     <!-- Grid with car imagery -->
     <Card v-if="gridRows.length" class="page-enter mt-4" style="animation-delay: 160ms">
       <template #header>
-        <Icon name="car" :size="15" class="text-dim" />
+        <Icon name="car" :size="15" class="text-accent" />
         <h2 class="text-sm font-bold">Grid</h2>
         <span class="ml-auto font-mono text-xs text-dim">
           {{ detail?.current_cars?.length ?? 0 }} slot{{ (detail?.current_cars?.length ?? 0) === 1 ? "" : "s" }}
         </span>
       </template>
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">
         <button
           v-for="row in gridRows"
           :key="`${row.carKey}-${row.skinKey}`"
           type="button"
-          class="group overflow-hidden rounded-md border border-line bg-surface-2/40 text-left transition-colors hover:border-line-hi hover:bg-surface-2"
+          class="group w-full max-w-[450px] cursor-pointer justify-self-center overflow-hidden rounded-md border border-line bg-surface-2/35 text-left transition-colors hover:border-line-hi hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          :aria-label="`${row.car?.name || row.carKey}, ${row.skinName}, ${row.count} grid slot${row.count === 1 ? '' : 's'}`"
           @click="openCar(row)"
         >
-          <div class="relative">
+          <div class="relative h-32 border-b border-line bg-surface-3 sm:h-36">
             <img
               :src="carImageUrl(row)"
               alt=""
               loading="lazy"
-              class="aspect-video w-full border-b border-line object-cover"
+              class="size-full object-cover transition-opacity duration-200 group-hover:opacity-95"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span class="absolute right-1.5 bottom-1.5 inline-flex items-center gap-1 rounded-md border border-line bg-bg/80 px-1.5 py-0.5 text-xs text-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg/95 via-bg/70 to-transparent px-3 pt-8 pr-16 pb-3">
+              <p class="text-[11px] font-bold tracking-wide text-accent uppercase">{{ row.car?.brand || "Grid entry" }}</p>
+              <p class="mt-0.5 truncate text-base font-black text-text">{{ row.car?.name || row.carKey }}</p>
+            </div>
+            <span class="absolute top-2 left-2 inline-flex min-h-6 items-center rounded-md border border-line bg-bg/80 px-2 font-mono text-xs font-black text-muted backdrop-blur-sm">
+              ×{{ row.count }}
+            </span>
+            <span
+              v-if="row.car?.class"
+              class="absolute top-2 right-2 max-w-[55%] truncate rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs font-semibold text-accent backdrop-blur-sm"
+            >
+              {{ row.car.class }}
+            </span>
+            <span class="absolute right-2 bottom-2 inline-flex items-center gap-1 rounded-md border border-line bg-bg/80 px-1.5 py-0.5 text-xs text-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
               <Icon name="activity" :size="12" />
               Specs
             </span>
           </div>
-          <div class="p-2.5">
-            <div class="flex items-baseline justify-between gap-2">
-              <span class="min-w-0 truncate text-sm font-semibold">{{ row.car?.name || row.carKey }}</span>
-              <span class="shrink-0 text-xs text-muted">×{{ row.count }}</span>
-            </div>
-            <div class="min-w-0 truncate text-xs text-dim">{{ row.car?.brand || "" }} · {{ row.skinName }}</div>
-            <div v-if="row.car?.specs" class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
-              <span v-if="row.car.specs.bhp">{{ row.car.specs.bhp }}</span>
-              <span v-if="row.car.specs.weight">{{ row.car.specs.weight }}</span>
-              <span v-if="row.car.specs.topspeed">{{ row.car.specs.topspeed }}</span>
+          <div class="space-y-3 p-3">
+            <dl class="grid overflow-hidden rounded-md border border-line/70 bg-surface/50 sm:grid-cols-2">
+              <div class="min-w-0 border-b border-line/50 px-2.5 py-2 sm:border-r">
+                <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="content" :size="12" />
+                  Skin
+                </dt>
+                <dd class="mt-1 truncate text-xs font-semibold text-text">{{ row.skinName || "Default" }}</dd>
+              </div>
+              <div class="min-w-0 border-b border-line/50 px-2.5 py-2">
+                <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="car" :size="12" />
+                  Class
+                </dt>
+                <dd class="mt-1 truncate text-xs font-semibold text-text">{{ row.car?.class || "Unknown" }}</dd>
+              </div>
+              <div class="min-w-0 border-b border-line/50 px-2.5 py-2 sm:border-r sm:border-b-0">
+                <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="users" :size="12" />
+                  Entries
+                </dt>
+                <dd class="mt-1 font-mono text-xs font-semibold text-text">{{ row.count }}</dd>
+              </div>
+              <div class="min-w-0 px-2.5 py-2">
+                <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="gauge" :size="12" />
+                  Power
+                </dt>
+                <dd class="mt-1 truncate font-mono text-xs font-semibold text-text">{{ row.car?.specs?.bhp || "—" }}</dd>
+              </div>
+            </dl>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div class="rounded-md border border-line/70 bg-surface/50 px-2.5 py-2">
+                <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="settings" :size="12" />
+                  Weight
+                </div>
+                <div class="mt-1 truncate font-mono text-xs font-semibold text-muted">{{ row.car?.specs?.weight || "—" }}</div>
+              </div>
+              <div class="rounded-md border border-line/70 bg-surface/50 px-2.5 py-2">
+                <div class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                  <Icon name="activity" :size="12" />
+                  Top speed
+                </div>
+                <div class="mt-1 truncate font-mono text-xs font-semibold text-muted">{{ row.car?.specs?.topspeed || "—" }}</div>
+              </div>
             </div>
           </div>
         </button>

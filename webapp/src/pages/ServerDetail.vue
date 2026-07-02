@@ -1403,16 +1403,81 @@ onBeforeUnmount(() => {
           </div>
         </template>
 
-        <!-- Idle: circuit description + tags (the outline map sits beside this) -->
+        <!-- Idle: circuit details (the outline map sits beside this) -->
         <template v-else-if="activeTrack">
-          <p v-if="trackInfo?.desc" class="text-sm leading-relaxed text-muted line-clamp-6">{{ trackInfo.desc }}</p>
-          <p v-else class="text-sm text-dim">No description shipped with this layout.</p>
-          <div v-if="trackInfo?.tags?.length" class="mt-3 flex flex-wrap gap-1.5">
-            <span v-for="tag in trackInfo.tags.slice(0, 12)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
-              {{ tag }}
-            </span>
+          <div class="space-y-3">
+            <div class="rounded-md border border-accent/35 bg-accent-dim/25 px-3 py-2.5">
+              <p class="text-[11px] font-bold tracking-wide text-accent uppercase">Selected circuit</p>
+              <p class="mt-1 break-words text-base font-black text-text">{{ trackInfo?.name || activeTrack.name }}</p>
+              <p v-if="trackInfo?.city || trackInfo?.country" class="mt-0.5 truncate text-xs text-dim">
+                {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(" · ") }}
+              </p>
+            </div>
+
+            <dl class="grid overflow-hidden rounded-md border border-line bg-surface-2/35 sm:grid-cols-2">
+              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r">
+                <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                  <Icon name="gauge" :size="18" />
+                </div>
+                <div class="min-w-0">
+                  <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Length</dt>
+                  <dd class="mt-1 break-words font-mono text-sm font-semibold text-text">{{ trackLengthLabel(trackInfo) }}</dd>
+                </div>
+              </div>
+
+              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3">
+                <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                  <Icon name="users" :size="18" />
+                </div>
+                <div class="min-w-0">
+                  <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Pitboxes</dt>
+                  <dd class="mt-1 break-words font-mono text-sm font-semibold text-text">{{ trackInfo?.pitboxes ?? "—" }}</dd>
+                </div>
+              </div>
+
+              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r sm:border-b-0">
+                <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                  <Icon name="mapPin" :size="18" />
+                </div>
+                <div class="min-w-0">
+                  <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Layout</dt>
+                  <dd class="mt-1 break-words text-sm font-semibold text-text">{{ activeTrack.config || "default" }}</dd>
+                </div>
+              </div>
+
+              <div class="flex min-w-0 items-start gap-3 p-3">
+                <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                  <Icon name="arrowLeft" :size="18" />
+                </div>
+                <div class="min-w-0">
+                  <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Width</dt>
+                  <dd class="mt-1 break-words font-mono text-sm font-semibold text-text">{{ trackInfo?.width || "—" }}</dd>
+                </div>
+              </div>
+            </dl>
+
+            <div class="rounded-md border border-line bg-surface-2/35 p-3">
+              <div class="mb-1.5 flex items-center gap-2 text-[10px] font-bold tracking-wide text-dim uppercase">
+                <Icon name="info" :size="14" />
+                Description
+              </div>
+              <p v-if="trackInfo?.desc" class="text-sm leading-relaxed text-muted line-clamp-6">{{ trackInfo.desc }}</p>
+              <p v-else class="text-sm text-dim">No description shipped with this layout.</p>
+            </div>
+
+            <div v-if="trackInfo?.tags?.length" class="rounded-md border border-line bg-surface-2/35 p-3">
+              <div class="mb-2 flex items-center gap-2 text-[10px] font-bold tracking-wide text-dim uppercase">
+                <Icon name="folder" :size="14" />
+                Tags
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <span v-for="tag in trackInfo.tags.slice(0, 12)" :key="tag" class="rounded-full border border-line bg-surface-3 px-2 py-0.5 text-xs text-muted">
+                  {{ tag }}
+                </span>
+              </div>
+            </div>
+            <p v-else-if="!trackInfo" class="text-xs text-dim">Content metadata not cached for this track.</p>
           </div>
-          <p v-else-if="!trackInfo" class="mt-3 text-xs text-dim">Content metadata not cached for this track.</p>
         </template>
         <p v-else class="text-sm text-dim">No track selected.</p>
       </Card>
@@ -1433,24 +1498,67 @@ onBeforeUnmount(() => {
             Edit race setup
           </Button>
         </template>
-        <div class="flex flex-wrap items-center gap-1.5 text-xs">
-          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.class }}</span>
-          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.session }}</span>
-          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.time }}</span>
-          <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5">{{ detail.current_event.difficulty }}</span>
-          <span
-            v-if="detail.current_event.weather"
-            class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-0.5 pr-2.5 pl-0.5"
-          >
-            <img
-              v-if="detail.current_event.weather_key"
-              :src="weatherImageUrl(detail.current_event.weather_key)"
-              alt=""
-              class="size-5 rounded-full border border-line object-cover"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            {{ detail.current_event.weather }}
-          </span>
+        <div class="space-y-3">
+          <div class="rounded-md border border-accent/35 bg-accent-dim/25 px-3 py-2.5">
+            <p class="text-[11px] font-bold tracking-wide text-accent uppercase">Loaded race setup</p>
+            <p class="mt-1 break-words text-base font-black text-text">{{ detail.current_event.name || detail.current_event.track }}</p>
+            <p v-if="detail.current_event.name && detail.current_event.track" class="mt-0.5 truncate text-xs text-dim">{{ detail.current_event.track }}</p>
+          </div>
+
+          <dl class="grid overflow-hidden rounded-md border border-line bg-surface-2/35 sm:grid-cols-2">
+            <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r">
+              <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                <Icon name="car" :size="18" />
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Car class</dt>
+                <dd class="mt-1 break-words text-sm font-semibold text-text">{{ detail.current_event.class || "Not set" }}</dd>
+              </div>
+            </div>
+
+            <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3">
+              <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                <Icon name="weather" :size="18" />
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Time &amp; weather</dt>
+                <dd class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-sm font-semibold text-text">
+                  <span class="break-words">{{ detail.current_event.time || "Not set" }}</span>
+                  <span v-if="detail.current_event.weather" class="inline-flex min-w-0 items-center gap-1.5 text-muted">
+                    <span class="text-dim">/</span>
+                    <img
+                      v-if="detail.current_event.weather_key"
+                      :src="weatherImageUrl(detail.current_event.weather_key)"
+                      alt=""
+                      class="size-5 shrink-0 rounded-full border border-line object-cover"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'"
+                    />
+                    <span class="break-words">{{ detail.current_event.weather }}</span>
+                  </span>
+                </dd>
+              </div>
+            </div>
+
+            <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r sm:border-b-0">
+              <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                <Icon name="flag" :size="18" />
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Session</dt>
+                <dd class="mt-1 break-words text-sm font-semibold text-text">{{ detail.current_event.session || "Not set" }}</dd>
+              </div>
+            </div>
+
+            <div class="flex min-w-0 items-start gap-3 p-3">
+              <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                <Icon name="difficulty" :size="18" />
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Difficulty</dt>
+                <dd class="mt-1 break-words text-sm font-semibold text-text">{{ detail.current_event.difficulty || "Not set" }}</dd>
+              </div>
+            </div>
+          </dl>
         </div>
       </Card>
       <Card v-else class="min-w-0">
@@ -1468,24 +1576,64 @@ onBeforeUnmount(() => {
           <h2 class="text-sm font-bold">Up next</h2>
           <RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-auto text-xs text-accent hover:underline">Manage queue →</RouterLink>
         </template>
-        <ul v-if="upcoming.length" class="divide-y divide-line/60">
-          <li v-for="(q, i) in upcoming" :key="q.id" class="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-            <span class="w-5 shrink-0 text-right font-mono text-xs text-dim">{{ i + 1 }}</span>
-            <TrackImage
-              v-if="q.track_key"
-              :track-key="q.track_key"
-              :config="q.track_config ?? ''"
-              class="h-9 w-14 shrink-0 rounded-sm border border-line bg-surface-2/50"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium">{{ q.name || q.track }}</div>
-              <div class="truncate text-xs text-dim">
-                {{ q.name ? `${q.track} · ` : "" }}{{ q.class }} · {{ q.session }} · {{ q.time }}
+        <ul v-if="upcoming.length" class="space-y-3">
+          <li v-for="(q, i) in upcoming" :key="q.id" class="overflow-hidden rounded-md border border-line bg-surface-2/35 sm:flex">
+            <div class="relative h-24 shrink-0 border-b border-line bg-surface-3 sm:h-auto sm:w-32 sm:border-r sm:border-b-0">
+              <TrackImage
+                v-if="q.track_key"
+                :track-key="q.track_key"
+                :config="q.track_config ?? ''"
+                class="size-full"
+              />
+              <div v-else class="grid size-full place-items-center text-dim">
+                <Icon name="mapPin" :size="24" />
               </div>
+              <span class="absolute top-2 left-2 grid size-6 place-items-center rounded-md border border-line bg-bg/80 font-mono text-xs font-black text-muted backdrop-blur-sm">
+                {{ i + 1 }}
+              </span>
+              <span v-if="q.started_at" class="absolute right-2 bottom-2 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
+                In progress
+              </span>
             </div>
-            <span v-if="q.started_at" class="ml-auto shrink-0 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
-              In progress
-            </span>
+
+            <div class="min-w-0 flex-1 p-3">
+              <div class="min-w-0">
+                <p class="text-[11px] font-bold tracking-wide text-accent uppercase">{{ q.category }}</p>
+                <p class="mt-0.5 break-words text-sm font-black text-text">{{ q.name || q.track }}</p>
+                <p v-if="q.name" class="mt-0.5 truncate text-xs text-dim">{{ q.track }}</p>
+              </div>
+
+              <dl class="mt-3 grid overflow-hidden rounded-md border border-line/70 bg-surface/50 sm:grid-cols-2">
+                <div class="min-w-0 border-b border-line/50 px-2.5 py-2 sm:border-r">
+                  <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                    <Icon name="car" :size="12" />
+                    Class
+                  </dt>
+                  <dd class="mt-1 truncate text-xs font-semibold text-text">{{ q.class || "Not set" }}</dd>
+                </div>
+                <div class="min-w-0 border-b border-line/50 px-2.5 py-2">
+                  <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                    <Icon name="flag" :size="12" />
+                    Session
+                  </dt>
+                  <dd class="mt-1 truncate text-xs font-semibold text-text">{{ q.session || "Not set" }}</dd>
+                </div>
+                <div class="min-w-0 border-b border-line/50 px-2.5 py-2 sm:border-r sm:border-b-0">
+                  <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                    <Icon name="clock" :size="12" />
+                    Time
+                  </dt>
+                  <dd class="mt-1 truncate text-xs font-semibold text-text">{{ q.time || "Not set" }}</dd>
+                </div>
+                <div class="min-w-0 px-2.5 py-2">
+                  <dt class="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-dim uppercase">
+                    <Icon name="difficulty" :size="12" />
+                    Difficulty
+                  </dt>
+                  <dd class="mt-1 truncate text-xs font-semibold text-text">{{ q.difficulty || "Not set" }}</dd>
+                </div>
+              </dl>
+            </div>
           </li>
         </ul>
         <p v-else class="text-sm text-dim">Queue is empty — add events from the queue page.</p>

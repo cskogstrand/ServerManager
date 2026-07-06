@@ -6,6 +6,7 @@ const props = withDefaults(
     placeholder?: string;
     min?: number;
     max?: number;
+    step?: number | string;
     autocomplete?: string;
     required?: boolean;
   }>(),
@@ -30,6 +31,7 @@ function onInput(e: Event) {
     :placeholder="placeholder"
     :min="min"
     :max="max"
+    :step="step"
     :autocomplete="autocomplete"
     :required="required"
     class="min-h-9 w-full rounded-md border border-line bg-surface-2 px-3 text-sm text-text outline-none transition-colors duration-200 placeholder:text-dim hover:border-line-hi focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"

@@ -201,13 +201,13 @@ onMounted(() =>
             <Toggle v-model="resetScore" label="Enabled" />
           </FormRow>
           <FormRow label="Score reset seconds">
-            <Input v-model="form.reset_score_seconds" type="number" :min="0" />
+            <Input v-model="form.reset_score_seconds" type="number" :min="0" :step="0.1" />
           </FormRow>
           <FormRow label="Reset multiplier">
             <Toggle v-model="resetMultiplier" label="Enabled" />
           </FormRow>
           <FormRow label="Multiplier reset seconds">
-            <Input v-model="form.reset_multiplier_seconds" type="number" :min="0" />
+            <Input v-model="form.reset_multiplier_seconds" type="number" :min="0" :step="0.1" />
           </FormRow>
         </div>
       </div>
@@ -216,10 +216,10 @@ onMounted(() =>
         <h2 class="mb-3 text-sm font-bold">Multiplier</h2>
         <div class="grid gap-x-4 sm:grid-cols-2">
           <FormRow label="Gain">
-            <Input v-model="form.multiplier_gain" type="number" :min="0" />
+            <Input v-model="form.multiplier_gain" type="number" :min="0" :step="0.00001" />
           </FormRow>
           <FormRow label="Cap">
-            <Input v-model="form.multiplier_cap" type="number" :min="1" />
+            <Input v-model="form.multiplier_cap" type="number" :min="1" :step="1" />
           </FormRow>
         </div>
       </div>
@@ -228,22 +228,22 @@ onMounted(() =>
         <h2 class="mb-3 text-sm font-bold">Scoring Criteria</h2>
         <div class="grid gap-x-4 sm:grid-cols-2">
           <FormRow label="Minimum speed (km/h)">
-            <Input v-model="form.min_speed_kmh" type="number" :min="0" />
+            <Input v-model="form.min_speed_kmh" type="number" :min="0" :step="0.1" />
           </FormRow>
           <FormRow label="Minimum angle (deg)">
-            <Input v-model="form.min_angle_deg" type="number" :min="0" />
+            <Input v-model="form.min_angle_deg" type="number" :min="0" :step="0.1" />
           </FormRow>
           <FormRow label="Angle weight">
-            <Input v-model="form.angle_weight" type="number" :min="0" />
+            <Input v-model="form.angle_weight" type="number" :min="0" :step="0.001" />
           </FormRow>
           <FormRow label="Speed weight">
-            <Input v-model="form.speed_weight" type="number" :min="0" />
+            <Input v-model="form.speed_weight" type="number" :min="0" :step="0.001" />
           </FormRow>
           <FormRow label="Proximity weight">
-            <Input v-model="form.proximity_weight" type="number" :min="0" />
+            <Input v-model="form.proximity_weight" type="number" :min="0" :step="0.001" />
           </FormRow>
           <FormRow label="Proximity range (m)">
-            <Input v-model="form.proximity_range_m" type="number" :min="1" />
+            <Input v-model="form.proximity_range_m" type="number" :min="0.1" :step="0.1" />
           </FormRow>
         </div>
       </div>

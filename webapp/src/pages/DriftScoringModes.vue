@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Input from "@/components/ui/Input.vue";
+import Slider from "@/components/ui/Slider.vue";
 import Toggle from "@/components/ui/Toggle.vue";
 
 type ModeFlag =
@@ -67,6 +68,25 @@ const resetScore = flag("reset_score_enabled");
 const resetMultiplier = flag("reset_multiplier_enabled");
 
 const selectedUsage = computed(() => (selectedId.value == null ? 0 : (usage.value[String(selectedId.value)] ?? 0)));
+const driftFpsReference = 60;
+const multiplierGainReferenceKmh = 100;
+
+function gainToSeconds(gain?: number | null) {
+  return gain && gain > 0 ? 1 / (multiplierGainReferenceKmh * gain * driftFpsReference) : 12;
+}
+
+const multiplierGainSeconds = computed({
+  get: () => Number(Math.min(12, Math.max(0.5, gainToSeconds(form.value?.multiplier_gain))).toFixed(1)),
+  set: (seconds: number | null | undefined) => {
+    if (!form.value || !seconds || seconds <= 0) return;
+    form.value.multiplier_gain = Number((1 / (multiplierGainReferenceKmh * seconds * driftFpsReference)).toFixed(8));
+  },
+});
+
+const multiplierGainHint = computed(() => {
+  const seconds = gainToSeconds(form.value?.multiplier_gain);
+  return `At ${multiplierGainReferenceKmh} km/h, +1x multiplier every ${seconds.toFixed(1)} seconds.`;
+});
 
 const select = (id: number) =>
   guard(async () => {
@@ -200,14 +220,14 @@ onMounted(() =>
           <FormRow label="Reset score">
             <Toggle v-model="resetScore" label="Enabled" />
           </FormRow>
-          <FormRow label="Score reset seconds">
-            <Input v-model="form.reset_score_seconds" type="number" :min="0" :step="0.1" />
+          <FormRow label="Score reset seconds" hint="Time below the speed or angle threshold before the run score ends.">
+            <Slider v-model="form.reset_score_seconds" :min="0" :max="10" :step="0.1" :decimals="1" suffix="s" />
           </FormRow>
           <FormRow label="Reset multiplier">
             <Toggle v-model="resetMultiplier" label="Enabled" />
           </FormRow>
-          <FormRow label="Multiplier reset seconds">
-            <Input v-model="form.reset_multiplier_seconds" type="number" :min="0" :step="0.1" />
+          <FormRow label="Multiplier reset seconds" hint="Time below the speed or angle threshold before multiplier drops back to 1x.">
+            <Slider v-model="form.reset_multiplier_seconds" :min="0" :max="10" :step="0.1" :decimals="1" suffix="s" />
           </FormRow>
         </div>
       </div>
@@ -215,11 +235,11 @@ onMounted(() =>
       <div class="rounded-md border border-line bg-surface p-4">
         <h2 class="mb-3 text-sm font-bold">Multiplier</h2>
         <div class="grid gap-x-4 sm:grid-cols-2">
-          <FormRow label="Gain">
-            <Input v-model="form.multiplier_gain" type="number" :min="0" :step="0.00001" />
+          <FormRow label="Gain pace" :hint="multiplierGainHint">
+            <Slider v-model="multiplierGainSeconds" :min="0.5" :max="12" :step="0.1" :decimals="1" suffix="s" />
           </FormRow>
-          <FormRow label="Cap">
-            <Input v-model="form.multiplier_cap" type="number" :min="1" :step="1" />
+          <FormRow label="Cap" hint="Maximum multiplier. Set to 1x to effectively disable multiplier growth.">
+            <Slider v-model="form.multiplier_cap" :min="1" :max="50" :step="1" suffix="x" />
           </FormRow>
         </div>
       </div>
@@ -227,23 +247,23 @@ onMounted(() =>
       <div class="rounded-md border border-line bg-surface p-4">
         <h2 class="mb-3 text-sm font-bold">Scoring Criteria</h2>
         <div class="grid gap-x-4 sm:grid-cols-2">
-          <FormRow label="Minimum speed (km/h)">
-            <Input v-model="form.min_speed_kmh" type="number" :min="0" :step="0.1" />
+          <FormRow label="Minimum speed">
+            <Slider v-model="form.min_speed_kmh" :min="0" :max="200" :step="1" suffix="km/h" />
           </FormRow>
-          <FormRow label="Minimum angle (deg)">
-            <Input v-model="form.min_angle_deg" type="number" :min="0" :step="0.1" />
+          <FormRow label="Minimum angle">
+            <Slider v-model="form.min_angle_deg" :min="0" :max="60" :step="0.1" :decimals="1" suffix="deg" />
           </FormRow>
-          <FormRow label="Angle weight">
-            <Input v-model="form.angle_weight" type="number" :min="0" :step="0.001" />
+          <FormRow label="Angle weight" hint="How much slip angle contributes to score.">
+            <Slider v-model="form.angle_weight" :min="0" :max="0.05" :step="0.001" :decimals="3" />
           </FormRow>
-          <FormRow label="Speed weight">
-            <Input v-model="form.speed_weight" type="number" :min="0" :step="0.001" />
+          <FormRow label="Speed weight" hint="How much speed contributes to score. 0 disables speed scoring.">
+            <Slider v-model="form.speed_weight" :min="0" :max="0.02" :step="0.001" :decimals="3" />
           </FormRow>
-          <FormRow label="Proximity weight">
-            <Input v-model="form.proximity_weight" type="number" :min="0" :step="0.001" />
+          <FormRow label="Proximity weight" hint="How much nearby-car or wall proximity contributes. 0 disables proximity scoring.">
+            <Slider v-model="form.proximity_weight" :min="0" :max="5" :step="0.05" :decimals="2" />
           </FormRow>
-          <FormRow label="Proximity range (m)">
-            <Input v-model="form.proximity_range_m" type="number" :min="0.1" :step="0.1" />
+          <FormRow label="Proximity range">
+            <Slider v-model="form.proximity_range_m" :min="0.1" :max="20" :step="0.1" :decimals="1" suffix="m" />
           </FormRow>
         </div>
       </div>

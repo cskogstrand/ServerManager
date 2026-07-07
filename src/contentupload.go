@@ -53,6 +53,7 @@ func (e contentUploadError) Error() string {
 }
 
 type contentArchiveImportResult struct {
+	Kind         string
 	AssetKeys    []string
 	FilesWritten int
 }
@@ -116,7 +117,7 @@ func contentKindFolder(kind string) (string, error) {
 	default:
 		return "", contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: "Select either car or track before uploading.",
+			Message: "Only car and track content uploads are supported.",
 		}
 	}
 }
@@ -472,11 +473,22 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 }
 
 func importContentArchive(archivePath string, archiveName string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {
-	contentFolder, err := contentKindFolder(kind)
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if kind == "" {
+		kind = "auto"
+	}
+	ext, err := ensureSupportedArchiveName(archiveName)
 	if err != nil {
 		return contentArchiveImportResult{}, err
 	}
-	ext, err := ensureSupportedArchiveName(archiveName)
+	if kind == "auto" {
+		detected, err := detectArchiveContentKind(archivePath, ext)
+		if err != nil {
+			return contentArchiveImportResult{}, err
+		}
+		kind = detected
+	}
+	contentFolder, err := contentKindFolder(kind)
 	if err != nil {
 		return contentArchiveImportResult{}, err
 	}
@@ -487,7 +499,9 @@ func importContentArchive(archivePath string, archiveName string, basepath strin
 	}
 
 	if ext == ".zip" {
-		return importZipArchive(archivePath, destinationRoot, kind, overwrite)
+		result, err := importZipArchive(archivePath, destinationRoot, kind, overwrite)
+		result.Kind = kind
+		return result, err
 	}
 
 	sevenZipBinary, err := ensureArchiveExtractor(ext)
@@ -495,7 +509,91 @@ func importContentArchive(archivePath string, archiveName string, basepath strin
 		return contentArchiveImportResult{}, err
 	}
 
-	return importArchiveVia7z(archivePath, destinationRoot, kind, overwrite, sevenZipBinary)
+	result, err := importArchiveVia7z(archivePath, destinationRoot, kind, overwrite, sevenZipBinary)
+	result.Kind = kind
+	return result, err
+}
+
+func detectArchiveContentKind(archivePath string, ext string) (string, error) {
+	if ext == ".zip" {
+		reader, err := zip.OpenReader(archivePath)
+		if err != nil {
+			return "", contentUploadError{
+				Status:  http.StatusBadRequest,
+				Message: "The selected archive could not be opened.",
+			}
+		}
+		defer reader.Close()
+
+		paths := make([]string, 0, len(reader.File))
+		for _, file := range reader.File {
+			paths = append(paths, file.Name)
+		}
+		return detectArchiveContentKindFromPaths(paths)
+	}
+
+	sevenZipBinary, err := ensureArchiveExtractor(ext)
+	if err != nil {
+		return "", err
+	}
+	paths, err := listArchivePathsVia7z(archivePath, sevenZipBinary)
+	if err != nil {
+		return "", err
+	}
+	return detectArchiveContentKindFromPaths(paths)
+}
+
+func listArchivePathsVia7z(archivePath string, sevenZipBinary string) ([]string, error) {
+	cmd := exec.Command(sevenZipBinary, "l", "-slt", archivePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = "7-Zip could not inspect the archive."
+		}
+		return nil, contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: msg,
+		}
+	}
+
+	paths := make([]string, 0)
+	for _, line := range strings.Split(string(output), "\n") {
+		if path, ok := strings.CutPrefix(strings.TrimSpace(line), "Path = "); ok {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func detectArchiveContentKindFromPaths(paths []string) (string, error) {
+	found := map[string]bool{}
+	for _, archivePath := range paths {
+		for _, kind := range []string{"car", "track"} {
+			if _, ok, err := detectFilesystemAsset(kind, archivePath); err != nil {
+				return "", err
+			} else if ok {
+				found[kind] = true
+			}
+		}
+	}
+
+	if found["car"] && found["track"] {
+		return "", contentUploadError{
+			Status:  http.StatusBadRequest,
+			Message: "Archive contains both car and track content. Upload mixed content as separate archives so each file can be installed to the right folder.",
+		}
+	}
+	if found["car"] {
+		return "car", nil
+	}
+	if found["track"] {
+		return "track", nil
+	}
+	return "", contentUploadError{
+		Status:  http.StatusBadRequest,
+		Message: "No valid car or track content was found in the archive. Expected an Assetto Corsa car with ui/ui_car.json or track with ui/ui_track.json.",
+	}
 }
 
 func importZipArchive(archivePath string, destinationRoot string, kind string, overwrite bool) (contentArchiveImportResult, error) {

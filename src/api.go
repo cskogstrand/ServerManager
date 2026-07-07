@@ -302,7 +302,7 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 	ContentJobs.Update(jobID, func(job *ContentJob) {
 		job.Status = "running"
 		job.Phase = "extracting"
-		job.Message = "Archive downloaded. Importing content..."
+		job.Message = "Archive downloaded. Detecting and importing content..."
 		job.Progress = 72
 	})
 
@@ -324,6 +324,7 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 	}
 
 	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Kind = result.Kind
 		job.Status = "running"
 		job.Phase = "recaching"
 		job.Message = "Archive imported. Rebuilding the content cache..."
@@ -344,12 +345,13 @@ func runContentURLImportJob(jobID string, archiveURL string, sourceName string, 
 		return
 	}
 
-	autoCompressImported(kind, result.AssetKeys)
+	autoCompressImported(result.Kind, result.AssetKeys)
 
 	ContentJobs.Update(jobID, func(job *ContentJob) {
+		job.Kind = result.Kind
 		job.Status = "completed"
 		job.Phase = "completed"
-		job.Message = fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), kind, strings.Join(result.AssetKeys, ", "))
+		job.Message = fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), result.Kind, strings.Join(result.AssetKeys, ", "))
 		job.Progress = 100
 		job.FilesWritten = result.FilesWritten
 		job.ImportedAssets = result.AssetKeys
@@ -1251,6 +1253,9 @@ func apiContentUpload(c *gin.Context) {
 	}
 
 	kind := strings.TrimSpace(c.PostForm("kind"))
+	if kind == "" {
+		kind = "auto"
+	}
 	overwrite := parseBoolFormValue(c.PostForm("overwrite"))
 	archiveURL := strings.TrimSpace(c.PostForm("archive_url"))
 	var header *multipart.FileHeader
@@ -1376,13 +1381,13 @@ func apiContentUpload(c *gin.Context) {
 		return
 	}
 
-	autoCompressImported(kind, result.AssetKeys)
+	autoCompressImported(result.Kind, result.AssetKeys)
 	cached, _ := Dba.countCacheImages()
 
 	c.PureJSON(http.StatusOK, gin.H{
 		"success":        true,
 		"async":          false,
-		"kind":           kind,
+		"kind":           result.Kind,
 		"source":         source,
 		"imported_assets": result.AssetKeys,
 		"imported_count": len(result.AssetKeys),
@@ -1391,7 +1396,7 @@ func apiContentUpload(c *gin.Context) {
 		"cars_total":     counts.Cars,
 		"weathers_total": counts.Weathers,
 		"cached_images":  cached,
-		"message":        fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), kind, strings.Join(result.AssetKeys, ", ")),
+		"message":        fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), result.Kind, strings.Join(result.AssetKeys, ", ")),
 	})
 }
 

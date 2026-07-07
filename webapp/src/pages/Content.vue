@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useContentStore, type ContentJob } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
@@ -72,16 +72,156 @@ const tab = useQueryParam<"tracks" | "cars" | "weathers">(
   enumParam(["tracks", "cars", "weathers"] as const, "tracks"),
 );
 const search = useQueryParam("q", "");
+const sort = ref<string>("name");
+const carBrand = ref("");
+const carClass = ref("");
+const minPower = ref<number | null>(null);
+const trackCountry = ref("");
+const minPitboxes = ref<number | null>(null);
 
-const filteredTracks = computed(() =>
-  content.tracks.filter((t) => (t.name ?? t.key ?? "").toLowerCase().includes(search.value.toLowerCase())),
-);
-const filteredCars = computed(() =>
-  content.cars.filter((c) => (c.name ?? c.key ?? "").toLowerCase().includes(search.value.toLowerCase())),
-);
-const filteredWeathers = computed(() =>
-  content.weathers.filter((w) => (w.name ?? w.key ?? "").toLowerCase().includes(search.value.toLowerCase())),
-);
+const sortOptions = computed(() => {
+  const base = [
+    { value: "name", label: "Name" },
+    { value: "newest", label: "Newest" },
+    { value: "oldest", label: "Oldest" },
+  ];
+  if (tab.value === "cars") {
+    return [
+      ...base,
+      { value: "brand", label: "Brand" },
+      { value: "powerDesc", label: "Power high" },
+      { value: "powerAsc", label: "Power low" },
+    ];
+  }
+  if (tab.value === "tracks") {
+    return [
+      ...base,
+      { value: "lengthDesc", label: "Length long" },
+      { value: "lengthAsc", label: "Length short" },
+      { value: "pitboxesDesc", label: "Pit boxes high" },
+      { value: "pitboxesAsc", label: "Pit boxes low" },
+    ];
+  }
+  return [{ value: "name", label: "Name" }];
+});
+
+watch(tab, () => {
+  if (!sortOptions.value.some((o) => o.value === sort.value)) sort.value = "name";
+});
+
+const carBrandOptions = computed(() => optionList("All brands", content.cars.map((c) => c.brand)));
+const carClassOptions = computed(() => optionList("All classes", content.cars.map((c) => c.class)));
+const trackCountryOptions = computed(() => optionList("All countries", content.tracks.map((t) => t.country)));
+
+const filteredTracks = computed(() => {
+  const q = search.value.toLowerCase();
+  const rows = content.tracks.filter((t) => {
+    if (trackCountry.value && t.country !== trackCountry.value) return false;
+    if (minPitboxes.value !== null && (t.pitboxes ?? 0) < minPitboxes.value) return false;
+    return searchText([t.name, t.key, t.config, t.country, t.city, t.tags?.join(" ")]).includes(q);
+  });
+  return sortRows(rows, trackSortValue);
+});
+const filteredCars = computed(() => {
+  const q = search.value.toLowerCase();
+  const rows = content.cars.filter((c) => {
+    if (carBrand.value && c.brand !== carBrand.value) return false;
+    if (carClass.value && c.class !== carClass.value) return false;
+    if (minPower.value !== null && carPower(c) < minPower.value) return false;
+    return searchText([c.name, c.key, c.brand, c.class, c.tags?.join(" ")]).includes(q);
+  });
+  return sortRows(rows, carSortValue);
+});
+const filteredWeathers = computed(() => {
+  const q = search.value.toLowerCase();
+  return content.weathers
+    .filter((w) => searchText([w.name, w.key]).includes(q))
+    .sort((a, b) => byText(a.name ?? a.key, b.name ?? b.key));
+});
+const visibleCount = computed(() => {
+  if (tab.value === "tracks") return filteredTracks.value.length;
+  if (tab.value === "cars") return filteredCars.value.length;
+  return filteredWeathers.value.length;
+});
+const filtersActive = computed(() => {
+  if (sort.value !== "name") return true;
+  if (tab.value === "cars") return Boolean(carBrand.value || carClass.value || minPower.value !== null);
+  if (tab.value === "tracks") return Boolean(trackCountry.value || minPitboxes.value !== null);
+  return false;
+});
+
+function optionList(label: string, values: (string | undefined | null)[]) {
+  const unique = Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean))).sort((a, b) => byText(a, b));
+  return [{ value: "", label }, ...unique.map((value) => ({ value, label: value }))];
+}
+
+function searchText(values: (string | undefined | null)[]): string {
+  return values.filter(Boolean).join(" ").toLowerCase();
+}
+
+function byText(a?: string | null, b?: string | null): number {
+  return (a || "").localeCompare(b || "", undefined, { sensitivity: "base", numeric: true });
+}
+
+function numericSpec(value?: string): number {
+  const match = (value || "").replace(",", ".").match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function carPower(c: CacheCar): number {
+  return numericSpec(c.specs?.bhp);
+}
+
+function carPowerLabel(c: CacheCar): string {
+  const raw = c.specs?.bhp?.trim();
+  return raw && raw !== "-" ? raw : "";
+}
+
+function modifiedAt(row: { modified_at?: number }): number {
+  return row.modified_at || 0;
+}
+
+function sortRows<T>(rows: T[], value: (row: T) => string | number): T[] {
+  return [...rows].sort((a, b) => {
+    const av = value(a);
+    const bv = value(b);
+    if (typeof av === "number" && typeof bv === "number") return av === bv ? 0 : av - bv;
+    return byText(String(av), String(bv));
+  });
+}
+
+function carSortValue(c: CacheCar): string | number {
+  if (sort.value === "newest") return -modifiedAt(c);
+  if (sort.value === "oldest") return modifiedAt(c);
+  if (sort.value === "brand") return `${c.brand || ""} ${c.name || c.key || ""}`;
+  if (sort.value === "powerDesc") return -carPower(c);
+  if (sort.value === "powerAsc") return carPower(c);
+  return c.name || c.key || "";
+}
+
+function trackSortValue(t: CacheTrack): string | number {
+  if (sort.value === "newest") return -modifiedAt(t);
+  if (sort.value === "oldest") return modifiedAt(t);
+  if (sort.value === "lengthDesc") return -(t.length || 0);
+  if (sort.value === "lengthAsc") return t.length || 0;
+  if (sort.value === "pitboxesDesc") return -(t.pitboxes || 0);
+  if (sort.value === "pitboxesAsc") return t.pitboxes || 0;
+  return t.name || t.key || "";
+}
+
+function formatDate(ts?: number): string {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function clearLibraryFilters() {
+  sort.value = "name";
+  carBrand.value = "";
+  carClass.value = "";
+  minPower.value = null;
+  trackCountry.value = "";
+  minPitboxes.value = null;
+}
 
 // --- Detail drawers ---
 interface CarCurves {
@@ -117,6 +257,7 @@ const trackSpecRows = computed(() => {
     { label: "Pit boxes", value: t.pitboxes ?? "—" },
     { label: "Width", value: t.width || "—" },
     { label: "Run", value: t.run || "—" },
+    { label: "Modified", value: formatDate(t.modified_at) || "—" },
     { label: "Key", value: t.key || "—" },
   ];
 });
@@ -148,7 +289,8 @@ async function openCar(c: CacheCar) {
 }
 
 const carSpecRows = computed(() => {
-  const s = selectedCar.value?.specs;
+  const c = selectedCar.value;
+  const s = c?.specs;
   if (!s) return [];
   return [
     { label: "Power", value: s.bhp },
@@ -157,6 +299,7 @@ const carSpecRows = computed(() => {
     { label: "Top speed", value: s.topspeed },
     { label: "0–100", value: s.acceleration },
     { label: "P/W ratio", value: s.pwratio },
+    { label: "Modified", value: formatDate(c?.modified_at) },
   ].filter((r) => r.value);
 });
 
@@ -183,18 +326,20 @@ const carDescText = computed(() => {
 });
 
 // --- Upload ---
-const kind = ref<"track" | "car">("track");
 const overwrite = ref(false);
 const archiveUrl = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
-const file = ref<File | null>(null);
+const files = ref<File[]>([]);
 const uploadProgress = ref(0);
 const uploading = ref(false);
+const batchIndex = ref(0);
+const batchTotal = ref(0);
 type UploadStage = "idle" | "submitting" | "uploading" | "processing" | "queued" | "completed" | "failed";
 interface UploadResponse {
   async?: boolean;
   error?: { message?: string };
   job?: ContentJob;
+  kind?: "car" | "track";
   message?: string;
   imported_count?: number;
   imported_assets?: string[];
@@ -231,18 +376,25 @@ const uploadStatusClass = computed(() => {
 });
 const uploadBarClass = computed(() => (uploadStage.value === "completed" ? "bg-ok" : "bg-accent"));
 const uploadButtonLabel = computed(() => {
-  if (!uploading.value) return "Upload";
+  if (!uploading.value) return archiveUrl.value.trim() ? "Start download" : files.value.length > 1 ? `Upload ${files.value.length}` : "Upload";
+  if (batchTotal.value > 1) return `Importing ${Math.min(batchIndex.value + 1, batchTotal.value)}/${batchTotal.value}`;
   if (uploadStage.value === "processing") return "Importing…";
   if (archiveUrl.value.trim()) return "Starting…";
   return `Uploading ${uploadProgress.value}%`;
 });
+const selectedFileSummary = computed(() => {
+  if (!files.value.length) return "";
+  if (files.value.length === 1) return `${files.value[0].name} (${formatBytes(files.value[0].size)})`;
+  const totalBytes = files.value.reduce((sum, f) => sum + f.size, 0);
+  return `${files.value.length} archives selected (${formatBytes(totalBytes)} total)`;
+});
 
 function onFileChange(e: Event) {
-  file.value = (e.target as HTMLInputElement).files?.[0] ?? null;
+  files.value = Array.from((e.target as HTMLInputElement).files ?? []);
 }
 
 function clearUploadInputs() {
-  file.value = null;
+  files.value = [];
   archiveUrl.value = "";
   if (fileInput.value) fileInput.value.value = "";
 }
@@ -269,86 +421,166 @@ function uploadFailureMessage(xhr: XMLHttpRequest, r: UploadResponse | null): st
   return r?.message ?? r?.error?.message ?? "Upload failed.";
 }
 
-// XHR instead of fetch: upload progress events. Job progress after the
-// upload itself arrives over SSE (content store).
-function upload() {
-  const url = archiveUrl.value.trim();
-  const selectedFile = file.value;
-  if (!selectedFile && !url) {
-    toast.error("Choose an archive file or paste a download URL.");
+function batchProgress(index: number, total: number, fileProgress: number): number {
+  if (total <= 1) return fileProgress;
+  return Math.min(100, Math.round(((index + fileProgress / 100) / total) * 100));
+}
+
+function batchPrefix(index: number, total: number): string {
+  return total > 1 ? `Archive ${index + 1} of ${total}: ` : "";
+}
+
+function applyUploadResponse(response: UploadResponse | null, sourceName: string, notify: boolean) {
+  if (response?.async && response.job) {
+    content.upsertJob(response.job);
+    uploadProgress.value = jobProgress(response.job);
+    if (notify) {
+      setUploadStatus(
+        "queued",
+        `${response.job.source_name || sourceName} is queued for import.`,
+        "The Import jobs panel updates as Server Manager downloads, extracts, and rebuilds the content cache.",
+      );
+      toast.info("Import job started. Progress is visible in Import jobs.");
+    }
     return;
   }
-  uploading.value = true;
-  uploadProgress.value = 0;
-  const sourceName = url || selectedFile?.name || "archive";
-  const usingUrl = Boolean(url);
+  if (typeof response?.cached_images === "number") content.cachedImages = response.cached_images;
+  content.bumpImageVersion();
+  if (notify) {
+    uploadProgress.value = 100;
+    setUploadStatus("completed", response?.message ?? `Imported ${sourceName}.`, summarizeUploadResponse(response));
+    toast.success(response?.message ?? "Content imported.");
+  }
+}
+
+function sendUploadRequest(opts: { file?: File; url?: string; index: number; total: number }): Promise<UploadResponse | null> {
+  const sourceName = opts.url || opts.file?.name || "archive";
+  const usingUrl = Boolean(opts.url);
+  uploadProgress.value = batchProgress(opts.index, opts.total, 0);
   setUploadStatus(
     usingUrl ? "submitting" : "uploading",
-    usingUrl ? `Asking Server Manager to download ${sourceName}.` : `Uploading ${sourceName} to Server Manager.`,
     usingUrl
-      ? `The server will download, extract, and cache the ${kind.value} archive in the background.${selectedFile ? " The selected file is ignored while a URL is set." : ""}`
-      : "Keep this page open until the browser upload reaches 100%. Server-side import starts after the archive is received.",
+      ? `Asking Server Manager to download ${sourceName}.`
+      : `${batchPrefix(opts.index, opts.total)}Uploading ${sourceName} to Server Manager.`,
+    usingUrl
+      ? `The server will download, detect, extract, and cache the content archive in the background.${files.value.length ? " Selected files are ignored while a URL is set." : ""}`
+      : opts.total > 1
+        ? `Selected ${opts.total} archives. Each one is detected and starts after the previous import finishes.`
+        : "Keep this page open until the browser upload reaches 100%. Server-side detection and import start after the archive is received.",
   );
 
   const data = new FormData();
-  data.append("kind", kind.value);
   data.append("overwrite", overwrite.value ? "1" : "0");
-  if (url) {
-    data.append("archive_url", url);
-  } else if (selectedFile) {
-    data.append("archive", selectedFile);
+  if (opts.url) data.append("archive_url", opts.url);
+  else if (opts.file) data.append("archive", opts.file);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/content/upload");
+    xhr.setRequestHeader("X-CSRF-Token", csrfToken());
+    xhr.responseType = "json";
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!usingUrl && e.lengthComputable) {
+        uploadProgress.value = batchProgress(opts.index, opts.total, Math.round((e.loaded / e.total) * 100));
+        setUploadStatus(
+          "uploading",
+          `${batchPrefix(opts.index, opts.total)}Uploading ${sourceName} to Server Manager.`,
+          opts.total > 1
+            ? `${formatBytes(e.loaded)} / ${formatBytes(e.total)} for this archive.`
+            : "Server-side import starts after the archive is received.",
+        );
+      }
+    });
+    xhr.upload.addEventListener("load", () => {
+      if (!usingUrl) {
+        uploadProgress.value = batchProgress(opts.index, opts.total, 100);
+        setUploadStatus(
+          "processing",
+          `${batchPrefix(opts.index, opts.total)}Archive received. Server Manager is importing content.`,
+          opts.total > 1
+            ? "Waiting for this import to finish before the next archive starts."
+            : "Large archives can sit here while files are extracted, previews are optimized, and the content cache is rebuilt.",
+        );
+      }
+    });
+    xhr.addEventListener("loadend", () => {
+      const response = xhr.response as UploadResponse | null;
+      if (xhr.status >= 200 && xhr.status < 300) resolve(response);
+      else reject(new Error(uploadFailureMessage(xhr, response)));
+    });
+    xhr.send(data);
+  });
+}
+
+// XHR instead of fetch: upload progress events. Job progress after the
+// upload itself arrives over SSE (content store).
+async function upload() {
+  if (uploading.value) return;
+  const url = archiveUrl.value.trim();
+  const selectedFiles = files.value.slice();
+  if (!selectedFiles.length && !url) {
+    toast.error("Choose one or more archive files or paste a download URL.");
+    return;
   }
 
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/api/content/upload");
-  xhr.setRequestHeader("X-CSRF-Token", csrfToken());
-  xhr.responseType = "json";
-  xhr.upload.addEventListener("progress", (e) => {
-    if (!usingUrl && e.lengthComputable) {
-      uploadProgress.value = Math.round((e.loaded / e.total) * 100);
-      setUploadStatus("uploading", `Uploading ${sourceName} to Server Manager.`, "Server-side import starts after the archive is received.");
-    }
-  });
-  xhr.upload.addEventListener("load", () => {
-    if (!usingUrl) {
-      uploadProgress.value = 100;
-      setUploadStatus(
-        "processing",
-        "Archive received. Server Manager is importing content.",
-        "Large archives can sit here while files are extracted, previews are optimized, and the content cache is rebuilt.",
-      );
-    }
-  });
-  xhr.addEventListener("loadend", () => {
-    uploading.value = false;
-    const response = xhr.response as UploadResponse | null;
-    if (xhr.status >= 200 && xhr.status < 300) {
-      if (response?.async && response.job) {
-        content.upsertJob(response.job);
-        uploadProgress.value = jobProgress(response.job);
-        setUploadStatus(
-          "queued",
-          `${response.job.source_name || sourceName} is queued for import.`,
-          "The Import jobs panel updates as Server Manager downloads, extracts, and rebuilds the content cache.",
-        );
-        toast.info("Import job started. Progress is visible in Import jobs.");
-      } else {
-        uploadProgress.value = 100;
-        setUploadStatus("completed", response?.message ?? `Imported ${sourceName}.`, summarizeUploadResponse(response));
-        if (typeof response?.cached_images === "number") content.cachedImages = response.cached_images;
-        void content.load(true);
-        void content.loadImageStats();
-        content.bumpImageVersion();
-        toast.success(response?.message ?? "Content imported.");
-      }
+  uploading.value = true;
+  batchIndex.value = 0;
+  batchTotal.value = url ? 1 : selectedFiles.length;
+  let completed = 0;
+  let importedItems = 0;
+  let filesWritten = 0;
+  const importedByKind = { car: 0, track: 0 };
+
+  try {
+    if (url) {
+      const response = await sendUploadRequest({ url, index: 0, total: 1 });
+      applyUploadResponse(response, url, true);
       clearUploadInputs();
     } else {
-      const message = uploadFailureMessage(xhr, response);
-      setUploadStatus("failed", message, "The import did not complete. Fix the issue and try again.");
-      toast.error(message);
+      for (const [index, archive] of selectedFiles.entries()) {
+        batchIndex.value = index;
+        const response = await sendUploadRequest({ file: archive, index, total: selectedFiles.length });
+        applyUploadResponse(response, archive.name, selectedFiles.length === 1);
+        completed++;
+        importedItems += response?.imported_count ?? 0;
+        filesWritten += response?.files_written ?? 0;
+        if (response?.kind) importedByKind[response.kind] += response.imported_count ?? 0;
+      }
+      void content.load(true);
+      void content.loadImageStats();
+      if (selectedFiles.length > 1) {
+        uploadProgress.value = 100;
+        const detectedItems = importedByKind.car + importedByKind.track;
+        const detail = [
+          importedByKind.car ? `${importedByKind.car} car item${importedByKind.car === 1 ? "" : "s"}` : "",
+          importedByKind.track ? `${importedByKind.track} track item${importedByKind.track === 1 ? "" : "s"}` : "",
+          importedItems && detectedItems !== importedItems ? `${importedItems} item${importedItems === 1 ? "" : "s"} imported` : "",
+          filesWritten ? `${filesWritten} file${filesWritten === 1 ? "" : "s"} written` : "",
+          "The content library is refreshing.",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        setUploadStatus("completed", `Imported ${completed} archive${completed === 1 ? "" : "s"}.`, detail);
+        toast.success(`Imported ${completed} archive${completed === 1 ? "" : "s"}.`);
+      }
+      clearUploadInputs();
     }
-  });
-  xhr.send(data);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const stoppedAt = batchTotal.value > 1 ? `Stopped at archive ${batchIndex.value + 1} of ${batchTotal.value}. ` : "";
+    setUploadStatus(
+      "failed",
+      `${stoppedAt}${message}`,
+      completed ? `${completed} earlier archive${completed === 1 ? "" : "s"} imported. The content library is refreshing.` : "The import did not complete. Fix the issue and try again.",
+    );
+    if (completed) {
+      void content.load(true);
+      void content.loadImageStats();
+    }
+    toast.error(message);
+  } finally {
+    uploading.value = false;
+  }
 }
 
 const recaching = ref(false);
@@ -508,6 +740,44 @@ function jobMeta(job: ContentJob): string[] {
       </div>
 
       <template v-else>
+      <div class="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        <label class="min-w-0">
+          <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Sort</span>
+          <Select v-model="sort" :options="sortOptions" />
+        </label>
+        <template v-if="tab === 'cars'">
+          <label class="min-w-0">
+            <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Brand</span>
+            <Select v-model="carBrand" :options="carBrandOptions" />
+          </label>
+          <label class="min-w-0">
+            <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Class</span>
+            <Select v-model="carClass" :options="carClassOptions" />
+          </label>
+          <label class="min-w-0">
+            <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Min power</span>
+            <Input v-model="minPower" type="number" :min="0" step="25" placeholder="Any" />
+          </label>
+        </template>
+        <template v-else-if="tab === 'tracks'">
+          <label class="min-w-0">
+            <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Country</span>
+            <Select v-model="trackCountry" :options="trackCountryOptions" />
+          </label>
+          <label class="min-w-0">
+            <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Min pits</span>
+            <Input v-model="minPitboxes" type="number" :min="0" step="1" placeholder="Any" />
+          </label>
+        </template>
+        <div class="flex items-end justify-between gap-2 text-xs text-dim xl:justify-end">
+          <span class="pb-2">{{ visibleCount }} shown</span>
+          <Button v-if="filtersActive" variant="ghost" size="sm" @click="clearLibraryFilters">
+            <Icon name="x" :size="13" />
+            Clear
+          </Button>
+        </div>
+      </div>
+
       <div v-if="tab === 'tracks'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="group relative overflow-hidden rounded-md border border-line bg-surface-2/35 transition-colors hover:border-line-hi">
           <button
@@ -523,7 +793,9 @@ function jobMeta(job: ContentJob): string[] {
             />
             <div class="p-2">
               <div class="truncate text-sm font-medium">{{ t.name }}</div>
-              <div class="text-xs text-dim">{{ t.config || "default" }} · {{ t.pitboxes }} pits</div>
+              <div class="text-xs text-dim">
+                {{ t.config || "default" }} · {{ t.pitboxes }} pits<span v-if="formatDate(t.modified_at)"> · {{ formatDate(t.modified_at) }}</span>
+              </div>
             </div>
           </button>
           <button
@@ -557,7 +829,9 @@ function jobMeta(job: ContentJob): string[] {
             </div>
             <div class="p-2">
               <div class="truncate text-sm font-medium">{{ c.name }}</div>
-              <div class="text-xs text-dim">{{ c.brand }} · {{ c.skins?.length ?? 0 }} skins</div>
+              <div class="text-xs text-dim">
+                {{ c.brand || "Unknown" }}<span v-if="carPowerLabel(c)"> · {{ carPowerLabel(c) }}</span> · {{ c.skins?.length ?? 0 }} skins<span v-if="formatDate(c.modified_at)"> · {{ formatDate(c.modified_at) }}</span>
+              </div>
             </div>
           </button>
           <button
@@ -612,24 +886,16 @@ function jobMeta(job: ContentJob): string[] {
     <!-- Upload & jobs -->
     <div class="space-y-4">
       <Card id="upload-content" title="Upload content">
-        <FormRow label="Type" for-id="kind">
-          <Select
-            id="kind"
-            v-model="kind"
-            :options="[
-              { value: 'track', label: 'Track' },
-              { value: 'car', label: 'Car' },
-            ]"
-          />
-        </FormRow>
-        <FormRow label="Archive file" hint="zip / 7z / rar, up to 10 GB">
+        <FormRow label="Archive files" hint="Select one or more zip / 7z / rar archives, up to 10 GB each">
           <input
             ref="fileInput"
             type="file"
+            multiple
             accept=".zip,.7z,.rar"
             class="w-full text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text"
             @change="onFileChange"
           />
+          <p v-if="selectedFileSummary" class="mt-1 text-xs text-dim">{{ selectedFileSummary }}</p>
         </FormRow>
         <FormRow label="…or download URL" for-id="url">
           <Input id="url" v-model="archiveUrl" placeholder="https://…" />

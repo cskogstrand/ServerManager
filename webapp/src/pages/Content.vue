@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useContentStore, type ContentJob } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
+import { resolveUploadArchiveKind } from "@/lib/contentArchiveKind";
 import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
@@ -72,7 +73,12 @@ const tab = useQueryParam<"tracks" | "cars" | "weathers">(
   enumParam(["tracks", "cars", "weathers"] as const, "tracks"),
 );
 const search = useQueryParam("q", "");
-const sort = ref<string>("name");
+
+function defaultSortForTab(value = tab.value): string {
+  return value === "weathers" ? "name" : "newest";
+}
+
+const sort = ref<string>(defaultSortForTab());
 const carBrand = ref("");
 const carClass = ref("");
 const minPower = ref<number | null>(null);
@@ -105,8 +111,10 @@ const sortOptions = computed(() => {
   return [{ value: "name", label: "Name" }];
 });
 
-watch(tab, () => {
-  if (!sortOptions.value.some((o) => o.value === sort.value)) sort.value = "name";
+watch(tab, (next, previous) => {
+  if (!sortOptions.value.some((o) => o.value === sort.value) || sort.value === defaultSortForTab(previous)) {
+    sort.value = defaultSortForTab(next);
+  }
 });
 
 const carBrandOptions = computed(() => optionList("All brands", content.cars.map((c) => c.brand)));
@@ -144,7 +152,7 @@ const visibleCount = computed(() => {
   return filteredWeathers.value.length;
 });
 const filtersActive = computed(() => {
-  if (sort.value !== "name") return true;
+  if (sort.value !== defaultSortForTab()) return true;
   if (tab.value === "cars") return Boolean(carBrand.value || carClass.value || minPower.value !== null);
   if (tab.value === "tracks") return Boolean(trackCountry.value || minPitboxes.value !== null);
   return false;
@@ -215,7 +223,7 @@ function formatDate(ts?: number): string {
 }
 
 function clearLibraryFilters() {
-  sort.value = "name";
+  sort.value = defaultSortForTab();
   carBrand.value = "";
   carClass.value = "";
   minPower.value = null;
@@ -453,7 +461,7 @@ function applyUploadResponse(response: UploadResponse | null, sourceName: string
   }
 }
 
-function sendUploadRequest(opts: { file?: File; url?: string; index: number; total: number }): Promise<UploadResponse | null> {
+async function sendUploadRequest(opts: { file?: File; url?: string; index: number; total: number }): Promise<UploadResponse | null> {
   const sourceName = opts.url || opts.file?.name || "archive";
   const usingUrl = Boolean(opts.url);
   uploadProgress.value = batchProgress(opts.index, opts.total, 0);
@@ -470,6 +478,7 @@ function sendUploadRequest(opts: { file?: File; url?: string; index: number; tot
   );
 
   const data = new FormData();
+  data.append("kind", await resolveUploadArchiveKind(opts.file));
   data.append("overwrite", overwrite.value ? "1" : "0");
   if (opts.url) data.append("archive_url", opts.url);
   else if (opts.file) data.append("archive", opts.file);

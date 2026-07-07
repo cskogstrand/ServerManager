@@ -557,13 +557,26 @@ func listArchivePathsVia7z(archivePath string, sevenZipBinary string) ([]string,
 		}
 	}
 
+	return parse7zListPaths(string(output)), nil
+}
+
+func parse7zListPaths(output string) []string {
 	paths := make([]string, 0)
-	for _, line := range strings.Split(string(output), "\n") {
-		if path, ok := strings.CutPrefix(strings.TrimSpace(line), "Path = "); ok {
+	inFileList := false
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "----------") {
+			inFileList = true
+			continue
+		}
+		if !inFileList {
+			continue
+		}
+		if path, ok := strings.CutPrefix(line, "Path = "); ok {
 			paths = append(paths, path)
 		}
 	}
-	return paths, nil
+	return paths
 }
 
 func detectArchiveContentKindFromPaths(paths []string) (string, error) {

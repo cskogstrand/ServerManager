@@ -1131,7 +1131,7 @@ function jobMeta(job: ContentJob): string[] {
             type="file"
             multiple
             accept=".zip,.7z,.rar"
-            class="w-full text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text"
+            class="w-full cursor-pointer text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text file:transition-colors file:duration-200 hover:file:border-line-hi hover:file:bg-surface-3"
             @change="onFileChange"
           />
           <p v-if="selectedFileSummary" class="mt-1 text-xs text-dim">{{ selectedFileSummary }}</p>

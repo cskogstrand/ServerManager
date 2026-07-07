@@ -343,7 +343,7 @@ const uploading = ref(false);
 const batchIndex = ref(0);
 const batchTotal = ref(0);
 type UploadStage = "idle" | "submitting" | "uploading" | "processing" | "queued" | "completed" | "failed";
-type UploadItemStage = "scanning" | "ready" | "uploading" | "processing" | "queued" | "completed" | "failed";
+type UploadItemStage = "scanning" | "needsChoice" | "ready" | "uploading" | "processing" | "queued" | "completed" | "failed";
 interface UploadResponse {
   async?: boolean;
   error?: { message?: string };
@@ -376,9 +376,15 @@ const uploadDetail = ref("");
 const uploadItems = ref<UploadItem[]>([]);
 let uploadScanVersion = 0;
 let activeFileScan: Promise<void> | null = null;
+const uploadKindChoiceOptions = [
+  { value: "auto", label: "Choose type" },
+  { value: "car", label: "Car" },
+  { value: "track", label: "Track" },
+];
 
 const uploadStatusVisible = computed(() => uploadStage.value !== "idle" || uploading.value);
 const scanningFiles = computed(() => uploadItems.value.some((item) => item.stage === "scanning"));
+const filesNeedTypeChoice = computed(() => uploadItems.value.some((item) => item.stage === "needsChoice"));
 const uploadStatusTitle = computed(() => {
   if (uploadStage.value === "failed") return "Import failed";
   if (uploadStage.value === "completed") return "Import complete";
@@ -401,6 +407,7 @@ const uploadStatusClass = computed(() => {
 const uploadBarClass = computed(() => (uploadStage.value === "completed" ? "bg-ok" : "bg-accent"));
 const uploadButtonLabel = computed(() => {
   if (!uploading.value && !archiveUrl.value.trim() && scanningFiles.value) return "Scanning…";
+  if (!uploading.value && !archiveUrl.value.trim() && filesNeedTypeChoice.value) return "Choose type";
   if (!uploading.value) return archiveUrl.value.trim() ? "Start download" : files.value.length > 1 ? `Upload ${files.value.length}` : "Upload";
   if (batchTotal.value > 1) return `Importing ${Math.min(batchIndex.value + 1, batchTotal.value)}/${batchTotal.value}`;
   if (uploadStage.value === "processing") return "Importing…";
@@ -491,9 +498,7 @@ async function scanUploadItems(selectedFiles: File[]) {
         item.message = kind === "auto" ? "Server will detect content type during import." : `Detected ${kind}. Ready to upload.`;
       } catch (e) {
         if (version !== uploadScanVersion) return;
-        item.stage = "failed";
-        item.progress = 0;
-        item.message = e instanceof Error ? e.message : String(e);
+        markUploadItemNeedsChoice(item, e instanceof Error ? e.message : String(e));
       }
     }),
   );
@@ -501,6 +506,50 @@ async function scanUploadItems(selectedFiles: File[]) {
 
 function isZipArchive(file: File): boolean {
   return file.name.toLowerCase().endsWith(".zip");
+}
+
+function isManualContentChoiceError(message: string): boolean {
+  return message.includes("No valid car or track content was found") || message.includes("Archive contains both car and track content");
+}
+
+function markUploadItemNeedsChoice(item: UploadItem, detail: string) {
+  item.kind = "auto";
+  item.stage = "needsChoice";
+  item.progress = 0;
+  item.message = "Server Manager could not detect the content type. Choose car or track to continue.";
+  item.detail = detail;
+}
+
+function setUploadItemKind(item: UploadItem, value: string | number | null | undefined) {
+  if (value !== "car" && value !== "track") {
+    markUploadItemNeedsChoice(item, item.detail || "Choose how this archive should be installed.");
+    return;
+  }
+  item.kind = value;
+  item.stage = "ready";
+  item.progress = 0;
+  item.message = `Using ${value}. Ready to upload.`;
+  item.detail = "Manual choice will be sent with the upload.";
+  setUploadStatus("idle", "");
+}
+
+function canRemoveUploadItem(item: UploadItem): boolean {
+  return !uploading.value && (item.stage === "failed" || item.stage === "needsChoice");
+}
+
+function removeUploadItem(item: UploadItem) {
+  if (!canRemoveUploadItem(item)) return;
+  files.value = files.value.filter((file) => file !== item.file);
+  uploadItems.value = uploadItems.value.filter((candidate) => candidate.id !== item.id);
+  if (fileInput.value) fileInput.value.value = "";
+
+  const hasBlockingItem = uploadItems.value.some((candidate) => candidate.stage === "failed" || candidate.stage === "needsChoice");
+  if (!uploadItems.value.length) {
+    activeFileScan = null;
+    setUploadStatus("idle", "");
+  } else if (!hasBlockingItem && uploadStage.value === "failed") {
+    setUploadStatus("idle", "");
+  }
 }
 
 function applyUploadResponse(response: UploadResponse | null, sourceName: string, notify: boolean, item?: UploadItem) {
@@ -614,10 +663,14 @@ async function sendUploadRequest(opts: { file?: File; url?: string; index: numbe
       else {
         const message = uploadFailureMessage(xhr, response);
         if (opts.item) {
-          opts.item.stage = "failed";
-          opts.item.progress = 0;
-          opts.item.message = message;
-          opts.item.detail = "The import did not complete.";
+          if (isManualContentChoiceError(message)) {
+            markUploadItemNeedsChoice(opts.item, message);
+          } else {
+            opts.item.stage = "failed";
+            opts.item.progress = 0;
+            opts.item.message = message;
+            opts.item.detail = "The import did not complete.";
+          }
         }
         reject(new Error(message));
       }
@@ -637,6 +690,12 @@ async function upload() {
     return;
   }
   if (!url && activeFileScan) await activeFileScan;
+  const choicePending = uploadItems.value.find((item) => item.stage === "needsChoice");
+  if (!url && choicePending) {
+    setUploadStatus("failed", `${choicePending.name}: choose car or track before uploading.`, "The browser could not detect the content type.");
+    toast.error("Choose car or track for the archive before uploading.");
+    return;
+  }
   const failedScan = uploadItems.value.find((item) => item.stage === "failed");
   if (!url && failedScan) {
     setUploadStatus("failed", `${failedScan.name}: ${failedScan.message}`, "Remove the failed archive or choose another file.");
@@ -659,7 +718,8 @@ async function upload() {
       applyUploadResponse(response, url, true);
       clearUploadInputs();
     } else {
-      const selectedItems = uploadItems.value.filter((item) => selectedFiles.includes(item.file));
+      const selectedItems = uploadItems.value.filter((item) => selectedFiles.includes(item.file) && item.stage !== "completed");
+      batchTotal.value = selectedItems.length;
       for (const [index, item] of selectedItems.entries()) {
         currentItem = item;
         const archive = item.file;
@@ -693,16 +753,24 @@ async function upload() {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (currentItem && currentItem.stage !== "completed") {
-      currentItem.stage = "failed";
-      currentItem.progress = 0;
-      currentItem.message = message;
-      currentItem.detail = "The import did not complete.";
+      if (isManualContentChoiceError(message)) {
+        markUploadItemNeedsChoice(currentItem, message);
+      } else if (currentItem.stage !== "needsChoice") {
+        currentItem.stage = "failed";
+        currentItem.progress = 0;
+        currentItem.message = message;
+        currentItem.detail = "The import did not complete.";
+      }
     }
     const stoppedAt = batchTotal.value > 1 ? `Stopped at archive ${batchIndex.value + 1} of ${batchTotal.value}. ` : "";
     setUploadStatus(
       "failed",
       `${stoppedAt}${message}`,
-      completed ? `${completed} earlier archive${completed === 1 ? "" : "s"} imported. The content library is refreshing.` : "The import did not complete. Fix the issue and try again.",
+      isManualContentChoiceError(message)
+        ? "Choose car or track for this archive, then upload again."
+        : completed
+          ? `${completed} earlier archive${completed === 1 ? "" : "s"} imported. The content library is refreshing.`
+          : "The import did not complete. Fix the issue and try again.",
     );
     if (completed) {
       void content.load(true);
@@ -740,6 +808,7 @@ function formatBytes(bytes: number): string {
 
 function uploadItemStatusLabel(item: UploadItem): string {
   if (item.stage === "scanning") return "Scanning";
+  if (item.stage === "needsChoice") return "Choose type";
   if (item.stage === "ready") return "Ready";
   if (item.stage === "uploading") return `Uploading ${item.progress}%`;
   if (item.stage === "processing") return "Importing";
@@ -755,6 +824,7 @@ function uploadItemMeta(item: UploadItem): string {
 
 function uploadItemIcon(item: UploadItem): string {
   if (item.stage === "failed") return "alert";
+  if (item.stage === "needsChoice") return "alert";
   if (item.stage === "completed") return "check";
   if (item.stage === "queued") return "download";
   return "upload";
@@ -762,13 +832,14 @@ function uploadItemIcon(item: UploadItem): string {
 
 function uploadItemBadgeClass(item: UploadItem): string {
   if (item.stage === "failed") return "border-danger/45 bg-danger-glow text-danger";
+  if (item.stage === "needsChoice") return "border-warn/40 bg-warn-glow text-warn";
   if (item.stage === "completed") return "border-ok/40 bg-ok-glow text-ok";
   if (item.stage === "ready") return "border-line bg-surface-2 text-muted";
   return "border-accent/40 bg-accent-dim text-accent";
 }
 
 function uploadItemShowsProgress(item: UploadItem): boolean {
-  return item.stage !== "ready" && item.stage !== "failed";
+  return item.stage !== "ready" && item.stage !== "needsChoice" && item.stage !== "failed";
 }
 
 function uploadItemBarClass(item: UploadItem): string {
@@ -1074,12 +1145,32 @@ function jobMeta(job: ContentJob): string[] {
                       <p class="truncate text-sm font-medium text-text">{{ item.name }}</p>
                       <p class="mt-0.5 text-xs text-dim">{{ uploadItemMeta(item) }}</p>
                     </div>
-                    <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase" :class="uploadItemBadgeClass(item)">
-                      {{ uploadItemStatusLabel(item) }}
-                    </span>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      <span class="rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase" :class="uploadItemBadgeClass(item)">
+                        {{ uploadItemStatusLabel(item) }}
+                      </span>
+                      <Button
+                        v-if="canRemoveUploadItem(item)"
+                        variant="ghost"
+                        size="sm"
+                        :aria-label="`Remove ${item.name}`"
+                        @click="removeUploadItem(item)"
+                      >
+                        <Icon name="x" :size="13" />
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                   <p class="mt-1 text-xs text-muted">{{ item.message }}</p>
                   <p v-if="item.detail" class="mt-0.5 text-xs text-dim">{{ item.detail }}</p>
+                  <label v-if="item.stage === 'needsChoice'" class="mt-2 block max-w-48">
+                    <span class="mb-1 block text-[11px] font-semibold tracking-wide text-dim uppercase">Content type</span>
+                    <Select
+                      :model-value="item.kind"
+                      :options="uploadKindChoiceOptions"
+                      @update:model-value="(value) => setUploadItemKind(item, value)"
+                    />
+                  </label>
                   <div v-if="uploadItemShowsProgress(item)" class="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
                     <div class="h-full transition-all duration-200" :class="uploadItemBarClass(item)" :style="{ width: item.progress + '%' }" />
                   </div>
@@ -1113,7 +1204,7 @@ function jobMeta(job: ContentJob): string[] {
         </div>
 
         <div class="flex gap-2">
-          <Button :disabled="uploading || (!archiveUrl.trim() && scanningFiles)" @click="upload">
+          <Button :disabled="uploading || (!archiveUrl.trim() && (scanningFiles || filesNeedTypeChoice))" @click="upload">
             <Icon :name="archiveUrl.trim() ? 'download' : 'upload'" :size="15" />
             {{ uploadButtonLabel }}
           </Button>

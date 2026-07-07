@@ -8,10 +8,15 @@ export interface ContentJob {
   kind: string;
   source: string;
   source_name: string;
+  source_url?: string;
   status: string;
   phase: string;
   message: string;
   progress: number;
+  downloaded_bytes: number;
+  download_total_bytes: number;
+  files_written: number;
+  imported_assets?: string[];
   tracks_total: number;
   cars_total: number;
   weathers_total: number;
@@ -57,18 +62,27 @@ export const useContentStore = defineStore("content", {
       this.loaded = true;
     },
 
-    // Fed from the SSE stream (content_job events) by the server store
-    applyJobEvent(event: ServerEvent) {
-      const job = event.data as ContentJob;
+    async loadJobs() {
+      const r = await api.get<{ jobs: ContentJob[] }>("/api/content/jobs/active");
+      for (const job of r.jobs ?? []) this.upsertJob(job);
+    },
+
+    upsertJob(job: ContentJob, refreshOnComplete = false) {
       if (!job?.id) return;
       this.jobs[job.id] = job;
-      // A finished import means new content (already auto-compressed on the
-      // server) — refresh the caches, the cached-image count, and bust URLs.
-      if (job.status === "completed") {
+      if (refreshOnComplete && job.status === "completed") {
         void this.load(true);
         void this.loadImageStats();
         this.imageVersion++;
       }
+    },
+
+    // Fed from the SSE stream (content_job events) by the server store
+    applyJobEvent(event: ServerEvent) {
+      const job = event.data as ContentJob;
+      // A finished import means new content (already auto-compressed on the
+      // server) — refresh the caches, the cached-image count, and bust URLs.
+      this.upsertJob(job, true);
     },
 
     bumpImageVersion() {

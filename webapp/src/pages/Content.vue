@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useContentStore } from "@/stores/content";
+import { useContentStore, type ContentJob } from "@/stores/content";
 import { api, ApiError, csrfToken } from "@/lib/api";
 import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useToastStore } from "@/stores/toast";
@@ -29,6 +29,7 @@ const libraryLoading = ref(true);
 onMounted(() => {
   content.load().finally(() => (libraryLoading.value = false));
   void content.loadImageStats();
+  void content.loadJobs().catch(() => undefined);
 });
 
 // --- Delete content (removes from disk + cache) ---
@@ -84,31 +85,117 @@ const filteredWeathers = computed(() =>
 const kind = ref<"track" | "car">("track");
 const overwrite = ref(false);
 const archiveUrl = ref("");
+const fileInput = ref<HTMLInputElement | null>(null);
 const file = ref<File | null>(null);
 const uploadProgress = ref(0);
 const uploading = ref(false);
+type UploadStage = "idle" | "submitting" | "uploading" | "processing" | "queued" | "completed" | "failed";
+interface UploadResponse {
+  async?: boolean;
+  error?: { message?: string };
+  job?: ContentJob;
+  message?: string;
+  imported_count?: number;
+  imported_assets?: string[];
+  files_written?: number;
+  tracks_total?: number;
+  cars_total?: number;
+  weathers_total?: number;
+  cached_images?: number;
+}
+
+const uploadStage = ref<UploadStage>("idle");
+const uploadMessage = ref("");
+const uploadDetail = ref("");
+
+const uploadStatusVisible = computed(() => uploadStage.value !== "idle" || uploading.value);
+const uploadStatusTitle = computed(() => {
+  if (uploadStage.value === "failed") return "Import failed";
+  if (uploadStage.value === "completed") return "Import complete";
+  if (uploadStage.value === "queued") return "Background import started";
+  if (uploadStage.value === "processing") return "Server is processing the archive";
+  if (uploadStage.value === "submitting") return "Starting import";
+  return "Uploading archive";
+});
+const uploadStatusIcon = computed(() => {
+  if (uploadStage.value === "failed") return "alert";
+  if (uploadStage.value === "completed") return "check";
+  if (uploadStage.value === "queued") return "download";
+  return "upload";
+});
+const uploadStatusClass = computed(() => {
+  if (uploadStage.value === "failed") return "border-danger/45 bg-danger-glow text-danger";
+  if (uploadStage.value === "completed") return "border-ok/40 bg-ok-glow text-ok";
+  return "border-accent/40 bg-accent-dim text-text";
+});
+const uploadBarClass = computed(() => (uploadStage.value === "completed" ? "bg-ok" : "bg-accent"));
+const uploadButtonLabel = computed(() => {
+  if (!uploading.value) return "Upload";
+  if (uploadStage.value === "processing") return "Importing…";
+  if (archiveUrl.value.trim()) return "Starting…";
+  return `Uploading ${uploadProgress.value}%`;
+});
 
 function onFileChange(e: Event) {
   file.value = (e.target as HTMLInputElement).files?.[0] ?? null;
 }
 
+function clearUploadInputs() {
+  file.value = null;
+  archiveUrl.value = "";
+  if (fileInput.value) fileInput.value.value = "";
+}
+
+function setUploadStatus(stage: UploadStage, message: string, detail = "") {
+  uploadStage.value = stage;
+  uploadMessage.value = message;
+  uploadDetail.value = detail;
+}
+
+function summarizeUploadResponse(r: UploadResponse | null): string {
+  const parts: string[] = [];
+  if (typeof r?.imported_count === "number") parts.push(`${r.imported_count} item${r.imported_count === 1 ? "" : "s"} imported`);
+  if (typeof r?.files_written === "number") parts.push(`${r.files_written} file${r.files_written === 1 ? "" : "s"} written`);
+  if (typeof r?.cached_images === "number") parts.push(`${r.cached_images} image${r.cached_images === 1 ? "" : "s"} cached`);
+  if (typeof r?.tracks_total === "number" && typeof r?.cars_total === "number") {
+    parts.push(`Library now has ${r.tracks_total} tracks and ${r.cars_total} cars`);
+  }
+  return parts.join(" · ") || "The content library is refreshing.";
+}
+
+function uploadFailureMessage(xhr: XMLHttpRequest, r: UploadResponse | null): string {
+  if (xhr.status === 0) return "Connection lost while sending the archive.";
+  return r?.message ?? r?.error?.message ?? "Upload failed.";
+}
+
 // XHR instead of fetch: upload progress events. Job progress after the
 // upload itself arrives over SSE (content store).
 function upload() {
-  if (!file.value && !archiveUrl.value.trim()) {
+  const url = archiveUrl.value.trim();
+  const selectedFile = file.value;
+  if (!selectedFile && !url) {
     toast.error("Choose an archive file or paste a download URL.");
     return;
   }
   uploading.value = true;
   uploadProgress.value = 0;
+  const sourceName = url || selectedFile?.name || "archive";
+  const usingUrl = Boolean(url);
+  setUploadStatus(
+    usingUrl ? "submitting" : "uploading",
+    usingUrl ? `Asking Server Manager to download ${sourceName}.` : `Uploading ${sourceName} to Server Manager.`,
+    usingUrl
+      ? `The server will download, extract, and cache the ${kind.value} archive in the background.${selectedFile ? " The selected file is ignored while a URL is set." : ""}`
+      : "Keep this page open until the browser upload reaches 100%. Server-side import starts after the archive is received.",
+  );
 
   const data = new FormData();
   data.append("kind", kind.value);
   data.append("overwrite", overwrite.value ? "1" : "0");
-  if (archiveUrl.value.trim()) {
-    data.append("archive_url", archiveUrl.value.trim());
-  } else if (file.value) {
-    data.append("archive", file.value);
+  if (url) {
+    data.append("archive_url", url);
+  } else if (selectedFile) {
+    data.append("archive", selectedFile);
   }
 
   const xhr = new XMLHttpRequest();
@@ -116,20 +203,48 @@ function upload() {
   xhr.setRequestHeader("X-CSRF-Token", csrfToken());
   xhr.responseType = "json";
   xhr.upload.addEventListener("progress", (e) => {
-    if (e.lengthComputable) uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+    if (!usingUrl && e.lengthComputable) {
+      uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+      setUploadStatus("uploading", `Uploading ${sourceName} to Server Manager.`, "Server-side import starts after the archive is received.");
+    }
+  });
+  xhr.upload.addEventListener("load", () => {
+    if (!usingUrl) {
+      uploadProgress.value = 100;
+      setUploadStatus(
+        "processing",
+        "Archive received. Server Manager is importing content.",
+        "Large archives can sit here while files are extracted, previews are optimized, and the content cache is rebuilt.",
+      );
+    }
   });
   xhr.addEventListener("loadend", () => {
     uploading.value = false;
+    const response = xhr.response as UploadResponse | null;
     if (xhr.status >= 200 && xhr.status < 300) {
-      toast.success("Upload accepted — import progress shows below.");
-      file.value = null;
-      archiveUrl.value = "";
-      // Synchronous (file) imports auto-compress before responding; async (URL)
-      // imports refresh again on job completion. Bust image URLs either way.
-      void content.loadImageStats();
-      content.bumpImageVersion();
+      if (response?.async && response.job) {
+        content.upsertJob(response.job);
+        uploadProgress.value = jobProgress(response.job);
+        setUploadStatus(
+          "queued",
+          `${response.job.source_name || sourceName} is queued for import.`,
+          "The Import jobs panel updates as Server Manager downloads, extracts, and rebuilds the content cache.",
+        );
+        toast.info("Import job started. Progress is visible in Import jobs.");
+      } else {
+        uploadProgress.value = 100;
+        setUploadStatus("completed", response?.message ?? `Imported ${sourceName}.`, summarizeUploadResponse(response));
+        if (typeof response?.cached_images === "number") content.cachedImages = response.cached_images;
+        void content.load(true);
+        void content.loadImageStats();
+        content.bumpImageVersion();
+        toast.success(response?.message ?? "Content imported.");
+      }
+      clearUploadInputs();
     } else {
-      toast.error(xhr.response?.message ?? xhr.response?.error?.message ?? "Upload failed.");
+      const message = uploadFailureMessage(xhr, response);
+      setUploadStatus("failed", message, "The import did not complete. Fix the issue and try again.");
+      toast.error(message);
     }
   });
   xhr.send(data);
@@ -187,10 +302,55 @@ function focusUpload() {
   document.getElementById("upload-content")?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function jobTone(status: string) {
-  if (status === "completed") return "text-ok";
-  if (status === "failed") return "text-danger";
-  return "text-accent";
+function jobProgress(job: Pick<ContentJob, "progress">): number {
+  return Math.min(100, Math.max(0, job.progress || 0));
+}
+
+function jobPhaseLabel(phase: string): string {
+  const labels: Record<string, string> = {
+    queued: "Queued",
+    downloading: "Downloading",
+    extracting: "Extracting",
+    recaching: "Rebuilding cache",
+    completed: "Completed",
+    failed: "Failed",
+  };
+  return labels[phase] ?? phase;
+}
+
+function jobStatusLabel(job: ContentJob): string {
+  if (job.status === "running") return `${jobPhaseLabel(job.phase)} ${jobProgress(job)}%`;
+  if (job.status === "queued") return "Queued";
+  return jobPhaseLabel(job.status);
+}
+
+function jobBadgeClass(status: string): string {
+  if (status === "completed") return "border-ok/40 bg-ok-glow text-ok";
+  if (status === "failed") return "border-danger/45 bg-danger-glow text-danger";
+  return "border-accent/40 bg-accent-dim text-accent";
+}
+
+function jobSourceLabel(job: ContentJob): string {
+  return job.source === "url" ? "Download URL" : "Browser upload";
+}
+
+function jobMeta(job: ContentJob): string[] {
+  const parts: string[] = [];
+  if (job.download_total_bytes > 0) {
+    parts.push(`${formatBytes(job.downloaded_bytes)} / ${formatBytes(job.download_total_bytes)} downloaded`);
+  } else if (job.downloaded_bytes > 0) {
+    parts.push(`${formatBytes(job.downloaded_bytes)} downloaded`);
+  }
+  if (job.files_written > 0) parts.push(`${job.files_written} file${job.files_written === 1 ? "" : "s"} written`);
+  if (job.imported_assets?.length) {
+    const shown = job.imported_assets.slice(0, 2).join(", ");
+    const extra = job.imported_assets.length > 2 ? ` +${job.imported_assets.length - 2} more` : "";
+    parts.push(`${job.imported_assets.length} item${job.imported_assets.length === 1 ? "" : "s"}: ${shown}${extra}`);
+  }
+  if (job.tracks_total || job.cars_total || job.weathers_total) {
+    parts.push(`Library: ${job.tracks_total} tracks, ${job.cars_total} cars, ${job.weathers_total} weather`);
+  }
+  return parts;
 }
 </script>
 
@@ -346,6 +506,7 @@ function jobTone(status: string) {
         </FormRow>
         <FormRow label="Archive file" hint="zip / 7z / rar, up to 10 GB">
           <input
+            ref="fileInput"
             type="file"
             accept=".zip,.7z,.rar"
             class="w-full text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-text"
@@ -359,31 +520,57 @@ function jobTone(status: string) {
           <Toggle v-model="overwrite" label="Overwrite existing files" />
         </div>
 
-        <div v-if="uploading" class="mb-3 h-1.5 overflow-hidden rounded-full bg-surface-3">
-          <div class="h-full bg-accent transition-all" :style="{ width: uploadProgress + '%' }" />
+        <div v-if="uploadStatusVisible" class="mb-3 rounded-md border px-3 py-2.5" :class="uploadStatusClass">
+          <div class="flex items-start gap-2">
+            <Icon :name="uploadStatusIcon" :size="15" class="mt-0.5 shrink-0" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold">{{ uploadStatusTitle }}</p>
+                <span v-if="uploadStage !== 'failed'" class="shrink-0 font-mono text-xs tabular-nums">{{ uploadProgress }}%</span>
+              </div>
+              <p class="mt-0.5 text-xs opacity-90">{{ uploadMessage }}</p>
+              <p v-if="uploadDetail" class="mt-1 text-xs opacity-75">{{ uploadDetail }}</p>
+            </div>
+          </div>
+          <div v-if="uploadStage !== 'failed'" class="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+            <div class="h-full transition-all duration-200" :class="uploadBarClass" :style="{ width: uploadProgress + '%' }" />
+          </div>
         </div>
 
         <div class="flex gap-2">
           <Button :disabled="uploading" @click="upload">
-            {{ uploading ? `Uploading ${uploadProgress}%` : "Upload" }}
+            <Icon :name="archiveUrl.trim() ? 'download' : 'upload'" :size="15" />
+            {{ uploadButtonLabel }}
           </Button>
         </div>
       </Card>
 
       <Card v-if="content.jobList.length" title="Import jobs">
-        <div v-for="job in content.jobList" :key="job.id" class="mb-3 last:mb-0">
-          <div class="flex items-baseline justify-between gap-2 text-sm">
-            <span class="min-w-0 truncate">{{ job.source_name || job.kind }}</span>
-            <span class="shrink-0 text-xs" :class="jobTone(job.status)">{{ job.status }}</span>
+        <div v-for="job in content.jobList" :key="job.id" class="mb-3 rounded-md border border-line bg-surface-2/35 p-3 last:mb-0">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="truncate text-sm font-semibold">{{ job.source_name || job.kind }}</div>
+              <div class="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-dim">
+                <span class="capitalize">{{ job.kind }}</span>
+                <span>{{ jobSourceLabel(job) }}</span>
+                <span>{{ jobPhaseLabel(job.phase) }}</span>
+              </div>
+            </div>
+            <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase" :class="jobBadgeClass(job.status)">
+              {{ jobStatusLabel(job) }}
+            </span>
           </div>
-          <div class="mt-1 h-1 overflow-hidden rounded-full bg-surface-3">
+          <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
             <div
               class="h-full transition-all"
               :class="job.status === 'failed' ? 'bg-danger' : 'bg-accent'"
-              :style="{ width: job.progress + '%' }"
+              :style="{ width: jobProgress(job) + '%' }"
             />
           </div>
-          <div class="mt-0.5 truncate text-xs text-dim">{{ job.message }}</div>
+          <div class="mt-1.5 text-xs text-muted">{{ job.message }}</div>
+          <div v-if="jobMeta(job).length" class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-dim">
+            <span v-for="part in jobMeta(job)" :key="part" class="rounded border border-line bg-surface px-1.5 py-0.5">{{ part }}</span>
+          </div>
         </div>
       </Card>
     </div>

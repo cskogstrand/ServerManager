@@ -17,6 +17,8 @@ import Icon from "@/components/ui/Icon.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
+import Sheet from "@/components/ui/Sheet.vue";
+import LineChart from "@/components/ui/LineChart.vue";
 import TrackImage from "@/components/TrackImage.vue";
 import AdminBackButton from "@/components/AdminBackButton.vue";
 
@@ -80,6 +82,105 @@ const filteredCars = computed(() =>
 const filteredWeathers = computed(() =>
   content.weathers.filter((w) => (w.name ?? w.key ?? "").toLowerCase().includes(search.value.toLowerCase())),
 );
+
+// --- Detail drawers ---
+interface CarCurves {
+  key: string;
+  desc: string;
+  power: number[];
+  torque: number[];
+  labels: number[];
+}
+
+const selectedTrack = ref<CacheTrack | null>(null);
+const selectedCar = ref<CacheCar | null>(null);
+const carCurves = ref<CarCurves | null>(null);
+const carCurvesLoading = ref(false);
+const curveCache = new Map<string, CarCurves>();
+
+function trackLengthLabel(t?: CacheTrack | null): string {
+  if (!t?.length) return "—";
+  return t.length >= 1000 ? `${(t.length / 1000).toFixed(2)} km` : `${t.length} m`;
+}
+
+const trackLocation = computed(() => {
+  const t = selectedTrack.value;
+  return [t?.city, t?.country].filter(Boolean).join(" · ");
+});
+
+const trackSpecRows = computed(() => {
+  const t = selectedTrack.value;
+  if (!t) return [];
+  return [
+    { label: "Layout", value: t.config || "default" },
+    { label: "Length", value: trackLengthLabel(t) },
+    { label: "Pit boxes", value: t.pitboxes ?? "—" },
+    { label: "Width", value: t.width || "—" },
+    { label: "Run", value: t.run || "—" },
+    { label: "Key", value: t.key || "—" },
+  ];
+});
+
+function carPreviewUrl(c: CacheCar | null): string {
+  const key = c?.key;
+  const skin = c?.skins?.[0]?.key;
+  return key && skin ? `/api/car/image/${encodeURIComponent(key)}/${encodeURIComponent(skin)}?v=${content.imageVersion}` : "";
+}
+
+async function openCar(c: CacheCar) {
+  selectedCar.value = c;
+  const key = c.key;
+  carCurves.value = key ? curveCache.get(key) ?? null : null;
+  if (!key || carCurves.value) {
+    carCurvesLoading.value = false;
+    return;
+  }
+  carCurvesLoading.value = true;
+  try {
+    const res = await api.get<CarCurves>(`/api/car/${encodeURIComponent(key)}`);
+    curveCache.set(key, res);
+    if (selectedCar.value?.key === key) carCurves.value = res;
+  } catch {
+    if (selectedCar.value?.key === key) carCurves.value = null;
+  } finally {
+    if (!selectedCar.value || selectedCar.value.key === key) carCurvesLoading.value = false;
+  }
+}
+
+const carSpecRows = computed(() => {
+  const s = selectedCar.value?.specs;
+  if (!s) return [];
+  return [
+    { label: "Power", value: s.bhp },
+    { label: "Torque", value: s.torque },
+    { label: "Weight", value: s.weight },
+    { label: "Top speed", value: s.topspeed },
+    { label: "0–100", value: s.acceleration },
+    { label: "P/W ratio", value: s.pwratio },
+  ].filter((r) => r.value);
+});
+
+const carChartSeries = computed(() => {
+  const c = carCurves.value;
+  if (!c) return [];
+  const out: { name: string; color: string; values: number[]; unit?: string }[] = [];
+  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "#62b3e8", values: c.power, unit: " bhp" });
+  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "#f0b95a", values: c.torque, unit: " Nm" });
+  return out;
+});
+
+const carDescText = computed(() => {
+  const raw = carCurves.value?.desc || selectedCar.value?.description;
+  if (!raw) return "";
+  return raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+});
 
 // --- Upload ---
 const kind = ref<"track" | "car">("track");
@@ -408,48 +509,65 @@ function jobMeta(job: ContentJob): string[] {
 
       <template v-else>
       <div v-if="tab === 'tracks'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="group relative overflow-hidden rounded-md border border-line">
-          <TrackImage
-            :track-key="t.key"
-            :config="t.config"
-            class="aspect-video w-full"
-          />
+        <div v-for="t in filteredTracks" :key="`${t.key}:${t.config}`" class="group relative overflow-hidden rounded-md border border-line bg-surface-2/35 transition-colors hover:border-line-hi">
+          <button
+            type="button"
+            class="block w-full cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            :aria-label="`View details for ${t.name || t.key}`"
+            @click="selectedTrack = t"
+          >
+            <TrackImage
+              :track-key="t.key"
+              :config="t.config"
+              class="aspect-video w-full"
+            />
+            <div class="p-2">
+              <div class="truncate text-sm font-medium">{{ t.name }}</div>
+              <div class="text-xs text-dim">{{ t.config || "default" }} · {{ t.pitboxes }} pits</div>
+            </div>
+          </button>
           <button
             type="button"
             class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
             :aria-label="`Delete ${t.name || t.key}`"
-            @click="deleteTrack(t)"
+            @click.stop="deleteTrack(t)"
           >
             <Icon name="trash" :size="15" />
           </button>
-          <div class="p-2">
-            <div class="truncate text-sm font-medium">{{ t.name }}</div>
-            <div class="text-xs text-dim">{{ t.config || "default" }} · {{ t.pitboxes }} pits</div>
-          </div>
         </div>
       </div>
 
       <div v-else-if="tab === 'cars'" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="c in filteredCars" :key="c.key" class="group relative overflow-hidden rounded-md border border-line">
-          <img
-            v-if="c.skins?.length"
-            :src="`/api/car/image/${c.key}/${c.skins[0].key}?v=${content.imageVersion}`"
-            alt=""
-            loading="lazy"
-            class="aspect-video w-full object-cover"
-          />
+        <div v-for="c in filteredCars" :key="c.key" class="group relative overflow-hidden rounded-md border border-line bg-surface-2/35 transition-colors hover:border-line-hi">
+          <button
+            type="button"
+            class="block w-full cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            :aria-label="`View details for ${c.name || c.key}`"
+            @click="openCar(c)"
+          >
+            <div class="aspect-video w-full bg-surface-3">
+              <img
+                v-if="carPreviewUrl(c)"
+                :src="carPreviewUrl(c)"
+                alt=""
+                loading="lazy"
+                class="size-full object-cover"
+              />
+              <div v-else class="grid size-full place-items-center text-xs text-dim">No preview</div>
+            </div>
+            <div class="p-2">
+              <div class="truncate text-sm font-medium">{{ c.name }}</div>
+              <div class="text-xs text-dim">{{ c.brand }} · {{ c.skins?.length ?? 0 }} skins</div>
+            </div>
+          </button>
           <button
             type="button"
             class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
             :aria-label="`Delete ${c.name || c.key}`"
-            @click="deleteCar(c)"
+            @click.stop="deleteCar(c)"
           >
             <Icon name="trash" :size="15" />
           </button>
-          <div class="p-2">
-            <div class="truncate text-sm font-medium">{{ c.name }}</div>
-            <div class="text-xs text-dim">{{ c.brand }} · {{ c.skins?.length ?? 0 }} skins</div>
-          </div>
         </div>
       </div>
 
@@ -575,4 +693,119 @@ function jobMeta(job: ContentJob): string[] {
       </Card>
     </div>
   </div>
+
+  <Sheet :open="!!selectedTrack" :title="selectedTrack?.name || selectedTrack?.key || 'Track'" @close="selectedTrack = null">
+    <template v-if="selectedTrack">
+      <TrackImage
+        :track-key="selectedTrack.key"
+        :config="selectedTrack.config"
+        class="aspect-video w-full rounded-md border border-line"
+      />
+
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          {{ selectedTrack.config || "default" }}
+        </span>
+        <span v-if="trackLocation" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          {{ trackLocation }}
+        </span>
+        <span v-if="selectedTrack.content_path" class="ml-auto truncate text-xs text-dim">{{ selectedTrack.content_path }}</span>
+      </div>
+
+      <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+        <div v-for="spec in trackSpecRows" :key="spec.label" class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5">
+          <dt class="text-xs text-dim">{{ spec.label }}</dt>
+          <dd class="break-words font-mono text-sm text-text">{{ spec.value }}</dd>
+        </div>
+      </dl>
+
+      <p v-if="selectedTrack.desc" class="mt-4 text-sm leading-relaxed whitespace-pre-line text-muted">{{ selectedTrack.desc }}</p>
+
+      <div v-if="selectedTrack.tags?.length" class="mt-4">
+        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Tags</h3>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="tag in (selectedTrack.tags ?? []).slice(0, 16)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            {{ tag }}
+          </span>
+        </div>
+      </div>
+    </template>
+    <template #footer>
+      <Button variant="ghost" @click="selectedTrack = null">Close</Button>
+    </template>
+  </Sheet>
+
+  <Sheet :open="!!selectedCar" :title="selectedCar?.name || selectedCar?.key || 'Car'" @close="selectedCar = null">
+    <template v-if="selectedCar">
+      <div class="aspect-video w-full overflow-hidden rounded-md border border-line bg-surface-3">
+        <img
+          v-if="carPreviewUrl(selectedCar)"
+          :src="carPreviewUrl(selectedCar)"
+          alt=""
+          class="size-full object-cover"
+          @error="($event.target as HTMLImageElement).style.display = 'none'"
+        />
+        <div v-else class="grid size-full place-items-center text-sm text-dim">No preview</div>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <span v-if="selectedCar.brand" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          {{ selectedCar.brand }}
+        </span>
+        <span v-if="selectedCar.class" class="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent">
+          {{ selectedCar.class }}
+        </span>
+        <span class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+          {{ selectedCar.skins?.length ?? 0 }} skins
+        </span>
+        <span v-if="selectedCar.key" class="ml-auto font-mono text-xs text-dim">{{ selectedCar.key }}</span>
+      </div>
+
+      <dl v-if="carSpecRows.length" class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+        <div v-for="spec in carSpecRows" :key="spec.label" class="rounded-md border border-line bg-surface-2/40 px-2.5 py-1.5">
+          <dt class="text-xs text-dim">{{ spec.label }}</dt>
+          <dd class="font-mono text-sm text-text">{{ spec.value }}</dd>
+        </div>
+      </dl>
+
+      <div class="mt-4">
+        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Power &amp; torque</h3>
+        <div v-if="carCurvesLoading" class="grid h-44 place-items-center rounded-md border border-line bg-surface-2/40 text-sm text-dim">
+          Loading curves…
+        </div>
+        <div v-else-if="carChartSeries.length" class="rounded-md border border-line bg-surface-2/40 p-3">
+          <LineChart :series="carChartSeries" :labels="carCurves?.labels ?? []" :height="200" x-label="RPM" />
+        </div>
+        <p v-else class="rounded-md border border-line bg-surface-2/40 px-3 py-3 text-sm text-dim">
+          No dyno data shipped with this car.
+        </p>
+      </div>
+
+      <div v-if="selectedCar.skins?.length" class="mt-4">
+        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Skins</h3>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="skin in (selectedCar.skins ?? []).slice(0, 24)" :key="skin.key" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            {{ skin.name || skin.key }}
+          </span>
+          <span v-if="(selectedCar.skins?.length ?? 0) > 24" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-dim">
+            +{{ (selectedCar.skins?.length ?? 0) - 24 }} more
+          </span>
+        </div>
+      </div>
+
+      <div v-if="selectedCar.tags?.length" class="mt-4">
+        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Tags</h3>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="tag in (selectedCar.tags ?? []).slice(0, 16)" :key="tag" class="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs text-muted">
+            {{ tag }}
+          </span>
+        </div>
+      </div>
+
+      <p v-if="carDescText" class="mt-4 text-sm leading-relaxed whitespace-pre-line text-muted">{{ carDescText }}</p>
+    </template>
+    <template #footer>
+      <Button variant="ghost" @click="selectedCar = null">Close</Button>
+    </template>
+  </Sheet>
 </template>

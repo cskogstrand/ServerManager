@@ -85,3 +85,24 @@ Size = 12
 		t.Fatalf("got kind %q, want track", kind)
 	}
 }
+
+func TestFriendly7zArchiveError(t *testing.T) {
+	raw := `ERROR: /tmp/upload.rar : Cannot open the file as archive
+Errors: 1`
+	got := friendly7zArchiveError(raw, "fallback")
+	want := "The archive could not be opened. It may be corrupt, incomplete, password-protected, an unsupported RAR variant, or one part of a multi-part RAR."
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+
+	if got := friendly7zArchiveError("", "fallback"); got != "fallback" {
+		t.Fatalf("got %q, want fallback", got)
+	}
+
+	raw = `7-Zip 26.00
+ERROR: /tmp/upload.rar : Unknown archive error
+Errors: 1`
+	if got := friendly7zArchiveError(raw, "fallback"); got != "fallback" {
+		t.Fatalf("got %q, want fallback", got)
+	}
+}

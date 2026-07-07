@@ -385,6 +385,7 @@ const uploadKindChoiceOptions = [
 const uploadStatusVisible = computed(() => uploadStage.value !== "idle" || uploading.value);
 const scanningFiles = computed(() => uploadItems.value.some((item) => item.stage === "scanning"));
 const filesNeedTypeChoice = computed(() => uploadItems.value.some((item) => item.stage === "needsChoice"));
+const pendingFileUploadCount = computed(() => uploadItems.value.filter((item) => item.stage !== "completed").length);
 const uploadStatusTitle = computed(() => {
   if (uploadStage.value === "failed") return "Import failed";
   if (uploadStage.value === "completed") return "Import complete";
@@ -408,7 +409,7 @@ const uploadBarClass = computed(() => (uploadStage.value === "completed" ? "bg-o
 const uploadButtonLabel = computed(() => {
   if (!uploading.value && !archiveUrl.value.trim() && scanningFiles.value) return "Scanning…";
   if (!uploading.value && !archiveUrl.value.trim() && filesNeedTypeChoice.value) return "Choose type";
-  if (!uploading.value) return archiveUrl.value.trim() ? "Start download" : files.value.length > 1 ? `Upload ${files.value.length}` : "Upload";
+  if (!uploading.value) return archiveUrl.value.trim() ? "Start download" : pendingFileUploadCount.value > 1 ? `Upload ${pendingFileUploadCount.value}` : "Upload";
   if (batchTotal.value > 1) return `Importing ${Math.min(batchIndex.value + 1, batchTotal.value)}/${batchTotal.value}`;
   if (uploadStage.value === "processing") return "Importing…";
   if (archiveUrl.value.trim()) return "Starting…";
@@ -458,7 +459,25 @@ function summarizeUploadResponse(r: UploadResponse | null): string {
 
 function uploadFailureMessage(xhr: XMLHttpRequest, r: UploadResponse | null): string {
   if (xhr.status === 0) return "Connection lost while sending the archive.";
-  return r?.message ?? r?.error?.message ?? "Upload failed.";
+  return friendlyArchiveError(r?.message ?? r?.error?.message ?? "Upload failed.");
+}
+
+function friendlyArchiveError(message: string): string {
+  const cleaned = message.replace(/\s+/g, " ").trim();
+  const lower = cleaned.toLowerCase();
+  if (cleaned.includes("Cannot open the file as archive")) {
+    return "The archive could not be opened. It may be corrupt, incomplete, password-protected, an unsupported RAR variant, or one part of a multi-part RAR.";
+  }
+  if (lower.includes("wrong password") || lower.includes("encrypted")) {
+    return "The archive is password-protected or encrypted and cannot be imported.";
+  }
+  if (lower.includes("unexpected end") || lower.includes("headers error")) {
+    return "The archive appears to be incomplete or corrupt.";
+  }
+  if (cleaned.includes("ERROR:") || cleaned.includes("7-Zip")) {
+    return "The archive could not be processed. Check that it is a complete, supported archive.";
+  }
+  return cleaned || "Upload failed.";
 }
 
 function batchProgress(index: number, total: number, fileProgress: number): number {
@@ -696,20 +715,14 @@ async function upload() {
     toast.error("Choose car or track for the archive before uploading.");
     return;
   }
-  const failedScan = uploadItems.value.find((item) => item.stage === "failed");
-  if (!url && failedScan) {
-    setUploadStatus("failed", `${failedScan.name}: ${failedScan.message}`, "Remove the failed archive or choose another file.");
-    toast.error(failedScan.message);
-    return;
-  }
 
   uploading.value = true;
   batchIndex.value = 0;
   batchTotal.value = url ? 1 : selectedFiles.length;
   let completed = 0;
+  let failed = 0;
   let importedItems = 0;
   let filesWritten = 0;
-  let currentItem: UploadItem | null = null;
   const importedByKind = { car: 0, track: 0 };
 
   try {
@@ -720,20 +733,52 @@ async function upload() {
     } else {
       const selectedItems = uploadItems.value.filter((item) => selectedFiles.includes(item.file) && item.stage !== "completed");
       batchTotal.value = selectedItems.length;
+      if (!selectedItems.length) {
+        uploadProgress.value = 100;
+        setUploadStatus("completed", "No pending archives to upload.", "All selected archives are already imported.");
+        clearUploadInputs({ keepItems: true });
+        return;
+      }
       for (const [index, item] of selectedItems.entries()) {
-        currentItem = item;
         const archive = item.file;
         batchIndex.value = index;
-        const response = await sendUploadRequest({ file: archive, index, total: selectedItems.length, kind: item.kind, item });
-        applyUploadResponse(response, archive.name, selectedItems.length === 1, item);
-        completed++;
-        importedItems += response?.imported_count ?? 0;
-        filesWritten += response?.files_written ?? 0;
-        if (response?.kind) importedByKind[response.kind] += response.imported_count ?? 0;
+        try {
+          const response = await sendUploadRequest({ file: archive, index, total: selectedItems.length, kind: item.kind, item });
+          applyUploadResponse(response, archive.name, selectedItems.length === 1, item);
+          completed++;
+          importedItems += response?.imported_count ?? 0;
+          filesWritten += response?.files_written ?? 0;
+          if (response?.kind) importedByKind[response.kind] += response.imported_count ?? 0;
+        } catch (e) {
+          failed++;
+          const message = friendlyArchiveError(e instanceof Error ? e.message : String(e));
+          if (isManualContentChoiceError(message)) {
+            markUploadItemNeedsChoice(item, message);
+          } else if (item.stage !== "needsChoice") {
+            item.stage = "failed";
+            item.progress = 0;
+            item.message = message;
+            item.detail = "The import did not complete.";
+          }
+        }
       }
-      void content.load(true);
-      void content.loadImageStats();
-      if (selectedItems.length > 1) {
+      if (completed) {
+        void content.load(true);
+        void content.loadImageStats();
+      }
+      if (failed) {
+        uploadProgress.value = 100;
+        setUploadStatus(
+          "failed",
+          completed
+            ? `Imported ${completed} archive${completed === 1 ? "" : "s"}. ${failed} failed.`
+            : `${failed} archive${failed === 1 ? "" : "s"} failed.`,
+          completed
+            ? "The content library is refreshing. Failed rows are kept in the list so you can remove them or fix and retry."
+            : "Failed rows are kept in the list so you can remove them or fix and retry.",
+        );
+        toast.error(`${failed} archive${failed === 1 ? "" : "s"} failed.`);
+      } else if (selectedItems.length > 1) {
         uploadProgress.value = 100;
         const detectedItems = importedByKind.car + importedByKind.track;
         const detail = [
@@ -747,25 +792,16 @@ async function upload() {
           .join(" · ");
         setUploadStatus("completed", `Imported ${completed} archive${completed === 1 ? "" : "s"}.`, detail);
         toast.success(`Imported ${completed} archive${completed === 1 ? "" : "s"}.`);
+        clearUploadInputs({ keepItems: true });
+      } else {
+        clearUploadInputs({ keepItems: true });
       }
-      clearUploadInputs({ keepItems: true });
     }
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    if (currentItem && currentItem.stage !== "completed") {
-      if (isManualContentChoiceError(message)) {
-        markUploadItemNeedsChoice(currentItem, message);
-      } else if (currentItem.stage !== "needsChoice") {
-        currentItem.stage = "failed";
-        currentItem.progress = 0;
-        currentItem.message = message;
-        currentItem.detail = "The import did not complete.";
-      }
-    }
-    const stoppedAt = batchTotal.value > 1 ? `Stopped at archive ${batchIndex.value + 1} of ${batchTotal.value}. ` : "";
+    const message = friendlyArchiveError(e instanceof Error ? e.message : String(e));
     setUploadStatus(
       "failed",
-      `${stoppedAt}${message}`,
+      message,
       isManualContentChoiceError(message)
         ? "Choose car or track for this archive, then upload again."
         : completed

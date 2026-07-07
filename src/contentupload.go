@@ -547,17 +547,34 @@ func listArchivePathsVia7z(archivePath string, sevenZipBinary string) ([]string,
 	cmd := exec.Command(sevenZipBinary, "l", "-slt", archivePath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(output))
-		if msg == "" {
-			msg = "7-Zip could not inspect the archive."
-		}
 		return nil, contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: msg,
+			Message: friendly7zArchiveError(string(output), "7-Zip could not inspect the archive."),
 		}
 	}
 
 	return parse7zListPaths(string(output)), nil
+}
+
+func friendly7zArchiveError(output string, fallback string) string {
+	msg := strings.TrimSpace(output)
+	lower := strings.ToLower(msg)
+	if strings.Contains(msg, "Cannot open the file as archive") {
+		return "The archive could not be opened. It may be corrupt, incomplete, password-protected, an unsupported RAR variant, or one part of a multi-part RAR."
+	}
+	if strings.Contains(lower, "wrong password") || strings.Contains(lower, "encrypted") {
+		return "The archive is password-protected or encrypted and cannot be imported."
+	}
+	if strings.Contains(lower, "unexpected end") || strings.Contains(lower, "headers error") {
+		return "The archive appears to be incomplete or corrupt."
+	}
+	if msg == "" {
+		return fallback
+	}
+	if strings.Contains(msg, "ERROR:") || strings.Contains(msg, "7-Zip") {
+		return fallback
+	}
+	return msg
 }
 
 func parse7zListPaths(output string) []string {
@@ -801,13 +818,9 @@ func importArchiveVia7z(archivePath string, destinationRoot string, kind string,
 	cmd := exec.Command(sevenZipBinary, "x", "-y", "-bso0", "-bsp0", "-bse1", "-o"+extractRoot, archivePath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(output))
-		if msg == "" {
-			msg = "7-Zip could not extract the archive."
-		}
 		return contentArchiveImportResult{}, contentUploadError{
 			Status:  http.StatusBadRequest,
-			Message: msg,
+			Message: friendly7zArchiveError(string(output), "7-Zip could not extract the archive."),
 		}
 	}
 

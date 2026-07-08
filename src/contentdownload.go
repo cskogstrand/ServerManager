@@ -150,7 +150,9 @@ func apiDownloadTrack(c *gin.Context) {
 
 // cmContentEntry / cmContent model the Content Manager content.json manifest.
 type cmContentEntry struct {
-	URL string `json:"url"`
+	File    string `json:"file,omitempty"`
+	URL     string `json:"url"`
+	Version string `json:"version,omitempty"`
 }
 
 type cmContent struct {
@@ -193,6 +195,7 @@ func writeModLinks(dir string, cfg UserConfig, cr *ConfigRenderer) {
 
 	// Collect unique car keys from the rendered entry list.
 	carURLs := map[string]string{}
+	carVersions := map[string]string{}
 	carOrder := make([]string, 0)
 	seen := map[string]bool{}
 	for _, e := range cr.class.Entries {
@@ -209,30 +212,53 @@ func writeModLinks(dir string, cfg UserConfig, cr *ConfigRenderer) {
 			continue
 		}
 		carURLs[k] = carDownloadURL(cfg, k)
+		if car, err := Dba.selectCacheCar(k); err == nil {
+			carVersions[k] = contentVersion(car.Version)
+		}
 		carOrder = append(carOrder, k)
 	}
 
 	trackKey := ""
 	trackURL := ""
+	trackVersion := contentVersion(cr.track.Version)
 	if cr.track.Key != nil && *cr.track.Key != "" && have(filepath.Join("tracks", *cr.track.Key)) {
 		trackKey = *cr.track.Key
 		trackURL = trackDownloadURL(cfg, trackKey)
 	}
 
-	writeContentManifest(dir, carURLs, trackURL)
+	writeContentManifest(dir, carURLs, carVersions, trackKey, trackURL, trackVersion)
 	writeWelcomeFile(dir, cfg, carOrder, carURLs, trackKey, trackURL)
 }
 
-func writeContentManifest(dir string, carURLs map[string]string, trackURL string) {
+func contentVersion(version *string) string {
+	if version == nil {
+		return ""
+	}
+	return strings.TrimSpace(*version)
+}
+
+func manifestEntry(key string, url string, version string) cmContentEntry {
+	entry := cmContentEntry{
+		File: key + ".zip",
+		URL:  url,
+	}
+	if version != "" {
+		entry.Version = version
+	}
+	return entry
+}
+
+func writeContentManifest(dir string, carURLs map[string]string, carVersions map[string]string, trackKey string, trackURL string, trackVersion string) {
 	manifest := cmContent{}
 	if len(carURLs) > 0 {
 		manifest.Cars = map[string]cmContentEntry{}
 		for k, u := range carURLs {
-			manifest.Cars[k] = cmContentEntry{URL: u}
+			manifest.Cars[k] = manifestEntry(k, u, carVersions[k])
 		}
 	}
 	if trackURL != "" {
-		manifest.Track = &cmContentEntry{URL: trackURL}
+		entry := manifestEntry(trackKey, trackURL, trackVersion)
+		manifest.Track = &entry
 	}
 
 	data, err := json.MarshalIndent(manifest, "", "  ")

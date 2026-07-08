@@ -161,8 +161,10 @@ func (dba Dbaccess) applySchema(filePath string) {
 		{"user_config", "auto_start_server", "INTEGER DEFAULT 0"},
 		{"cache_car", "content_path", "TEXT"},
 		{"cache_car", "modified_at", "INTEGER"},
+		{"cache_car", "version", "TEXT"},
 		{"cache_track", "content_path", "TEXT"},
 		{"cache_track", "modified_at", "INTEGER"},
+		{"cache_track", "version", "TEXT"},
 		{"user_class_entry", "car_count", "INTEGER NOT NULL DEFAULT 1"},
 		{"server_event", "instance_id", "INTEGER NOT NULL DEFAULT 1"},
 		{"user_config", "mod_download_url", "TEXT"},
@@ -2124,7 +2126,7 @@ func (dba Dbaccess) deleteDriverStream(id int) (int64, error) {
 
 func (dba Dbaccess) updateCacheCars(cars []CacheCar) (int64, error) {
 	for _, car := range cars {
-		stmt, err := dba.db.Prepare("INSERT INTO cache_car (key, name, brand, desc, tags, class, specs, torque, power, skins, content_path, modified_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err := dba.db.Prepare("INSERT INTO cache_car (key, name, brand, desc, tags, class, version, specs, torque, power, skins, content_path, modified_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
@@ -2158,16 +2160,16 @@ func (dba Dbaccess) updateCacheCars(cars []CacheCar) (int64, error) {
 			return -1, tracerr.Wrap(err)
 		}
 		skins := string(skinsRes)
-		_, err = stmt.Exec(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
+		_, err = stmt.Exec(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &car.Version, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
 		defer stmt.Close()
 
 		// err is assumed to be FK error
 		if err != nil {
-			stmt, err = dba.db.Prepare("UPDATE cache_car SET name = ?, brand = ?, desc = ?, tags = ?, class = ?, specs = ?, torque = ?, power = ?, skins = ?, content_path = ?, modified_at = ? WHERE key = ?")
+			stmt, err = dba.db.Prepare("UPDATE cache_car SET name = ?, brand = ?, desc = ?, tags = ?, class = ?, version = ?, specs = ?, torque = ?, power = ?, skins = ?, content_path = ?, modified_at = ? WHERE key = ?")
 			if err != nil {
 				return -1, tracerr.Wrap(err)
 			}
-			_, err = stmt.Exec(&car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt, &car.Key)
+			_, err = stmt.Exec(&car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &car.Version, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt, &car.Key)
 			defer stmt.Close()
 			if err != nil {
 				return -1, tracerr.Wrap(err)
@@ -2179,7 +2181,7 @@ func (dba Dbaccess) updateCacheCars(cars []CacheCar) (int64, error) {
 }
 
 func (dba Dbaccess) selectCacheCars() ([]CacheCar, error) {
-	rows, err := dba.db.Query("SELECT key, name, brand, desc, tags, class, specs, torque, power, skins, content_path, modified_at FROM cache_car ORDER BY name")
+	rows, err := dba.db.Query("SELECT key, name, brand, desc, tags, class, version, specs, torque, power, skins, content_path, modified_at FROM cache_car ORDER BY name")
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -2193,7 +2195,7 @@ func (dba Dbaccess) selectCacheCars() ([]CacheCar, error) {
 	cars := make([]CacheCar, 0)
 	for rows.Next() {
 		car := CacheCar{}
-		err = rows.Scan(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
+		err = rows.Scan(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &car.Version, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
 		if err != nil {
 			return nil, tracerr.Wrap(err)
 		}
@@ -2231,12 +2233,12 @@ func (dba Dbaccess) selectCacheCar(carkey string) (CacheCar, error) {
 	var skins string
 
 	car := CacheCar{}
-	stmt, err := dba.db.Prepare("SELECT key, name, brand, desc, tags, class, specs, torque, power, skins, content_path, modified_at FROM cache_car WHERE key = ? ORDER BY name")
+	stmt, err := dba.db.Prepare("SELECT key, name, brand, desc, tags, class, version, specs, torque, power, skins, content_path, modified_at FROM cache_car WHERE key = ? ORDER BY name")
 	if err != nil {
 		return car, err
 	}
 	defer stmt.Close()
-	err = stmt.QueryRow(carkey).Scan(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
+	err = stmt.QueryRow(carkey).Scan(&car.Key, &car.Name, &car.Brand, &car.Desc, &tags, &car.Class, &car.Version, &specs, &torque, &power, &skins, &car.ContentPath, &car.ModifiedAt)
 	if err != nil {
 		return car, err
 	}
@@ -2320,20 +2322,20 @@ func (dba Dbaccess) updateCacheTracks(tracks []CacheTrack) (int64, error) {
 		}
 		tags := string(tagsRes)
 
-		stmt, err := dba.db.Prepare("INSERT INTO cache_track (key, config, name, desc, tags, country, city, length, width, pitboxes, run, content_path, modified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err := dba.db.Prepare("INSERT INTO cache_track (key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			return -1, tracerr.Wrap(err)
 		}
-		_, err = stmt.Exec(&track.Key, &track.Config, &track.Name, &track.Desc, tags, &track.Country, &track.City, &track.Length, &track.Width, &track.Pitboxes, &track.Run, &track.ContentPath, &track.ModifiedAt)
+		_, err = stmt.Exec(&track.Key, &track.Config, &track.Name, &track.Desc, tags, &track.Country, &track.City, &track.Length, &track.Width, &track.Pitboxes, &track.Run, &track.Version, &track.ContentPath, &track.ModifiedAt)
 		defer stmt.Close()
 
 		// err is assumed to be FK error
 		if err != nil {
-			stmt, err := dba.db.Prepare("UPDATE cache_track SET name = ?, desc = ?, tags = ?, country = ?, city = ?, length = ?, width = ?, pitboxes = ?, run = ?, content_path = ?, modified_at = ? WHERE key = ? AND config = ?")
+			stmt, err := dba.db.Prepare("UPDATE cache_track SET name = ?, desc = ?, tags = ?, country = ?, city = ?, length = ?, width = ?, pitboxes = ?, run = ?, version = ?, content_path = ?, modified_at = ? WHERE key = ? AND config = ?")
 			if err != nil {
 				return -1, tracerr.Wrap(err)
 			}
-			_, err = stmt.Exec(&track.Name, &track.Desc, tags, &track.Country, &track.City, &track.Length, &track.Width, &track.Pitboxes, &track.Run, &track.ContentPath, &track.ModifiedAt, &track.Key, &track.Config)
+			_, err = stmt.Exec(&track.Name, &track.Desc, tags, &track.Country, &track.City, &track.Length, &track.Width, &track.Pitboxes, &track.Run, &track.Version, &track.ContentPath, &track.ModifiedAt, &track.Key, &track.Config)
 			defer stmt.Close()
 
 			if err != nil {
@@ -2347,7 +2349,7 @@ func (dba Dbaccess) updateCacheTracks(tracks []CacheTrack) (int64, error) {
 
 func (dba Dbaccess) selectCacheTracks() ([]CacheTrack, error) {
 	tracks := make([]CacheTrack, 0)
-	rows, err := dba.db.Query("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, content_path, modified_at FROM cache_track ORDER BY name")
+	rows, err := dba.db.Query("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track ORDER BY name")
 	if err != nil {
 		return tracks, err
 	}
@@ -2355,7 +2357,7 @@ func (dba Dbaccess) selectCacheTracks() ([]CacheTrack, error) {
 	var tags string
 	for rows.Next() {
 		t := CacheTrack{}
-		err = rows.Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.ContentPath, &t.ModifiedAt)
+		err = rows.Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt)
 		if err != nil {
 			return tracks, err
 		}
@@ -2380,22 +2382,22 @@ func (dba Dbaccess) selectCacheTrack(trackkey string, trackconfig string) (Cache
 	var tags string
 
 	if trackconfig == "" {
-		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, content_path, modified_at FROM cache_track WHERE key = ? LIMIT 1")
+		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track WHERE key = ? LIMIT 1")
 		if err != nil {
 			return t, err
 		}
 		defer stmt.Close()
-		err = stmt.QueryRow(trackkey).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.ContentPath, &t.ModifiedAt)
+		err = stmt.QueryRow(trackkey).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt)
 		if err != nil {
 			return t, err
 		}
 	} else {
-		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, content_path, modified_at FROM cache_track WHERE key = ? AND config = ? LIMIT 1")
+		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track WHERE key = ? AND config = ? LIMIT 1")
 		if err != nil {
 			return t, err
 		}
 		defer stmt.Close()
-		err = stmt.QueryRow(trackkey, trackconfig).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.ContentPath, &t.ModifiedAt)
+		err = stmt.QueryRow(trackkey, trackconfig).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt)
 		if err != nil {
 			return t, err
 		}

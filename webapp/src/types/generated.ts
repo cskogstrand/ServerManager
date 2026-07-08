@@ -283,6 +283,7 @@ export interface CacheCar {
   description?: string;
   tags?: string[];
   class?: string;
+  version?: string;
   content_path?: string;
   modified_at?: number /* int64 */;
   specs: {
@@ -314,6 +315,7 @@ export interface CacheTrack {
   width?: string;
   pitboxes?: number /* int */;
   run?: string;
+  version?: string;
   content_path?: string;
   modified_at?: number /* int64 */;
 }

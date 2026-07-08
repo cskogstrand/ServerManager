@@ -310,6 +310,7 @@ type CacheCar struct {
 	Desc        *string   `json:"description"`
 	Tags        *[]string `json:"tags"`
 	Class       *string   `json:"class"`
+	Version     *string   `json:"version,omitempty"`
 	ContentPath *string   `json:"content_path,omitempty"`
 	ModifiedAt  *int64    `json:"modified_at,omitempty"`
 	Specs struct {
@@ -342,6 +343,7 @@ type CacheTrack struct {
 	Width       *string   `json:"width"`
 	Pitboxes    *int      `json:"pitboxes,string"`
 	Run         *string   `json:"run"`
+	Version     *string   `json:"version,omitempty"`
 	ContentPath *string   `json:"content_path,omitempty"`
 	ModifiedAt  *int64    `json:"modified_at,omitempty"`
 }

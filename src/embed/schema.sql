@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS cache_track (
   width INTEGER,
   pitboxes INTEGER,
   run TEXT,
+  version TEXT,
   content_path TEXT,
   modified_at INTEGER
 );
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS cache_car (
   desc TEXT,
   tags TEXT,
   class TEXT,
+  version TEXT,
   specs TEXT,
   torque TEXT,
   power TEXT,

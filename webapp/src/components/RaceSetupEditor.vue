@@ -43,12 +43,17 @@ async function loadPresetLists() {
 }
 
 onMounted(() => {
-  void content.load();
+  void content.load(true);
   void loadPresetLists();
 });
 
 // --- Track picker ---
 const trackPickerOpen = ref(false);
+async function openTrackPicker() {
+  await content.load(true);
+  trackPickerOpen.value = true;
+}
+
 function onTrackPicked(track: { key: string; config: string; name: string; pitboxes: number }) {
   draft.value.track_key = track.key;
   draft.value.track_config = track.config;
@@ -108,7 +113,7 @@ async function runReview() {
       <button
         type="button"
         class="w-full cursor-pointer overflow-hidden rounded-md border border-line bg-surface-2 text-left transition-colors hover:border-line-hi focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        @click="trackPickerOpen = true"
+        @click="openTrackPicker"
       >
         <TrackImage
           v-if="draft.track_key"

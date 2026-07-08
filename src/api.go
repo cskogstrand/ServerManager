@@ -568,9 +568,9 @@ func serverStatusPayload(inst *Instance) gin.H {
 			"laps":                 st.Session.laps,
 			"wait_time":            st.Session.waitTime,
 			"ambient_temp":         st.Session.ambientTemp,
-			"road_temp":            st.Session.roadTemp,
-			"weather_graphics":     st.Session.weatherGraphics,
-			"elapsed_ms":           st.Session.elapsedMs,
+			"road_temp":             st.Session.roadTemp,
+			"weather_graphics":      st.Session.weatherGraphics,
+			"elapsed_ms":            st.Session.elapsedMs,
 		},
 		"current_event": currentEvent,
 		"drivers":       inst.driversSnapshot(),
@@ -972,7 +972,10 @@ func apiTrackPreviewImage(c *gin.Context) {
 	}
 
 	if config != "" {
-		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "preview.png"}}) {
+		if serveContentDiskFile(c, [][]string{
+			{"tracks", track, "ui", config, "preview.png"},
+			{"tracks", track, config, "ui", "preview.png"},
+		}) {
 			return
 		}
 		serveZipImage(c, "tracks/"+track+"/"+config+"/preview.png", "image/png")
@@ -1002,7 +1005,10 @@ func apiTrackOutlineImage(c *gin.Context) {
 	}
 
 	if config != "" {
-		if serveContentDiskFile(c, [][]string{{"tracks", track, "ui", config, "outline.png"}}) {
+		if serveContentDiskFile(c, [][]string{
+			{"tracks", track, "ui", config, "outline.png"},
+			{"tracks", track, config, "ui", "outline.png"},
+		}) {
 			return
 		}
 		serveZipImage(c, "tracks/"+track+"/"+config+"/outline.png", "image/png")

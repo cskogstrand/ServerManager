@@ -80,7 +80,7 @@ func parseContent(dba Dbaccess) {
 
 func parseWeathers(dba Dbaccess) map[string]string {
 	zipfiles := map[string]string{}
-	var sliceMutex sync.Mutex 
+	var sliceMutex sync.Mutex
 
 	r := regexp.MustCompile("^NAME")
 	r2 := regexp.MustCompile("^NAME=(.*)$")
@@ -150,13 +150,13 @@ func parseWeathers(dba Dbaccess) map[string]string {
 			log.Print("Could not open weather ini file: ", inipath, err)
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(e fs.DirEntry, f *os.File) {
 			defer wg.Done()
 			defer f.Close() // Close inside the goroutine
 			w := parseWeather(e, f)
-			
+
 			sliceMutex.Lock()
 			weathers = append(weathers, w)
 			sliceMutex.Unlock()
@@ -190,58 +190,165 @@ func recurseAddIniZip(absPath string, relPath string) map[string]string {
 	return zipfiles
 }
 
+type trackJSONCandidate struct {
+	path   string
+	config string
+}
+
+func trackJSONCandidates(trackPath string) []trackJSONCandidate {
+	var out []trackJSONCandidate
+	seen := map[string]bool{}
+
+	add := func(path string, config string) {
+		if seen[config] {
+			return
+		}
+		if _, err := os.Stat(path); err == nil {
+			out = append(out, trackJSONCandidate{path: path, config: config})
+			seen[config] = true
+		}
+	}
+
+	add(filepath.Join(trackPath, "ui", "ui_track.json"), "")
+
+	for _, name := range []string{"ui_track.json", "dlc_ui_track.json"} {
+		for _, config := range layoutFolders(filepath.Join(trackPath, "ui")) {
+			add(filepath.Join(trackPath, "ui", config, name), config)
+		}
+		for _, config := range layoutFolders(trackPath) {
+			add(filepath.Join(trackPath, config, "ui", name), config)
+		}
+	}
+
+	return out
+}
+
+func layoutFolders(path string) []string {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil
+	}
+	var folders []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			folders = append(folders, entry.Name())
+		}
+	}
+	return folders
+}
+
+func parseTrackJSON(jsonpath string, key string, config string) (CacheTrack, error) {
+	r := regexp.MustCompile("[^0-9]")
+	jsonBytes, err := os.ReadFile(jsonpath)
+	if err != nil {
+		return CacheTrack{}, logError("Could not read track json file", jsonpath, err)
+	}
+
+	jsonStr := stripBOM(string(jsonBytes))
+
+	data, err := jsonrepair.JSONRepair(jsonStr)
+	if err != nil {
+		return CacheTrack{}, logError("Could not repair track json file", jsonpath, err)
+	}
+
+	var result map[string]string
+	err = json.Unmarshal([]byte(data), &result)
+	if err != nil {
+		//log.Printf("Warning: Could not unmarshal track json map for length extraction: %s (%v)", jsonpath, err)
+	}
+
+	var track CacheTrack
+	err = json.Unmarshal([]byte(data), &track)
+	if err != nil {
+		//log.Printf("Warning: Could not unmarshal track json struct: %s (%v)", jsonpath, err)
+	}
+
+	tracklenStr := "0"
+	if val, ok := result["length"]; ok {
+		tracklenStr = r.ReplaceAllString(val, "")
+	}
+
+	if tracklenStr == "" {
+		tracklenStr = "0"
+	}
+
+	parsedLen, err := strconv.Atoi(tracklenStr)
+	if err != nil {
+		log.Printf("Error: Could not convert track length in %s. Raw: '%s'. Error: %v", jsonpath, result["length"], err)
+		parsedLen = 0
+	}
+
+	track.Key = &key
+	track.Config = &config
+	track.Length = &parsedLen
+
+	return track, nil
+}
+
+func syncMissingTrackLayouts(dba Dbaccess) {
+	tracks, err := dba.selectCacheTracks()
+	if err != nil {
+		log.Print("Database error while checking track layouts: ", err)
+		return
+	}
+	basepath, err := dba.basepath()
+	if err != nil {
+		return
+	}
+
+	seen := map[string]map[string]bool{}
+	scanned := map[string]bool{}
+	for _, track := range tracks {
+		if track.Key == nil {
+			continue
+		}
+		key := *track.Key
+		if seen[key] == nil {
+			seen[key] = map[string]bool{}
+		}
+		seen[key][derefOrEmpty(track.Config)] = true
+	}
+
+	var missing []CacheTrack
+	for _, track := range tracks {
+		if track.Key == nil || scanned[*track.Key] {
+			continue
+		}
+		key := *track.Key
+		scanned[key] = true
+		trackPath := filepath.Join(basepath, "content", "tracks", key)
+		if track.ContentPath != nil && *track.ContentPath != "" {
+			trackPath = *track.ContentPath
+		}
+		if st, err := os.Stat(trackPath); err != nil || !st.IsDir() {
+			continue
+		}
+		for _, candidate := range trackJSONCandidates(trackPath) {
+			if seen[key][candidate.config] {
+				continue
+			}
+			parsed, err := parseTrackJSON(candidate.path, key, candidate.config)
+			if err != nil {
+				continue
+			}
+			parsed.ContentPath, parsed.ModifiedAt = statContentMetadata(trackPath)
+			missing = append(missing, parsed)
+			seen[key][candidate.config] = true
+		}
+	}
+
+	if len(missing) == 0 {
+		return
+	}
+	if _, err := dba.updateCacheTracks(missing); err != nil {
+		log.Print("Database error while adding discovered track layouts: ", err)
+	}
+}
+
 func parseTracks(dba Dbaccess) map[string]string {
 	zipfiles := map[string]string{}
 	var zipMutex = &sync.RWMutex{}
-	var sliceMutex sync.Mutex 
-
-	parsejson := func(jsonpath string, key string, config string) (CacheTrack, error) {
-		r := regexp.MustCompile("[^0-9]")
-		jsonBytes, err := os.ReadFile(jsonpath)
-		if err != nil {
-			return CacheTrack{}, logError("Could not read track json file", jsonpath, err)
-		}
-		
-		jsonStr := stripBOM(string(jsonBytes))
-
-		data, err := jsonrepair.JSONRepair(jsonStr)
-		if err != nil {
-			return CacheTrack{}, logError("Could not repair track json file", jsonpath, err)
-		}
-
-		var result map[string]string
-		err = json.Unmarshal([]byte(data), &result)
-		if err != nil {
-			//log.Printf("Warning: Could not unmarshal track json map for length extraction: %s (%v)", jsonpath, err)
-		}
-
-		var track CacheTrack
-		err = json.Unmarshal([]byte(data), &track)
-		if err != nil {
-			//log.Printf("Warning: Could not unmarshal track json struct: %s (%v)", jsonpath, err)
-		}
-
-		tracklenStr := "0"
-		if val, ok := result["length"]; ok {
-			tracklenStr = r.ReplaceAllString(val, "")
-		}
-		
-		if tracklenStr == "" {
-			tracklenStr = "0"
-		}
-
-		parsedLen, err := strconv.Atoi(tracklenStr)
-		if err != nil {
-			log.Printf("Error: Could not convert track length in %s. Raw: '%s'. Error: %v", jsonpath, result["length"], err)
-			parsedLen = 0
-		}
-		
-		track.Key = &key
-		track.Config = &config
-		track.Length = &parsedLen
-
-		return track, nil
-	}
+	var sliceMutex sync.Mutex
 
 	basepath, err := dba.basepath()
 	if err != nil {
@@ -255,67 +362,43 @@ func parseTracks(dba Dbaccess) map[string]string {
 		if !element.IsDir() {
 			return
 		}
-		zips := recurseAddIniZip(filepath.Join(trackspath, element.Name()), "tracks/"+element.Name())
-		
+		trackPath := filepath.Join(trackspath, element.Name())
+		zips := recurseAddIniZip(trackPath, "tracks/"+element.Name())
+
 		zipMutex.Lock()
 		maps.Copy(zipfiles, zips)
 		zipMutex.Unlock()
 
-		jsonpath := filepath.Join(trackspath, element.Name(), "ui", "ui_track.json")
-		if _, err := os.Stat(jsonpath); errors.Is(err, os.ErrNotExist) {
-			// track has many configs which we need to parse
-			configsfolder := filepath.Join(trackspath, element.Name(), "ui")
-			configs, err := os.ReadDir(configsfolder)
-			if err != nil {
-				log.Print("Could not read track config folder: ", configsfolder, err)
-				return 
-			}
-
-			for _, config := range configs {
-				if !config.IsDir() {
-					continue
-				}
-
-				jsonpath = filepath.Join(trackspath, element.Name(), "ui", config.Name(), "ui_track.json")
-
-				if _, err := os.Stat(jsonpath); errors.Is(err, os.ErrNotExist) {
-					jsonpath = filepath.Join(trackspath, element.Name(), "ui", config.Name(), "dlc_ui_track.json")
-					if _, err := os.Stat(jsonpath); errors.Is(err, os.ErrNotExist) {
-						continue
+		for _, candidate := range trackJSONCandidates(trackPath) {
+			if candidate.config == "" {
+				zipMutex.Lock()
+				zipfiles[filepath.Join(trackPath, "ui", "outline.png")] = "tracks/" + element.Name() + "/ui/outline.png"
+				zipfiles[filepath.Join(trackPath, "ui", "preview.png")] = "tracks/" + element.Name() + "/ui/preview.png"
+				zipMutex.Unlock()
+			} else {
+				zipMutex.Lock()
+				for _, outline := range []string{
+					filepath.Join(trackPath, "ui", candidate.config, "outline.png"),
+					filepath.Join(trackPath, candidate.config, "ui", "outline.png"),
+				} {
+					if _, err := os.Stat(outline); err == nil {
+						zipfiles[outline] = "tracks/" + element.Name() + "/" + candidate.config + "/outline.png"
 					}
 				}
-
-				zipMutex.Lock()
-				outline := filepath.Join(trackspath, element.Name(), "ui", config.Name(), "outline.png")
-				if _, err := os.Stat(outline); err == nil {
-					zipfiles[outline] = "tracks/" + element.Name() + "/" + config.Name() + "/outline.png"
-				}
-				preview := filepath.Join(trackspath, element.Name(), "ui", config.Name(), "preview.png")
-				if _, err := os.Stat(preview); err == nil {
-					zipfiles[preview] = "tracks/" + element.Name() + "/" + config.Name() + "/preview.png"
+				for _, preview := range []string{
+					filepath.Join(trackPath, "ui", candidate.config, "preview.png"),
+					filepath.Join(trackPath, candidate.config, "ui", "preview.png"),
+				} {
+					if _, err := os.Stat(preview); err == nil {
+						zipfiles[preview] = "tracks/" + element.Name() + "/" + candidate.config + "/preview.png"
+					}
 				}
 				zipMutex.Unlock()
-
-				track, err := parsejson(jsonpath, element.Name(), config.Name())
-				if err == nil {
-					contentPath := filepath.Join(trackspath, element.Name())
-					track.ContentPath, track.ModifiedAt = statContentMetadata(contentPath)
-					sliceMutex.Lock()
-					tracks = append(tracks, track)
-					sliceMutex.Unlock()
-				}
 			}
-		} else {
-			// track has no config / only one selection
-			zipMutex.Lock()
-			zipfiles[filepath.Join(trackspath, element.Name(), "ui", "outline.png")] = "tracks/" + element.Name() + "/ui/outline.png"
-			zipfiles[filepath.Join(trackspath, element.Name(), "ui", "preview.png")] = "tracks/" + element.Name() + "/ui/preview.png"
-			zipMutex.Unlock()
 
-			track, err := parsejson(jsonpath, element.Name(), "")
+			track, err := parseTrackJSON(candidate.path, element.Name(), candidate.config)
 			if err == nil {
-				contentPath := filepath.Join(trackspath, element.Name())
-				track.ContentPath, track.ModifiedAt = statContentMetadata(contentPath)
+				track.ContentPath, track.ModifiedAt = statContentMetadata(trackPath)
 				sliceMutex.Lock()
 				tracks = append(tracks, track)
 				sliceMutex.Unlock()
@@ -396,7 +479,7 @@ func parseCars(dba Dbaccess) map[string]string {
 		if err != nil {
 			return CacheCar{}, logError("Could not read car json file", jsonpath, err)
 		}
-		
+
 		jsonStr := stripBOM(string(jsonBytes))
 
 		data, err := jsonrepair.JSONRepair(jsonStr)
@@ -412,9 +495,9 @@ func parseCars(dba Dbaccess) map[string]string {
 
 		skinspath := filepath.Join(carspath, element.Name(), "skins")
 		skins, err := os.ReadDir(skinspath)
-		
+
 		var skinsMutex sync.Mutex
-		
+
 		if err == nil {
 			var wgSkins sync.WaitGroup
 			for _, skin := range skins {
@@ -430,7 +513,7 @@ func parseCars(dba Dbaccess) map[string]string {
 				go func(s fs.DirEntry) {
 					defer wgSkins.Done()
 					parsedSkin := parseSkin(s, skinspath)
-					
+
 					skinsMutex.Lock()
 					result.Skins = append(result.Skins, parsedSkin)
 					skinsMutex.Unlock()

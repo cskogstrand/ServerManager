@@ -785,6 +785,7 @@ func apiCarsList(c *gin.Context) {
 }
 
 func apiTracksList(c *gin.Context) {
+	syncMissingTrackLayouts(Dba)
 	tracks, err := Dba.selectCacheTracks()
 	if err != nil {
 		apiDbError(c, err)

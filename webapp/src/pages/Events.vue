@@ -15,6 +15,7 @@ import {
   type RaceSetupDraft,
 } from "@/lib/useRaceSetupDraft";
 import { useServerStore } from "@/stores/server";
+import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useAuthStore } from "@/stores/auth";
@@ -36,6 +37,7 @@ import Skeleton from "@/components/ui/Skeleton.vue";
 type LibrarySetup = RaceSetupDraft & { group_id: number; group_name: string };
 
 const server = useServerStore();
+const content = useContentStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
 const auth = useAuthStore();
@@ -62,6 +64,10 @@ const repeatingIds = computed(
 );
 function isRepeating(s: LibrarySetup): boolean {
   return s.id != null && repeatingIds.value.has(s.id);
+}
+
+function setupTrackVersion(s: LibrarySetup): string {
+  return content.trackByKey(s.track_key, s.track_config)?.version ?? "";
 }
 
 const filtered = computed(() => {
@@ -333,7 +339,7 @@ const duplicateGroup = () =>
 
 onMounted(() =>
   guard(async () => {
-    await Promise.all([loadAll(), server.load()]);
+    await Promise.all([loadAll(), server.load(), content.load()]);
     loading.value = false;
   }),
 );
@@ -442,7 +448,9 @@ onMounted(() =>
 
       <TrackImage :track-key="s.track_key" :config="s.track_config" class="mb-2 aspect-video w-full rounded-sm border border-line" />
       <div class="mb-2 flex items-center justify-between gap-2 text-xs">
-        <span class="min-w-0 truncate text-dim">{{ s.name ? s.track_name + " · " : "" }}{{ s.group_name }}</span>
+        <span class="min-w-0 truncate text-dim">
+          {{ s.name ? s.track_name + " · " : "" }}{{ s.group_name }}<span v-if="setupTrackVersion(s)"> · version {{ setupTrackVersion(s) }}</span>
+        </span>
         <span
           class="shrink-0 font-mono"
           :class="s.entries != null && s.pitboxes != null && s.entries > s.pitboxes ? 'text-warn' : 'text-muted'"

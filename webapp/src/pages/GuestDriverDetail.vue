@@ -85,6 +85,10 @@ const carImgOk = ref(true);
 watch(carImgUrl, () => {
   carImgOk.value = true;
 });
+const favouriteTrackVersion = computed(() => {
+  const t = guest.value?.favourite_track;
+  return t ? (content.trackByKey(t.key, t.config ?? "")?.version ?? "") : "";
+});
 
 const tileTints = [
   "linear-gradient(135deg, rgba(98,179,232,0.18), rgba(16,26,37,0.94))",
@@ -269,7 +273,9 @@ onBeforeUnmount(() => {
           />
           <div class="min-w-0 flex-1">
             <div class="truncate text-base font-bold text-text">{{ guest.favourite_track.name }}</div>
-            <div v-if="guest.favourite_track.country" class="truncate text-xs text-muted">{{ guest.favourite_track.country }}</div>
+            <div v-if="guest.favourite_track.country || favouriteTrackVersion" class="truncate text-xs text-muted">
+              {{ [guest.favourite_track.country, favouriteTrackVersion ? `version ${favouriteTrackVersion}` : ""].filter(Boolean).join(" · ") }}
+            </div>
             <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-raced layout</div>
           </div>
         </div>

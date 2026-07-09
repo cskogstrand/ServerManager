@@ -194,6 +194,7 @@ const activeTrack = computed(() => {
   if (s?.track) return {key: s.track, config: s.track_config ?? ""};
   return null;
 });
+const activeTrackVersion = computed(() => activeTrack.value ? (content.trackByKey(activeTrack.value.key, activeTrack.value.config)?.version ?? "") : "");
 
 function trackUrl(kind: "map" | "mapmeta", key: string, config: string): string {
   const cfg = config ? `/${encodeURIComponent(config)}` : "";
@@ -547,8 +548,8 @@ onBeforeUnmount(() => {
             {{ detail?.current_event?.track || activeTrack?.key || "—" }}
           </div>
           <div class="font-mono text-[11px] text-dim">
-            <span v-if="clock">{{ clock.ambient }}° air · {{ clock.road }}° track</span>
-            <span v-else>{{ activeTrack?.config || "default" }}</span>
+            <span v-if="clock">{{ clock.ambient }}° air · {{ clock.road }}° track<span v-if="activeTrackVersion"> · v{{ activeTrackVersion }}</span></span>
+            <span v-else>{{ activeTrack?.config || "default" }}<span v-if="activeTrackVersion"> · v{{ activeTrackVersion }}</span></span>
           </div>
         </div>
         <img

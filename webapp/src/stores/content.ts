@@ -97,6 +97,10 @@ export const useContentStore = defineStore("content", {
     carByKey(key: string | undefined | null): CacheCar | undefined {
       return key ? this.cars.find((c) => c.key === key) : undefined;
     },
+    trackByKey(key: string | undefined | null, config = ""): CacheTrack | undefined {
+      if (!key) return undefined;
+      return this.tracks.find((t) => t.key === key && (t.config ?? "") === config) ?? this.tracks.find((t) => t.key === key);
+    },
 
     // Delete content from disk + cache, then drop the local copy. The track key
     // covers every layout, so all matching rows leave the list.

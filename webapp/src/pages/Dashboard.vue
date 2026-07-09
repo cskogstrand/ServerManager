@@ -6,6 +6,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useServerStore, type InstanceState } from "@/stores/server";
+import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useAuthStore } from "@/stores/auth";
@@ -61,6 +62,7 @@ interface StatusPayload {
 }
 
 const server = useServerStore();
+const content = useContentStore();
 const toast = useToastStore();
 const confirm = useConfirmStore();
 const auth = useAuthStore();
@@ -128,6 +130,11 @@ function eventTitle(id: number): string {
   const ev = details.value[id]?.current_event;
   if (!ev?.id) return "";
   return ev.name || ev.track;
+}
+
+function currentEventTrackVersion(id: number): string {
+  const ev = details.value[id]?.current_event;
+  return ev ? (content.trackByKey(ev.track_key, ev.track_config ?? "")?.version ?? "") : "";
 }
 
 function publicIp(): string {
@@ -275,7 +282,7 @@ watch(
 );
 
 onMounted(async () => {
-  await server.load();
+  await Promise.all([server.load(), content.load()]);
   void driverStreams.loadStreams();
   await refreshAll();
   loading.value = false;
@@ -437,6 +444,7 @@ onMounted(async () => {
           <div class="truncate text-sm font-semibold">{{ eventTitle(inst.id) }}</div>
           <div class="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-dim">
             <span>{{ details[inst.id].current_event.class }}</span>
+            <span v-if="currentEventTrackVersion(inst.id)">· version {{ currentEventTrackVersion(inst.id) }}</span>
             <span>· {{ details[inst.id].current_event.session }}</span>
             <span>· {{ details[inst.id].current_event.time }}</span>
             <span v-if="details[inst.id].current_event.weather">· {{ details[inst.id].current_event.weather }}</span>

@@ -1230,6 +1230,10 @@ onBeforeUnmount(() => {
               <span class="text-dim">Layout</span>
               <span class="text-muted">{{ activeTrack.config || "default" }}</span>
             </div>
+            <div v-if="trackInfo?.version" class="flex items-center gap-1.5">
+              <span class="text-dim">Version</span>
+              <span class="text-muted">{{ trackInfo.version }}</span>
+            </div>
           </dl>
         </div>
 
@@ -1452,6 +1456,7 @@ onBeforeUnmount(() => {
               <p v-if="trackInfo?.city || trackInfo?.country" class="mt-0.5 truncate text-xs text-dim">
                 {{ [trackInfo?.city, trackInfo?.country].filter(Boolean).join(" · ") }}
               </p>
+              <p v-if="trackInfo?.version" class="mt-0.5 font-mono text-xs text-muted">version {{ trackInfo.version }}</p>
             </div>
 
             <dl class="grid overflow-hidden rounded-md border border-line bg-surface-2/35 sm:grid-cols-2">
@@ -1475,13 +1480,23 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r sm:border-b-0">
+              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3 sm:border-r">
                 <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
                   <Icon name="mapPin" :size="18" />
                 </div>
                 <div class="min-w-0">
                   <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Layout</dt>
                   <dd class="mt-1 break-words text-sm font-semibold text-text">{{ activeTrack.config || "default" }}</dd>
+                </div>
+              </div>
+
+              <div class="flex min-w-0 items-start gap-3 border-b border-line/60 p-3">
+                <div class="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-accent">
+                  <Icon name="info" :size="18" />
+                </div>
+                <div class="min-w-0">
+                  <dt class="text-[10px] font-bold tracking-wide text-dim uppercase">Version</dt>
+                  <dd class="mt-1 break-words font-mono text-sm font-semibold text-text">{{ trackInfo?.version || "—" }}</dd>
                 </div>
               </div>
 

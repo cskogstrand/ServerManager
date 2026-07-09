@@ -126,7 +126,7 @@ const filteredTracks = computed(() => {
   const rows = content.tracks.filter((t) => {
     if (trackCountry.value && t.country !== trackCountry.value) return false;
     if (minPitboxes.value !== null && (t.pitboxes ?? 0) < minPitboxes.value) return false;
-    return searchText([t.name, t.key, t.config, t.country, t.city, t.tags?.join(" ")]).includes(q);
+    return searchText([t.name, t.key, t.config, t.version, t.country, t.city, t.tags?.join(" ")]).includes(q);
   });
   return sortRows(rows, trackSortValue);
 });
@@ -261,6 +261,7 @@ const trackSpecRows = computed(() => {
   if (!t) return [];
   return [
     { label: "Layout", value: t.config || "default" },
+    { label: "Version", value: t.version || "—" },
     { label: "Length", value: trackLengthLabel(t) },
     { label: "Pit boxes", value: t.pitboxes ?? "—" },
     { label: "Width", value: t.width || "—" },
@@ -1069,7 +1070,7 @@ function jobMeta(job: ContentJob): string[] {
             <div class="p-2">
               <div class="truncate text-sm font-medium">{{ t.name }}</div>
               <div class="text-xs text-dim">
-                {{ t.config || "default" }} · {{ t.pitboxes }} pits<span v-if="formatDate(t.modified_at)"> · {{ formatDate(t.modified_at) }}</span>
+                {{ t.config || "default" }}<span v-if="t.version"> · version {{ t.version }}</span> · {{ t.pitboxes }} pits<span v-if="formatDate(t.modified_at)"> · {{ formatDate(t.modified_at) }}</span>
               </div>
             </div>
           </button>

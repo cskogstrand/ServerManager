@@ -7,6 +7,7 @@ import { computed, ref } from "vue";
 import { lapTime } from "@/lib/raceTelemetry";
 import { fmtScore, fmtDate, timeAgo, sessionKindLabel, describeResult } from "@/lib/driversApi";
 import { fmtClipDuration } from "@/lib/useDriverCapture";
+import { useContentStore } from "@/stores/content";
 import type { DriverSession, DriverResult, MediaItem } from "@/types/driverStats";
 import type { GuestDriver } from "@/lib/guestDriversApi";
 import Icon from "@/components/ui/Icon.vue";
@@ -31,7 +32,9 @@ const emit = defineEmits<{
   (e: "delete-session"): void;
 }>();
 
+const content = useContentStore();
 const isLive = computed(() => props.session.left_at === null);
+const sessionTrackVersion = computed(() => content.trackByKey(props.session.track.key, props.session.track.config ?? "")?.version ?? "");
 // Live sessions open by default — you want to watch them, not click into them.
 const expanded = ref((props.defaultOpen ?? false) || isLive.value);
 const newTag = ref("");
@@ -139,7 +142,9 @@ function submitTag() {
             >
               <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
             </span>
-            <span v-if="session.track.country" class="text-[11px] text-dim">{{ session.track.country }}</span>
+            <span v-if="session.track.country || sessionTrackVersion" class="text-[11px] text-dim">
+              {{ [session.track.country, sessionTrackVersion ? `version ${sessionTrackVersion}` : ""].filter(Boolean).join(" · ") }}
+            </span>
           </div>
           <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
             <span class="inline-flex items-center gap-1"><Icon name="car" :size="12" class="text-dim" /> {{ session.car.name }}</span>

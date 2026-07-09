@@ -84,6 +84,10 @@ const liveTrackName = computed(() => {
     content.tracks.find((x) => x.key === s.track);
   return t?.name || s.track;
 });
+const favouriteTrackVersion = computed(() => {
+  const t = driver.value?.favourite_track;
+  return t ? (content.trackByKey(t.key, t.config ?? "")?.version ?? "") : "";
+});
 
 // --- avatar upload (local preview until the backend persists it) -------------
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -671,7 +675,9 @@ async function removeSession(session: DriverSession) {
           />
           <div class="min-w-0 flex-1">
             <div class="truncate text-base font-bold text-text">{{ driver.favourite_track.name }}</div>
-            <div v-if="driver.favourite_track.country" class="truncate text-xs text-muted">{{ driver.favourite_track.country }}</div>
+            <div v-if="driver.favourite_track.country || favouriteTrackVersion" class="truncate text-xs text-muted">
+              {{ [driver.favourite_track.country, favouriteTrackVersion ? `version ${favouriteTrackVersion}` : ""].filter(Boolean).join(" · ") }}
+            </div>
             <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-raced layout</div>
           </div>
         </div>

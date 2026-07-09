@@ -5,7 +5,7 @@
 // the editor. Used by the Events library and the Setup Workbench (and reusable
 // anywhere else that edits a race setup). The host owns the surrounding
 // Sheet/inline layout, footer and save; this component is just the fields.
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api } from "@/lib/api";
 import { useContentStore } from "@/stores/content";
 import type { DropDownList } from "@/types/generated";
@@ -49,6 +49,7 @@ onMounted(() => {
 
 // --- Track picker ---
 const trackPickerOpen = ref(false);
+const selectedTrack = computed(() => content.trackByKey(draft.value.track_key, draft.value.track_config));
 async function openTrackPicker() {
   await content.load(true);
   trackPickerOpen.value = true;
@@ -125,7 +126,7 @@ async function runReview() {
           <template v-if="draft.track_key">
             {{ draft.track_name }}
             <span class="text-xs text-dim">
-              {{ draft.track_config || "default" }} · {{ draft.pitboxes }} pits — tap to change
+              {{ draft.track_config || "default" }}<span v-if="selectedTrack?.version"> · version {{ selectedTrack.version }}</span> · {{ draft.pitboxes }} pits — tap to change
             </span>
           </template>
           <span v-else class="text-muted">Choose a track…</span>

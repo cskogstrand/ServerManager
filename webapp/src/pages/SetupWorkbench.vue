@@ -11,6 +11,7 @@ import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useToastStore } from "@/stores/toast";
 import { useServerStore } from "@/stores/server";
+import { useContentStore } from "@/stores/content";
 import {
   useSetupSummary,
   SETUP_STEPS,
@@ -36,6 +37,7 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToastStore();
 const server = useServerStore();
+const content = useContentStore();
 const { summary, loading, reload } = useSetupSummary();
 
 const STEP_META: Record<SetupStep, { label: string; icon: string }> = {
@@ -139,7 +141,7 @@ async function loadConfig() {
 }
 
 onMounted(async () => {
-  await Promise.all([reload(), loadConfig(), server.load()]);
+  await Promise.all([reload(), loadConfig(), server.load(), content.load()]);
   // URL wins on resume; otherwise land on the first incomplete step.
   if (!route.query.step) step.value = firstIncompleteStep(summary.value);
   runInstanceId.value = summary.value?.instances[0]?.id ?? null;
@@ -153,7 +155,7 @@ watch(summary, (s) => {
 });
 
 async function refresh() {
-  await Promise.all([reload(), server.load()]);
+  await Promise.all([reload(), server.load(), content.load(true)]);
 }
 
 const steps = computed(() =>
@@ -308,6 +310,7 @@ const runNow = () =>
 // --- "What will run" summary ---
 const runInstance = computed(() => summary.value?.instances.find((i) => i.id === runInstanceId.value) ?? null);
 const serverName = computed(() => config.value?.name?.trim() || runInstance.value?.name || "Unnamed server");
+const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_key, draft.value.track_config)?.version ?? "");
 </script>
 
 <template>
@@ -587,7 +590,9 @@ const serverName = computed(() => config.value?.name?.trim() || runInstance.valu
           </div>
           <div>
             <dt class="text-xs text-dim">Track</dt>
-            <dd class="truncate">{{ draft.track_name || "—" }}</dd>
+            <dd class="truncate">
+              {{ draft.track_name || "—" }}<span v-if="draftTrackVersion"> · version {{ draftTrackVersion }}</span>
+            </dd>
           </div>
           <div>
             <dt class="text-xs text-dim">Cars</dt>

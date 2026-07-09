@@ -24,7 +24,7 @@ const search = ref("");
 
 const filtered = computed(() =>
   content.tracks.filter((t) =>
-    (t.name ?? t.key ?? "").toLowerCase().includes(search.value.toLowerCase()),
+    `${t.name ?? ""} ${t.key ?? ""} ${t.config ?? ""} ${t.version ?? ""}`.toLowerCase().includes(search.value.toLowerCase()),
   ),
 );
 
@@ -60,7 +60,9 @@ function isSelected(t: { key?: string; config?: string }) {
         />
         <div class="p-2">
           <div class="truncate text-sm font-medium">{{ t.name }}</div>
-          <div class="text-xs text-dim">{{ t.config || "default" }} · {{ t.pitboxes }} pits</div>
+          <div class="text-xs text-dim">
+            {{ t.config || "default" }}<span v-if="t.version"> · version {{ t.version }}</span> · {{ t.pitboxes }} pits
+          </div>
         </div>
       </button>
     </div>

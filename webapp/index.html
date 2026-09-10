@@ -7,7 +7,9 @@
     <title>Server Manager</title>
     <script>
       // Set theme before paint to avoid a flash. Dark is the default.
-      document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+      let theme = "dark";
+      try { if (localStorage.getItem("theme") === "light") theme = "light"; } catch {}
+      document.documentElement.dataset.theme = theme;
     </script>
   </head>
   <body>

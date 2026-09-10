@@ -381,7 +381,7 @@ watch(
       v-for="inst in server.instanceList"
       :key="inst.id"
       type="button"
-      class="flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors"
+      class="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-4 text-sm font-medium transition-colors"
       :class="
         inst.id === instanceId
           ? 'border-accent/45 bg-accent-dim text-accent'
@@ -546,7 +546,7 @@ watch(
       />
     </Card>
 
-    <Card v-if="auth.canOperate" title="Add to queue">
+    <Card v-if="auth.canOperate" title="Plan the next race" class="paddock-plan">
       <Button class="mb-4 w-full" @click="openNewSetup">
         <Icon name="plus" :size="15" />
         New race setup
@@ -617,7 +617,7 @@ watch(
         id="sched"
         v-model="scheduleValue"
         type="datetime-local"
-        class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-text outline-none focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+        class="min-h-11 w-full rounded-md border border-control bg-input px-3 text-sm text-text outline-none focus:border-accent focus:bg-input focus:ring-2 focus:ring-accent/20"
       />
     </FormRow>
     <template #footer>

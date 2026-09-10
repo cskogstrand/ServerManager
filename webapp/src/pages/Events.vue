@@ -368,8 +368,8 @@ onMounted(loadLibrary);
 
 <template>
   <PageHeader
-    title="Race Setups"
-    subtitle="Every runnable race setup — a track plus presets — in one library. Queue, start, or repeat any of them."
+    title="Race setups"
+    subtitle="A good race starts here. Build your next session from the setups you already love."
     icon="events"
   >
     <template #actions>
@@ -380,8 +380,10 @@ onMounted(loadLibrary);
     </template>
   </PageHeader>
 
+  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events" aria-current="page">Race setups</RouterLink><RouterLink v-if="auth.canOperate" to="/presets">Templates</RouterLink><RouterLink :to="server.selectedInstanceId ? `/queue?instance=${server.selectedInstanceId}` : '/queue'">Run plan</RouterLink></nav>
+
   <!-- Toolbar -->
-  <div class="mb-4 flex flex-wrap items-center gap-2">
+  <div class="paddock-toolbar mb-6 flex flex-wrap items-center gap-3">
     <div class="relative min-w-48 flex-1">
       <Icon name="search" :size="15" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
       <Input v-model="search" aria-label="Search race setups" placeholder="Search setups…" class="!pl-8" />
@@ -449,7 +451,7 @@ onMounted(loadLibrary);
     <Skeleton v-for="n in 6" :key="n" class="h-64" />
   </div>
 
-  <div v-else-if="filtered.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  <div v-else-if="filtered.length" class="setup-library grid gap-5 md:grid-cols-2 xl:grid-cols-3">
     <Card v-for="s in filtered" :key="s.id ?? 0">
       <template #header>
         <Icon name="events" :size="16" class="text-accent" />
@@ -469,7 +471,7 @@ onMounted(loadLibrary);
         </label>
       </template>
 
-      <TrackImage :track-key="s.track_key" :config="s.track_config" class="mb-2 aspect-video w-full rounded-sm border border-line" />
+      <TrackImage variant="map" :track-key="s.track_key" :config="s.track_config" class="mb-4 h-40 w-full rounded-sm" />
       <div class="mb-2 flex items-center justify-between gap-2 text-xs">
         <span class="min-w-0 truncate text-dim">
           {{ s.name ? s.track_name + " · " : "" }}{{ s.group_name }}<span v-if="setupTrackVersion(s)"> · version {{ setupTrackVersion(s) }}</span>

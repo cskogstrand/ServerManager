@@ -91,9 +91,9 @@ const favouriteTrackVersion = computed(() => {
 });
 
 const tileTints = [
-  "linear-gradient(135deg, rgba(98,179,232,0.18), rgba(16,26,37,0.94))",
-  "linear-gradient(135deg, rgba(150,140,232,0.16), rgba(16,26,37,0.94))",
-  "linear-gradient(135deg, rgba(96,202,202,0.16), rgba(16,26,37,0.94))",
+  "var(--color-art-sage)",
+  "var(--color-art-sand)",
+  "var(--color-art-mist)",
 ];
 const tileStyle = (i: number) => ({ background: tileTints[i % tileTints.length] });
 
@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .hero {
   background:
-    radial-gradient(130% 150% at 0% 0%, rgba(98, 179, 232, 0.12), transparent 55%),
+    radial-gradient(130% 150% at 0% 0%, var(--color-accent-glow), transparent 55%),
     linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
 }
 .hero-grid {
@@ -429,8 +429,8 @@ onBeforeUnmount(() => {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(53, 80, 106, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 80, 106, 0.18) 1px, transparent 1px);
+    linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: radial-gradient(120% 120% at 100% 0%, #000 0%, transparent 70%);
 }

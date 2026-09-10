@@ -56,7 +56,7 @@ watch([active, open, filtered], async () => {
       :aria-label="ariaLabel" :aria-labelledby="ariaLabel ? undefined : field?.labelId"
       :aria-describedby="field?.describedBy.value" :aria-invalid="field?.invalid.value || undefined"
       :value="open ? query : selectedLabel" :placeholder="placeholder ?? 'Search…'" autocomplete="off"
-      class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-3 pr-8 text-sm text-text placeholder:text-muted hover:border-accent focus:border-accent"
+      class="min-h-11 w-full rounded-md border border-control bg-input px-3 pr-8 text-sm text-text placeholder:text-muted hover:border-accent focus:border-accent"
       @focus="openList" @click="!open && openList()"
       @input="query = ($event.target as HTMLInputElement).value; open = true; active = 0"
       @keydown="onKeydown" @blur="closeList"

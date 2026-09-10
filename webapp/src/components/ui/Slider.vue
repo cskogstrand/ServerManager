@@ -54,7 +54,7 @@ function setValue(raw: string) {
         :max="max"
         :step="step"
         :value="model ?? ''"
-        class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-2 text-sm text-text outline-none transition-colors duration-200 hover:border-line-hi focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+        class="min-h-11 w-full rounded-md border border-control bg-input px-2 text-sm text-text outline-none transition-colors duration-200 hover:border-line-hi focus:border-accent focus:bg-input focus:ring-2 focus:ring-accent/20"
         @input="setValue(($event.target as HTMLInputElement).value)"
       />
       <span v-if="suffix" class="w-8 shrink-0 text-xs text-dim">{{ suffix }}</span>

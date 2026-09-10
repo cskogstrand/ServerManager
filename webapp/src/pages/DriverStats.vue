@@ -378,11 +378,11 @@ onMounted(load);
 }
 @keyframes ping-soft {
   0% {
-    box-shadow: 0 0 0 0 rgba(79, 216, 132, 0.5);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 40%, transparent);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 5px rgba(79, 216, 132, 0);
+    box-shadow: 0 0 0 5px transparent;
   }
 }
 .live-dot {

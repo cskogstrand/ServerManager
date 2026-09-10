@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Server Manager — Three design directions</title>
+  <style>
+    :root { color-scheme:light; --paper:#f3f2ed; --ink:#222620; --muted:#62665e; --hair:#d8dbd2; --mono:ui-monospace,"SFMono-Regular",Consolas,monospace; --sans:Inter,"Helvetica Neue",Arial,sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:14px; -webkit-font-smoothing:antialiased; }
+    button,input,select { font:inherit; } button,a,input,select { -webkit-tap-highlight-color:transparent; }
+    button,a { touch-action:manipulation; } button { cursor:pointer; } button { transition:background .18s,color .18s,border-color .18s; }
+    a { color:inherit; text-decoration:none; } button:disabled { cursor:default; opacity:.4; }
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid #41938d; outline-offset:4px; }
+    [hidden] { display:none!important; } h1,h2,h3,h4,p { margin:0; } h1,h2,h3,h4 { font-weight:600; }
+    svg { display:block; } .icon { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .skip { position:fixed; top:-100px; left:12px; padding:14px; background:white; color:#222; z-index:20; } .skip:focus { top:12px; }
+    .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; } .eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:1.7px; text-transform:uppercase; line-height:1.6; }
+    .muted { color:var(--sub); } .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+    .flex { display:flex; align-items:center; gap:10px; } .between { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    .studio { max-width:1600px; margin:auto; padding:25px 40px 0; }
+    .masthead { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--hair); padding-bottom:22px; gap:15px; }
+    .studio-brand { display:flex; align-items:center; gap:11px; font-size:13px; font-weight:700; letter-spacing:-.2px; }
+    .brandmark { display:flex; gap:3px; transform:skew(-16deg); } .brandmark i { display:block; width:7px; height:22px; background:currentColor; } .brandmark i:last-child { height:15px; margin-top:7px; opacity:.5; }
+    .masthead .eyebrow { color:var(--muted); font-size:9px; }
+    .intro { display:grid; grid-template-columns:1.25fr 1fr; gap:50px; align-items:end; padding:27px 0 25px; }
+    .intro h1 { font-size:clamp(27px,3vw,42px); font-weight:500; letter-spacing:-1.8px; line-height:1.15; }
+    .intro h1 span { color:#72766c; }
+    .intro p { max-width:480px; font-size:13px; line-height:1.7; color:var(--muted); }
+    .direction-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding-bottom:22px; }
+    .direction { display:flex; align-items:center; gap:14px; min-height:70px; text-align:left; border:1px solid var(--hair); border-radius:7px; padding:12px 17px; color:#3d4239; background:transparent; }
+    .direction:hover { border-color:#939b89; background:#e9eae3; } .direction[aria-selected=true] { background:#e6eadf; border-color:#829170; }
+    .direction-number { font-family:var(--mono); font-size:12px; color:#737b69; } .direction strong { display:block; font-size:14px; font-weight:600; margin-bottom:5px; }
+    .direction small { display:block; font-size:11px; color:#626b59; } .direction .swatch { width:24px; height:24px; border-radius:50%; margin-left:auto; flex:none; border:4px solid #d4ef91; background:#181d20; }
+    .direction:nth-child(2) .swatch { border-color:#e8e0ce; background:#41766c; } .direction:nth-child(3) .swatch { border-color:#252724; background:#d4ff3f; }
+    .sample-label { display:flex; justify-content:space-between; padding:0 3px 10px; color:#656c5e; font-size:9px; }
+    .sample-label span { letter-spacing:1px; }
+    .concept { --sub:#9ca6a6; --line:#30383b; border:1px solid #333a3b; border-radius:9px; overflow:hidden; box-shadow:0 18px 45px #202d2110; }
+    .app-shell { display:grid; grid-template-columns:186px minmax(0,1fr); min-height:690px; }
+    .app-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:14px; letter-spacing:-.3px; }
+    .app-brand small { display:block; color:var(--sub); font-size:9px; font-weight:400; margin-top:5px; letter-spacing:1px; text-transform:uppercase; }
+    .sidebar { display:flex; flex-direction:column; padding:26px 16px 18px; border-right:1px solid var(--line); }
+    .sidebar .app-brand { margin:0 5px 35px; } .sidebar .brandmark { color:#d1eb91; }
+    .nav-label { font:9px var(--mono); text-transform:uppercase; letter-spacing:1.4px; color:var(--sub); margin:0 10px 12px; }
+    .nav-group { display:grid; gap:4px; margin-bottom:26px; }
+    .nav-item { border:0; display:flex; align-items:center; gap:11px; padding:0 11px; height:42px; border-radius:5px; background:transparent; color:var(--sub); text-align:left; font-size:11px; }
+    .nav-item:hover { color:#eef2ee; background:#262d30; } .nav-item.active { background:#29322c; color:#d2ed99; }
+    .nav-item .count { font:10px var(--mono); margin-left:auto; }
+    .sidebar-bottom { margin-top:auto; } .health { margin:12px 7px 18px; font-size:10px; color:#acbaa9; display:flex; gap:7px; align-items:center; }
+    .account { border-top:1px solid var(--line); padding:18px 4px 0; display:flex; align-items:center; gap:10px; font-size:11px; }
+    .avatar { width:29px; height:29px; display:grid; place-items:center; background:#353d37; color:#d2dacb; border-radius:50%; font-size:9px; flex:none; }
+    .account small { display:block; font-size:9px; margin-top:4px; color:var(--sub); }
+    .app-main { min-width:0; } .topbar { display:flex; justify-content:space-between; gap:15px; align-items:center; min-height:65px; border-bottom:1px solid var(--line); padding:0 28px; font-size:10px; }
+    .breadcrumb { color:var(--sub); } .breadcrumb span { margin:0 10px; opacity:.5; } .breadcrumb strong { color:#e4e9e7; font-weight:500; }
+    .connection { display:flex; align-items:center; gap:7px; font-size:9px; color:#b6c4b9; }
+    .app-content { padding:26px 28px; }
+    .page-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:23px; }
+    .page-heading h2 { font-size:28px; line-height:1.2; letter-spacing:-1px; } .page-heading p { font-size:11px; color:var(--sub); margin-top:9px; line-height:1.6; }
+    .button { min-height:39px; display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:0 15px; background:transparent; border:1px solid var(--line); border-radius:5px; color:inherit; font-size:11px; font-weight:600; white-space:nowrap; }
+    .button:hover { background:#ffffff0a; border-color:#697566; } .button.primary { background:#d1eb91; border-color:#d1eb91; color:#24311a; } .button.primary:hover { background:#e2f8b1; }
+    .button .icon { width:14px; height:14px; } .text-button { background:transparent; border:0; padding:11px 0; display:inline-flex; align-items:center; gap:7px; color:inherit; font-size:10px; }
+    .text-button:hover { text-decoration:underline; } .text-button .icon { width:13px; height:13px; }
+    .pill { display:inline-flex; align-items:center; gap:6px; border-radius:4px; padding:5px 7px; font:9px var(--mono); white-space:nowrap; }
+    .pill.live { color:#d1eb91; background:#d1eb9112; } .pill.ready { color:#b7c0c1; background:#ffffff08; }
+    .pitwall { color-scheme:dark; color:#edf0ed; background:#191f22; }
+    .pitwall .sidebar { background:#161c1e; }
+    .server-strip { display:grid; grid-template-columns:1fr 1fr auto; gap:10px; margin-bottom:20px; }
+    .server-switch { min-width:0; display:flex; align-items:center; gap:10px; padding:14px; text-align:left; color:#b3bdbc; border:1px solid var(--line); background:#1c2325; border-radius:6px; }
+    .server-switch[aria-pressed=true] { border-color:#94ab6d; background:#252f27; color:#e7efdf; } .server-switch:hover { border-color:#849476; }
+    .server-switch strong { display:block; font-weight:500; font-size:11px; } .server-switch small { display:block; font-size:9px; margin-top:6px; color:var(--sub); } .server-switch .pill { margin-left:auto; }
+    .occupancy { min-width:94px; padding:10px 5px 10px 15px; border-left:1px solid var(--line); } .occupancy strong { font:27px var(--mono); } .occupancy span { display:block; font-size:9px; color:var(--sub); margin-top:5px; }
+    .race-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(200px,1fr); gap:17px; }
+    .panel { background:#1d2427; border:1px solid var(--line); border-radius:6px; min-width:0; }
+    .session-hero { display:grid; grid-template-columns:1.1fr .9fr; min-height:205px; overflow:hidden; padding:20px; position:relative; background:radial-gradient(ellipse at 95% 20%,#343e2b,transparent 65%),#22292a; }
+    .session-hero .eyebrow { color:#b7c49f; font-size:9px; letter-spacing:1.1px; }
+    .session-hero h3 { font-size:31px; font-weight:500; letter-spacing:-1px; margin:10px 0 6px; } .session-hero p { color:#b8c2bc; font-size:10px; line-height:1.5; }
+    .session-clock { margin-top:22px; display:flex; align-items:baseline; gap:9px; } .session-clock strong { font:27px var(--mono); letter-spacing:-1.5px; } .session-clock span { font:9px var(--mono); color:#b8c2bc; }
+    .circuit { width:100%; height:100%; min-height:125px; overflow:visible; color:#d7e7b4; }
+    .map-wrap { align-self:center; min-width:0; } .map-caption { color:#adb9a5; font:8px var(--mono); text-align:center; letter-spacing:1px; margin-top:-8px; }
+    .session-meta { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line); padding:14px 18px; gap:14px; }
+    .session-meta small { display:block; color:var(--sub); font-size:9px; margin-bottom:5px; } .session-meta strong { font-size:11px; font-weight:500; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:17px 18px; } .panel-head h3 { font-size:12px; font-weight:500; }
+    .panel-head .eyebrow { color:var(--sub); font-size:8px; letter-spacing:.8px; }
+    .timing { margin-top:16px; } .table-wrap { overflow:auto; } table { border-collapse:collapse; width:100%; text-align:left; font-size:10px; }
+    th { font-size:8px; color:var(--sub); font-weight:400; padding:10px 14px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); letter-spacing:.6px; text-transform:uppercase; }
+    td { padding:12px 14px; border-bottom:1px solid var(--line); white-space:nowrap; } tr:last-child td { border:0; } td:first-child { color:var(--sub); } th:last-child,td:last-child { text-align:right; }
+    td small { color:var(--sub); display:block; margin-top:5px; font-size:8px; } .best { color:#d4b3f3; } .driver-cell { display:flex; align-items:center; gap:9px; }
+    .driver-color { display:block; width:3px; height:22px; background:#d1eb91; border-radius:2px; } tr:nth-child(2) .driver-color { background:#9fb8d5; } tr:nth-child(3) .driver-color { background:#e4ae88; }
+    .plan-list { padding:0 17px; list-style:none; margin:0; } .plan-list li { display:grid; grid-template-columns:22px 1fr auto; gap:9px; align-items:start; padding:17px 0; border-bottom:1px solid var(--line); } .plan-list li:last-child { border:0; }
+    .plan-number { font:10px var(--mono); color:#9aa79e; margin-top:3px; } .plan-list h4 { font-size:11px; margin-bottom:7px; font-weight:500; } .plan-list p { font-size:9px; color:var(--sub); line-height:1.6; }
+    .plan-list .eyebrow { font-size:8px; color:#d1eb91; margin-bottom:7px; letter-spacing:.8px; } .tiny-button { width:28px; height:30px; background:transparent; border:1px solid var(--line); border-radius:4px; color:var(--sub); display:grid; place-items:center; } .tiny-button:hover { color:inherit; border-color:#859877; } .tiny-button .icon { width:12px; height:12px; }
+    .panel-footer { border-top:1px solid var(--line); padding:6px 17px; color:#cde496; } .activity { margin-top:16px; padding:17px; } .activity h3 { font-size:12px; font-weight:500; margin-bottom:17px; }
+    .activity-line { display:flex; align-items:flex-start; gap:9px; font-size:9px; color:#b8c1bf; margin-top:14px; line-height:1.6; } .activity-line .dot { margin-top:5px; color:#c9df9a; width:4px; height:4px; } .activity-line small { color:#939f9d; display:block; font:8px var(--mono); margin-top:4px; }
+    .preview-footer { padding:14px 28px; border-top:1px solid var(--line); color:var(--sub); font:8px var(--mono); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .reason { display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:38px; padding:25px 3px 32px; }
+    .reason h2 { font-size:17px; letter-spacing:-.4px; font-weight:500; line-height:1.5; } .reason h2 span { display:block; font:9px var(--mono); text-transform:uppercase; letter-spacing:1px; color:#617344; margin-bottom:8px; }
+    .reason h3 { font-size:11px; margin-bottom:8px; } .reason p { color:var(--muted); font-size:11px; line-height:1.8; }
+    .page-footer { border-top:1px solid var(--hair); padding:19px 0 25px; display:flex; justify-content:space-between; gap:20px; font:9px var(--mono); color:#656c5e; }
+
+    /* 02 — Paddock: a warm, spacious planning workspace. */
+    .paddock { color-scheme:light; --sub:#737b73; --line:#e0e4dc; color:#26392f; background:#f7f8f4; border-color:#d4dbcf; }
+    .paddock .app-shell { grid-template-columns:72px minmax(0,1fr); }
+    .paddock .sidebar { padding:26px 12px 18px; background:#edf1e9; align-items:center; }
+    .paddock .sidebar .brandmark { color:#315e4c; margin-bottom:35px; } .paddock .nav-group { width:100%; gap:12px; }
+    .paddock .nav-item { padding:0; justify-content:center; height:43px; color:#667960; } .paddock .nav-item.active { background:#dce6d6; color:#315e4c; } .paddock .nav-item:hover { background:#dce6d6; }
+    .paddock .avatar { color:#466344; background:#dce6d6; margin-top:auto; }
+    .paddock .topbar { min-height:69px; padding:0 34px; background:#ffffff94; }
+    .workspace-name { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; } .workspace-name span { font:9px var(--mono); padding:5px 6px; border:1px solid var(--line); border-radius:4px; color:#687461; }
+    .paddock .connection { color:#52764f; } .paddock .app-content { padding:28px 34px; } .paddock .page-heading { margin-bottom:24px; } .paddock h2 { font-size:31px; letter-spacing:-1px; font-weight:500; }
+    .paddock .button.primary { background:#355f4f; border-color:#355f4f; color:white; } .paddock .button.primary:hover { background:#234b3c; } .paddock .button:hover { background:#e7eee3; }
+    .paddock .button.primary .icon { color:#d1e3d7; }
+    .workspace-tabs { display:flex; gap:28px; border-bottom:1px solid var(--line); margin-bottom:25px; align-items:center; }
+    .workspace-tabs span,.workspace-tabs button { font-size:11px; color:#707b6d; padding:0 0 13px; background:transparent; border:0; min-height:34px; } .workspace-tabs span { color:#2d5846; border-bottom:2px solid #47755d; font-weight:600; }
+    .workspace-tabs small { margin-left:auto; color:#7a8276; font:9px var(--mono); padding-bottom:13px; }
+    .paddock-grid { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(235px,1fr); gap:27px; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:10px; } .section-title h3 { font-size:13px; font-weight:600; } .section-title small { font:9px var(--mono); color:var(--sub); }
+    .template-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:24px; }
+    .template { min-width:0; padding:0; text-align:left; background:white; border:1px solid var(--line); border-radius:7px; overflow:hidden; color:inherit; } .template:hover { border-color:#91a68a; } .template[aria-pressed=true] { border-color:#648864; box-shadow:0 0 0 1px #648864; }
+    .template-art { height:81px; position:relative; overflow:hidden; background:#e4e9dc; display:grid; place-items:center; } .template:nth-child(2) .template-art { background:#ebe5dc; } .template:nth-child(3) .template-art { background:#e2e9ea; }
+    .template-art svg { width:80%; height:78px; color:#8d9f73; } .template:nth-child(2) .template-art svg { color:#bca488; transform:rotate(24deg); } .template:nth-child(3) .template-art svg { color:#819ca6; transform:rotate(-16deg); }
+    .template-code { position:absolute; top:10px; left:11px; font:8px var(--mono); color:#506846; } .template:nth-child(2) .template-code { color:#705c45; } .template:nth-child(3) .template-code { color:#456674; }
+    .template-copy { padding:12px 10px; } .template-copy strong { display:block; font-size:11px; font-weight:600; } .template-copy small { display:block; font-size:8px; color:var(--sub); margin-top:6px; }
+    .builder { background:#fff; border:1px solid var(--line); border-radius:8px; padding:20px; }
+    .builder-heading { margin-bottom:20px; } .builder-heading h3 { font-size:13px; font-weight:600; } .builder-heading span { font:8px var(--mono); color:#587951; background:#edf4e9; padding:5px 7px; border-radius:4px; }
+    .fields { display:grid; grid-template-columns:1fr 1fr; gap:17px 13px; } .field.wide { grid-column:1/-1; } label { display:block; font-size:10px; font-weight:500; margin-bottom:7px; }
+    input,select { width:100%; min-height:40px; border:1px solid #c9d2c5; border-radius:5px; background:#fbfcf9; color:#2d4434; padding:9px 11px; font-size:11px; }
+    .preset-summary { margin-top:20px; padding-top:15px; border-top:1px dashed var(--line); display:flex; gap:8px; flex-wrap:wrap; color:#66765d; font-size:9px; } .preset-summary span { background:#f3f6ef; padding:6px 8px; border-radius:4px; }
+    .builder-actions { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px; } .builder-actions p { max-width:180px; font-size:9px; line-height:1.6; color:var(--sub); }
+    .evening { background:#edf2e7; border:1px solid #dbe4d2; border-radius:8px; padding:21px; } .evening .eyebrow { font-size:8px; color:#677c59; } .evening h3 { font-size:22px; font-weight:500; letter-spacing:-.6px; margin:9px 0 8px; } .evening>p { font-size:10px; color:#6d7c63; }
+    .paddock .pill { background:#e0ead5; color:#4e7043; } .evening-status { display:flex; gap:7px; align-items:center; font-size:9px; color:#567345; margin-top:17px; padding-top:17px; border-top:1px solid #d6dfcc; }
+    .evening-list { margin:0; padding:5px 0 0; list-style:none; } .evening-list li { display:grid; grid-template-columns:22px 1fr; gap:8px; margin-top:20px; position:relative; } .evening-list li:not(:last-child):before { content:""; position:absolute; left:9px; top:25px; bottom:-14px; border-left:1px solid #cbd6c2; }
+    .evening-list .step { width:20px; height:20px; border:1px solid #b8c8ac; display:grid; place-items:center; border-radius:50%; font:9px var(--mono); color:#617b50; background:#edf2e7; } .evening-list li:first-child .step { background:#426d4e; color:white; border-color:#426d4e; }
+    .evening-list strong { font-size:11px; font-weight:600; display:block; margin:3px 0 6px; } .evening-list p { font-size:9px; color:#6b7e5d; line-height:1.7; }
+    .plan-summary { border-top:1px solid #d6dfcc; margin-top:23px; padding-top:16px; display:flex; justify-content:space-between; font-size:9px; color:#637656; }
+    .quiet-card { margin-top:17px; padding:18px; border:1px solid var(--line); border-radius:7px; } .quiet-card h3 { font-size:12px; margin-bottom:8px; } .quiet-card p { font-size:10px; color:var(--sub); line-height:1.8; } .quiet-card .text-button { color:#355f4f; }
+
+    .paddock-tools { display:flex; align-items:center; gap:22px; }
+    .theme-switch { display:flex; gap:3px; padding:3px; border:1px solid var(--line); border-radius:6px; background:#edf1e9; }
+    .theme-switch button { min-height:32px; min-width:50px; padding:0 11px; border:0; border-radius:3px; background:transparent; color:#52664f; font-size:10px; }
+    .theme-switch button:hover { background:#e0e8da; }
+    .theme-switch button[aria-pressed=true] { background:#fff; color:#294d3a; box-shadow:0 1px 4px #15291412; }
+    .paddock[data-theme=dark],dialog[data-theme=dark],.notice[data-theme=dark] { color-scheme:dark; --sub:#a8b8aa; --line:#3b4b40; --p-surface:#1f2a23; --p-raised:#293a2e; --p-accent:#afd1b3; color:#e7eee5; }
+    .paddock[data-theme=dark] { background:#151e19; border-color:#3b4b40; }
+    .paddock[data-theme=dark] .sidebar { background:#1a251e; }
+    .paddock[data-theme=dark] .sidebar .brandmark { color:var(--p-accent); }
+    .paddock[data-theme=dark] .nav-item { color:#afbeae; }
+    .paddock[data-theme=dark] .nav-item.active,.paddock[data-theme=dark] .nav-item:hover,.paddock[data-theme=dark] .avatar { background:var(--p-raised); color:#c8e4bb; }
+    .paddock[data-theme=dark] .topbar { background:#19231d; }
+    .paddock[data-theme=dark] .workspace-name span,.paddock[data-theme=dark] .workspace-tabs button,.paddock[data-theme=dark] .workspace-tabs small { color:var(--sub); }
+    .paddock[data-theme=dark] .connection { color:#b5d4ad; }
+    .paddock[data-theme=dark] .workspace-tabs span { color:#bfdbb7; border-color:#a9c99a; }
+    .paddock[data-theme=dark] .button.primary { background:var(--p-accent); border-color:var(--p-accent); color:#1d3424; }
+    .paddock[data-theme=dark] .button.primary:hover { background:#c1dfc3; border-color:#c1dfc3; }
+    .paddock[data-theme=dark] .button.primary .icon { color:inherit; }
+    .paddock[data-theme=dark] .template,.paddock[data-theme=dark] .builder { background:var(--p-surface); }
+    .paddock[data-theme=dark] .template:hover { border-color:#a7c490; }
+    .paddock[data-theme=dark] .template[aria-pressed=true] { border-color:#a7c490; box-shadow:0 0 0 1px #a7c490; }
+    .paddock[data-theme=dark] .template-art { background:#2b392b; }
+    .paddock[data-theme=dark] .template-art svg { color:#bbce94; }
+    .paddock[data-theme=dark] .template-code { color:#c8d4b5; }
+    .paddock[data-theme=dark] .template:nth-child(2) .template-art { background:#39362b; }
+    .paddock[data-theme=dark] .template:nth-child(2) .template-art svg { color:#d1bc98; }
+    .paddock[data-theme=dark] .template:nth-child(2) .template-code { color:#dacbb0; }
+    .paddock[data-theme=dark] .template:nth-child(3) .template-art { background:#293a3b; }
+    .paddock[data-theme=dark] .template:nth-child(3) .template-art svg { color:#a9c9cf; }
+    .paddock[data-theme=dark] .template:nth-child(3) .template-code { color:#c0d6d9; }
+    .paddock[data-theme=dark] .builder-heading span,.paddock[data-theme=dark] .preset-summary span { background:#2a3a2c; color:#c1d4b6; }
+    .paddock[data-theme=dark] input,.paddock[data-theme=dark] select { background:#17231b; border-color:#738575; color:#e5eee0; }
+    .paddock[data-theme=dark] .evening { background:#233427; border-color:#455b42; }
+    .paddock[data-theme=dark] .evening .eyebrow,.paddock[data-theme=dark] .evening>p,.paddock[data-theme=dark] .evening-list p,.paddock[data-theme=dark] .plan-summary { color:#b6c7aa; }
+    .paddock[data-theme=dark] .pill { background:#33492d; color:#d0e2b6; }
+    .paddock[data-theme=dark] .evening-status { color:#c0dcaa; border-color:#455b42; }
+    .paddock[data-theme=dark] .evening-list li:not(:last-child):before { border-color:#637e55; }
+    .paddock[data-theme=dark] .evening-list .step { background:#233427; border-color:#7b936c; color:#cadfb4; }
+    .paddock[data-theme=dark] .evening-list li:first-child .step { background:#bed5a9; border-color:#bed5a9; color:#263a20; }
+    .paddock[data-theme=dark] .plan-summary { border-color:#455b42; }
+    .paddock[data-theme=dark] .quiet-card { background:#1a251e; }
+    .paddock[data-theme=dark] .quiet-card .text-button { color:#c0dcb3; }
+    .paddock[data-theme=dark] .theme-switch { background:#101b14; }
+    .paddock[data-theme=dark] .theme-switch button { color:#b5c5b2; }
+    .paddock[data-theme=dark] .theme-switch button:hover { background:#293a2e; }
+    .paddock[data-theme=dark] .theme-switch button[aria-pressed=true] { background:#344a37; color:#d6e9c7; box-shadow:none; }
+    .paddock[data-theme=dark] :focus-visible,dialog[data-theme=dark] :focus-visible { outline-color:#c0dbaa; }
+
+    /* 03 — Apex: a graphic identity built around the race. */
+    .apex { color-scheme:dark; --line:#363b32; --sub:#acb1a4; color:#f2f4eb; background:#1b1e18; border-color:#30362c; border-radius:3px; }
+    .apex-nav { display:flex; align-items:center; justify-content:space-between; gap:25px; min-height:77px; padding:0 31px; border-bottom:1px solid var(--line); }
+    .apex-brand { font-size:22px; font-weight:900; font-style:italic; letter-spacing:-1px; display:flex; gap:13px; align-items:center; } .apex-brand .brandmark { color:#d4ff3f; }
+    .apex-links { display:flex; align-self:stretch; gap:30px; } .apex-links button { background:transparent; color:#afb6a3; font-size:10px; border:0; padding:0 2px; } .apex-links button.active { border-bottom:2px solid #d4ff3f; color:#eef5dc; } .apex-links button:hover { color:#d4ff3f; }
+    .apex-nav .connection { font:9px var(--mono); color:#d1e69c; }
+    .apex-body { padding:27px 31px 29px; }
+    .race-kicker { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:15px; } .race-kicker .eyebrow { color:#b9c2ab; font-size:9px; } .live-tag { background:#d4ff3f; color:#263019; padding:7px 10px; font:9px var(--mono); display:flex; gap:7px; align-items:center; }
+    .apex-hero { min-height:290px; display:grid; grid-template-columns:1fr 1fr; position:relative; border:1px solid var(--line); background:#23281e; overflow:hidden; }
+    .apex-copy { padding:28px 30px; position:relative; z-index:1; } .apex-copy .eyebrow { color:#b5c09f; font-size:8px; letter-spacing:2px; }
+    .apex-copy h2 { font-family:Impact,"Arial Narrow",var(--sans); font-size:clamp(62px,6.4vw,93px); line-height:.9; font-weight:900; letter-spacing:-2px; text-transform:uppercase; margin:17px 0 15px; }
+    .apex-copy h2 span { display:block; color:#d4ff3f; } .apex-copy p { font-size:10px; color:#c4ccba; }
+    .apex .button { border-radius:0; text-transform:uppercase; letter-spacing:.7px; font:9px var(--mono); } .apex .button.primary { background:#d4ff3f; border-color:#d4ff3f; color:#1f2714; } .apex .button.primary:hover { background:#e3ff85; }
+    .apex-cta { display:flex; flex-wrap:wrap; gap:9px; margin-top:24px; }
+    .apex-track { position:relative; min-width:0; display:flex; justify-content:center; align-items:center; padding:15px 28px; background-image:linear-gradient(#c6df7410 1px,transparent 1px),linear-gradient(90deg,#c6df7410 1px,transparent 1px); background-size:30px 30px; }
+    .apex-track:before { content:"01"; position:absolute; font:250px Impact,"Arial Narrow",sans-serif; color:#d4ff3f08; bottom:-33px; right:10px; line-height:1; } .apex-track .circuit { color:#d4ff3f; height:210px; position:relative; z-index:1; }
+    .track-coordinate { position:absolute; top:15px; right:17px; color:#adb897; font:8px var(--mono); letter-spacing:1px; } .track-data { position:absolute; left:25px; right:21px; bottom:19px; display:flex; align-items:center; justify-content:space-between; color:#c4d2ad; font:8px var(--mono); }
+    .race-stats { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line); border-top:0; }
+    .race-stat { padding:17px 22px; border-right:1px solid var(--line); } .race-stat:last-child { border:0; } .race-stat span { display:block; color:#aeb7a0; font:8px var(--mono); letter-spacing:1px; text-transform:uppercase; } .race-stat strong { display:block; font:26px var(--mono); margin-top:9px; letter-spacing:-1.5px; } .race-stat strong small { font-size:12px; color:#aeb7a0; letter-spacing:0; }
+    .apex-lower { display:grid; grid-template-columns:1.2fr 1fr; gap:24px; margin-top:24px; } .apex-lower h3 { font-size:11px; text-transform:uppercase; letter-spacing:1px; } .apex-lower .section-title { margin-bottom:14px; }
+    .apex-leaderboard { border-top:1px solid var(--line); } .apex .driver-color { background:#d4ff3f; } .apex td { padding:12px 8px; font-size:10px; } .apex .leader-rank { font:19px var(--mono); padding-right:15px; } .apex td small { font:8px var(--mono); margin-top:4px; }
+    .next-race { display:grid; grid-template-columns:90px 1fr auto; gap:17px; align-items:center; background:#d4ff3f; color:#27351b; padding:19px; min-height:132px; } .next-race svg { width:90px; height:80px; color:#638321; } .next-race .eyebrow { font-size:8px; letter-spacing:1px; color:#536d26; } .next-race h4 { font-size:23px; font-family:Impact,"Arial Narrow",var(--sans); text-transform:uppercase; letter-spacing:.1px; margin:8px 0; } .next-race p { font-size:9px; color:#4b6125; } .next-race button { width:35px; height:35px; border:1px solid #789538; background:transparent; color:#3b501d; display:grid; place-items:center; } .next-race button:hover { background:#bcdf45; } .next-race button .icon { width:16px; height:16px; }
+    .apex-feed { margin-top:12px; padding:12px 0; display:flex; gap:9px; font-size:9px; color:#b8c0ad; line-height:1.6; } .apex-feed .dot { color:#d4ff3f; margin-top:4px; width:4px; height:4px; }
+    dialog { color-scheme:light; background:#f7f8f2; color:#28382b; border:1px solid #c6d1bd; border-radius:9px; padding:28px; width:min(510px,calc(100vw - 32px)); max-height:85vh; box-shadow:0 25px 100px #0006; }
+    dialog::backdrop { background:#101911a8; backdrop-filter:blur(4px); } dialog h2 { margin:11px 0; font-size:26px; letter-spacing:-.8px; } dialog p { color:#62705b; font-size:12px; line-height:1.8; } dialog .dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; } dialog .button { --line:#bdcbb0; } dialog .button.primary { background:#355f4f; color:#fff; border-color:#355f4f; } .dialog-content { margin-top:18px; } .dialog-content dl { display:grid; grid-template-columns:1fr 1fr; gap:0 20px; margin:0; } .dialog-content dt,.dialog-content dd { margin:0; padding:11px 0; font-size:11px; border-bottom:1px solid #dae1d3; } .dialog-content dt { color:#68795f; } .dialog-content dd { text-align:right; font-weight:500; }
+    .dialog-content ol { padding-left:23px; font-size:12px; line-height:2.2; } .dialog-content .circuit { height:160px; color:#466a37; }
+    .notice { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:10; background:#f3f7e9; border:1px solid #b6c5a1; color:#334328; border-radius:6px; padding:14px 22px; box-shadow:0 8px 35px #1520112a; max-width:calc(100vw - 30px); width:max-content; font-size:12px; }
+    dialog[data-theme=dark],.notice[data-theme=dark] { background:var(--p-surface); border-color:#657c5b; }
+    dialog[data-theme=dark] p,dialog[data-theme=dark] .dialog-content dt { color:#b6c6ae; }
+    dialog[data-theme=dark] .dialog-content dt,dialog[data-theme=dark] .dialog-content dd { border-color:var(--line); }
+    dialog[data-theme=dark] .button { border-color:#738575; }
+    dialog[data-theme=dark] .button:hover { background:#293a2e; }
+    dialog[data-theme=dark] .button.primary { background:var(--p-accent); border-color:var(--p-accent); color:#1d3424; }
+    dialog[data-theme=dark] .button.primary:hover { background:#c1dfc3; }
+    dialog[data-theme=dark] .dialog-content .circuit { color:#b4d393; }
+    @media(min-width:1450px) { .app-content { padding:30px 35px; } .session-hero { min-height:235px; } .session-hero h3 { font-size:39px; } .session-clock strong { font-size:33px; } .race-layout { grid-template-columns:minmax(0,1.85fr) minmax(245px,1fr); } .app-shell { min-height:745px; } }
+    @media(max-width:1100px) { .studio { padding:22px 25px 0; } .app-shell { grid-template-columns:160px minmax(0,1fr); } .sidebar { padding-left:10px; padding-right:10px; } .app-content,.topbar { padding-left:20px; padding-right:20px; } .race-layout { grid-template-columns:minmax(0,1fr) 215px; gap:13px; } .session-hero { padding:17px; } .session-hero h3 { font-size:27px; } .server-switch { padding:12px 10px; } .server-switch .icon { display:none; } .occupancy { min-width:70px; padding-left:10px; } .paddock .app-content,.paddock .topbar { padding-left:24px; padding-right:24px; } .paddock-grid { gap:20px; } .apex-copy { padding:25px; } .apex-lower { gap:20px; } .next-race { grid-template-columns:65px 1fr auto; gap:10px; padding:15px; } .next-race svg { width:65px; } }
+    @media(max-width:900px) { .app-shell { grid-template-columns:66px minmax(0,1fr); } .sidebar { align-items:center; padding-top:23px; } .sidebar .app-brand { margin:0 0 27px; } .sidebar .brand-title,.sidebar .nav-label,.sidebar .nav-item span,.sidebar .health,.sidebar .account>div:not(.avatar) { display:none; } .sidebar .nav-group { width:100%; } .sidebar .nav-item { justify-content:center; padding:0; } .sidebar .account { border:0; padding-top:12px; } .sidebar .sidebar-bottom { width:100%; } .sidebar .account { justify-content:center; } .direction { padding:13px; gap:10px; } .direction .swatch { width:20px; height:20px; border-width:3px; } .direction small { font-size:10px; } .session-hero { grid-template-columns:1fr .8fr; } .session-hero h3 { font-size:25px; } .session-meta { padding:13px; gap:8px; } .apex-links { gap:20px; } .apex-nav { gap:15px; padding:0 23px; } .apex-body { padding:23px; } .apex-copy h2 { font-size:64px; } .next-race { grid-template-columns:1fr auto; } .next-race>svg { display:none; } .reason { gap:25px; } }
+    @media(max-width:720px) { .studio { padding:18px 16px 0; } .intro { grid-template-columns:1fr; gap:15px; padding:24px 0; } .intro h1 { font-size:34px; } .intro p { max-width:550px; } .masthead { padding-bottom:17px; } .masthead .eyebrow { font-size:8px; text-align:right; } .direction-tabs { gap:7px; } .direction { display:block; min-height:90px; padding:12px; position:relative; } .direction-number { display:block; font-size:9px; margin-bottom:9px; } .direction strong { font-size:13px; } .direction small { font-size:9px; line-height:1.5; } .direction .swatch { position:absolute; top:10px; right:10px; width:15px; height:15px; } .sample-label { font-size:8px; gap:20px; line-height:1.7; } .app-content { padding:23px 18px; } .topbar { padding:0 18px; min-height:55px; } .topbar .connection { font-size:8px; } .page-heading { align-items:flex-start; } .page-heading h2 { font-size:25px; } .page-heading p { font-size:10px; } .page-heading .button { padding:0 11px; font-size:10px; } .server-strip { grid-template-columns:1fr 1fr; } .occupancy { display:none; } .server-switch { display:block; } .server-switch .pill { margin-top:10px; font-size:8px; } .race-layout { grid-template-columns:1fr; } .session-hero { grid-template-columns:1fr 1fr; } .session-hero h3 { font-size:30px; } .race-aside { display:grid; grid-template-columns:1fr 1fr; gap:13px; } .activity { margin:0; } .paddock-grid { grid-template-columns:1fr; } .paddock-aside { display:grid; grid-template-columns:1fr 1fr; gap:15px; } .quiet-card { margin:0; align-self:start; } .paddock .app-content,.paddock .topbar { padding-left:20px; padding-right:20px; } .workspace-tabs { gap:22px; } .workspace-tabs small { display:none; } .paddock h2 { font-size:28px; } .apex-nav { flex-wrap:wrap; padding:20px; gap:20px; } .apex-links { order:3; width:100%; justify-content:space-between; gap:14px; } .apex-links button { padding:0 0 12px; } .apex-hero { grid-template-columns:1.15fr .85fr; } .apex-copy { padding:24px 20px; } .apex-copy h2 { font-size:59px; } .apex-track { padding:0 14px; } .apex-track .circuit { height:165px; } .track-data { font-size:7px; left:12px; right:12px; } .track-data span:last-child { display:none; } .track-coordinate { font-size:7px; right:10px; } .apex-lower { grid-template-columns:1fr 1fr; } .race-stat { padding:16px 12px; } .race-stat strong { font-size:22px; } .race-stat span { font-size:7px; } .apex .leader-rank { font-size:15px; padding-right:6px; } .apex td { font-size:9px; padding:12px 4px; } .apex td small { font-size:7px; } .next-race { padding:15px; min-height:155px; } .next-race h4 { font-size:22px; } .reason { grid-template-columns:1fr 1fr; gap:20px; } .reason>div:first-child { grid-column:1/-1; } .reason h2 { font-size:20px; } }
+    @media(max-width:520px) { .studio { padding:15px 12px 0; } .studio-brand { font-size:12px; } .masthead .eyebrow { max-width:130px; line-height:1.7; } .intro h1 { font-size:31px; } .intro p { font-size:12px; } .direction { padding:11px 9px; } .direction small { font-size:8px; } .sample-label span:last-child { text-align:right; } .app-shell,.paddock .app-shell { display:block; } .sidebar { padding:12px 15px; border-right:0; border-bottom:1px solid var(--line); flex-direction:row; gap:17px; } .sidebar .app-brand { margin:0 auto 0 0; } .sidebar .brand-title { display:block; font-size:11px; } .sidebar .brand-title small { display:none; } .sidebar .brandmark i { height:17px; width:5px; } .sidebar .brandmark i:last-child { height:11px; margin-top:6px; } .sidebar .nav-group { display:flex; width:auto; margin:0; gap:3px; } .sidebar .nav-item { min-width:33px; min-height:35px; height:35px; } .sidebar .nav-group.secondary,.sidebar .sidebar-bottom { display:none; } .sidebar .nav-group .nav-item:nth-child(n+4) { display:none; } .topbar { min-height:45px; font-size:9px; padding:0 16px; } .breadcrumb span { margin:0 6px; } .connection { font-size:8px; } .topbar .connection .freshness { display:none; } .app-content { padding:22px 16px; } .page-heading { display:block; } .page-heading .button { margin-top:15px; min-height:40px; } .page-heading h2 { font-size:28px; } .page-heading p { font-size:10px; line-height:1.7; max-width:230px; } .server-switch { padding:12px; } .server-switch strong { font-size:10px; } .server-switch small { font-size:8px; } .session-hero { padding:17px 14px; grid-template-columns:1.1fr .9fr; min-height:200px; } .session-hero h3 { font-size:27px; } .session-hero .eyebrow { font-size:7px; } .session-hero p { font-size:9px; } .session-clock strong { font-size:25px; } .session-clock span { font-size:7px; } .map-caption { font-size:6px; letter-spacing:.3px; } .session-meta { padding:13px 12px; } .session-meta small { font-size:8px; } .session-meta strong { font-size:10px; } .panel-head { padding:15px 13px; } th,td { padding:12px 10px; font-size:9px; } th { font-size:7px; } .race-aside { grid-template-columns:1fr; } .activity { padding:16px; } .preview-footer { padding:13px 16px; font-size:7px; } .preview-footer span:last-child { text-align:right; } .paddock .sidebar { padding:12px 17px; } .paddock .sidebar .brandmark { margin:0 auto 0 0; } .paddock .sidebar .nav-group { width:auto; gap:6px; } .paddock .sidebar .nav-item { width:35px; height:35px; } .paddock .sidebar .avatar { display:none; } .paddock .topbar { min-height:49px; } .workspace-name { font-size:10px; } .workspace-name span { display:none; } .paddock .app-content,.paddock .topbar { padding-left:16px; padding-right:16px; } .paddock .page-heading p { max-width:none; } .template-grid { gap:8px; } .template-art { height:67px; } .template-copy { padding:10px 7px; } .template-copy strong { font-size:10px; } .template-copy small { font-size:7px; line-height:1.6; } .template-code { left:7px; top:8px; font-size:7px; } .builder { padding:17px 14px; } .fields { gap:15px 10px; } .builder-actions { align-items:stretch; flex-direction:column; gap:14px; } .builder-actions p { max-width:none; } .paddock-aside { grid-template-columns:1fr; } .apex-nav { padding:17px; gap:22px; } .apex-brand { font-size:21px; } .apex-nav .connection { font-size:8px; } .apex-links { gap:10px; } .apex-links button { font-size:9px; } .apex-body { padding:20px 16px; } .race-kicker .eyebrow { font-size:7px; letter-spacing:1px; } .live-tag { font-size:7px; padding:6px; } .apex-hero { display:block; } .apex-copy { padding:24px 22px; } .apex-copy h2 { font-size:75px; } .apex-track { height:196px; border-top:1px solid var(--line); } .apex-track .circuit { width:230px; height:150px; } .track-coordinate { top:13px; right:13px; font-size:7px; } .track-data { bottom:13px; left:15px; right:15px; } .track-data span:last-child { display:block; } .race-stats { grid-template-columns:1fr 1fr; } .race-stat { padding:16px; } .race-stat:nth-child(2) { border-right:0; } .race-stat:nth-child(-n+2) { border-bottom:1px solid var(--line); } .race-stat strong { font-size:25px; } .race-stat span { font-size:8px; } .apex-lower { grid-template-columns:1fr; } .apex td { font-size:10px; padding:12px 6px; } .apex td small { font-size:8px; } .apex .leader-rank { font-size:19px; } .next-race { grid-template-columns:78px 1fr auto; min-height:125px; } .next-race>svg { display:block; width:78px; } .next-race h4 { font-size:21px; } .reason { gap:20px; padding:24px 2px; } .reason h2 { font-size:18px; } .reason p { font-size:10px; } .page-footer { font-size:8px; line-height:1.7; } }
+    @media(max-width:720px) {
+      .paddock .workspace-name span { display:none; }
+      .paddock-tools { gap:12px; }
+    }
+    @media(max-width:520px) {
+      .paddock .topbar { flex-wrap:wrap; padding-top:14px; padding-bottom:12px; gap:12px; }
+      .paddock-tools { width:100%; justify-content:space-between; gap:10px; }
+      .theme-switch button { min-height:44px; }
+      .apex-copy h2 { font-size:60px; }
+      .sidebar .nav-item,.paddock .sidebar .nav-item { min-width:44px; min-height:44px; }
+      .button,.page-heading .button,.text-button,.workspace-tabs button,.apex-links button { min-height:44px; }
+      .tiny-button,.next-race button { width:44px; height:44px; }
+      input,select { min-height:44px; }
+    }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; scroll-behavior:auto!important; } }
+    @media print { .studio { padding:15px; } .direction-tabs,.sample-label,.page-footer,.notice { display:none; } .concept[hidden],.reason[hidden] { display:block!important; } .concept { margin-top:20px; break-before:page; box-shadow:none; print-color-adjust:exact; } .reason { break-inside:avoid; } .app-shell { min-height:0; } }
+  </style>
+</head>
+<body>
+<a class="skip" href="#designs">Skip to design previews</a>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12M3 5h.01M3 12h.01M3 19h.01"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V3c5-4 9 4 14 0v10c-5 4-9-4-14 0"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-3a7 7 0 0 1 14 0v3M17 3a4 4 0 0 1 0 8m3 10v-3a6 6 0 0 0-2-4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M12 6.5h5m-5 11h5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="circuit" viewBox="0 0 320 190">
+    <path d="M75 148 47 134Q36 128 45 119L78 87 88 66Q92 57 104 64L123 75Q131 79 137 72L163 31Q169 22 179 30L206 49Q213 54 212 63L211 83Q210 91 220 96L261 114Q281 122 269 138L251 159Q246 165 237 161L210 148 189 164Q178 173 165 165L153 158 118 164Q109 166 102 159L91 146Q86 141 75 148Z" fill="none" stroke="currentColor" stroke-width="12" opacity=".09" stroke-linejoin="round"/>
+    <path d="M75 148 47 134Q36 128 45 119L78 87 88 66Q92 57 104 64L123 75Q131 79 137 72L163 31Q169 22 179 30L206 49Q213 54 212 63L211 83Q210 91 220 96L261 114Q281 122 269 138L251 159Q246 165 237 161L210 148 189 164Q178 173 165 165L153 158 118 164Q109 166 102 159L91 146Q86 141 75 148Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="m230 100-8 18" stroke="currentColor" stroke-width="5" stroke-dasharray="2 2"/>
+    <circle cx="174" cy="29" r="5" fill="currentColor"/><circle cx="212" cy="75" r="3" fill="currentColor" opacity=".6"/><circle cx="124" cy="164" r="3" fill="currentColor" opacity=".5"/>
+  </symbol>
+</svg>
+<main class="studio">
+  <header class="masthead"><div class="studio-brand"><div class="brandmark" aria-hidden="true"><i></i><i></i><i></i></div>Server Manager <span style="font-weight:400;color:#767c70">/ Design explorations</span></div><div class="eyebrow">Three directions. One great race night.</div></header>
+  <div class="intro"><h1>A better place<br><span>to run your races.</span></h1><p>Three ideas for the next Server Manager. Each brings a different rhythm to race control, reusable setups, and the people on your grid. Explore the previews below.</p></div>
+  <div class="direction-tabs" role="tablist" aria-label="Design directions">
+    <button class="direction" id="tab-pitwall" role="tab" aria-selected="true" aria-controls="pitwall" tabindex="0" data-concept="pitwall"><span class="direction-number">01</span><span><strong>Pitwall</strong><small>Precise. Focused. In control.</small></span><span class="swatch" aria-hidden="true"></span></button>
+    <button class="direction" id="tab-paddock" role="tab" aria-selected="false" aria-controls="paddock" tabindex="-1" data-concept="paddock"><span class="direction-number">02</span><span><strong>Paddock</strong><small>Calm. Clear. Ready to race.</small></span><span class="swatch" aria-hidden="true"></span></button>
+    <button class="direction" id="tab-apex" role="tab" aria-selected="false" aria-controls="apex" tabindex="-1" data-concept="apex"><span class="direction-number">03</span><span><strong>Apex</strong><small>Bold. Fast. Unmistakable.</small></span><span class="swatch" aria-hidden="true"></span></button>
+  </div>
+  <div id="designs" class="sample-label eyebrow"><span id="preview-caption">01 / Pitwall — race operations</span><span>Interactive concept · sample data</span></div>
+
+  <section class="concept pitwall" id="pitwall" role="tabpanel" aria-labelledby="tab-pitwall" tabindex="0">
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Pitwall navigation">
+        <div class="app-brand"><div class="brandmark" aria-hidden="true"><i></i><i></i><i></i></div><div class="brand-title">Server Manager<small>The operator's desk</small></div></div>
+        <div class="nav-label">Workspace</div>
+        <nav class="nav-group">
+          <button class="nav-item active" aria-label="Overview" data-action="overview"><svg class="icon"><use href="#i-grid"/></svg><span>Overview</span></button>
+          <button class="nav-item" aria-label="Race control" data-action="control"><svg class="icon"><use href="#i-pulse"/></svg><span>Race control</span></button>
+          <button class="nav-item" aria-label="Run plan" data-action="plan"><svg class="icon"><use href="#i-list"/></svg><span>Run plan</span><span class="count" id="pit-count">02</span></button>
+          <button class="nav-item" aria-label="Race setups" data-go="paddock"><svg class="icon"><use href="#i-flag"/></svg><span>Race setups</span></button>
+        </nav>
+        <div class="nav-label">Library & insights</div>
+        <nav class="nav-group secondary">
+          <button class="nav-item" data-go="paddock"><svg class="icon"><use href="#i-layers"/></svg><span>Templates</span></button>
+          <button class="nav-item" data-action="drivers"><svg class="icon"><use href="#i-users"/></svg><span>Drivers & results</span></button>
+        </nav>
+        <div class="sidebar-bottom"><button class="nav-item" data-action="settings"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></button><div class="health"><span class="dot"></span>All systems operational</div><div class="account"><div class="avatar">AD</div><div>Administrator<small>Club workspace</small></div></div></div>
+      </aside>
+      <div class="app-main">
+        <header class="topbar"><div class="breadcrumb">Workspace<span>/</span><strong>Overview</strong></div><div class="connection"><span class="dot"></span>Connected <span class="freshness">· sample snapshot</span></div></header>
+        <div class="app-content">
+          <div class="page-heading"><div><h2>Your race, under control.</h2><p>One server racing. One ready for the next green light.</p></div><button class="button primary" data-go="paddock"><svg class="icon"><use href="#i-plus"/></svg>Prepare a race</button></div>
+          <div class="server-strip" aria-label="Select sample server">
+            <button class="server-switch" data-server="club" aria-pressed="true"><svg class="icon"><use href="#i-server"/></svg><span><strong>Club server</strong><small>GT3 Thursday · 18 / 24 drivers</small></span><span class="pill live"><span class="dot"></span>Racing</span></button>
+            <button class="server-switch" data-server="practice" aria-pressed="false"><svg class="icon"><use href="#i-server"/></svg><span><strong>Practice server</strong><small>Open practice · 0 / 16 drivers</small></span><span class="pill ready">Ready</span></button>
+            <div class="occupancy"><strong>18<span style="display:inline;font:12px var(--mono);margin:0;color:#9aa59e"> / 40</span></strong><span>drivers online</span></div>
+          </div>
+          <div class="race-layout">
+            <div>
+              <section class="panel" aria-labelledby="session-title">
+                <div class="session-hero"><div><div class="eyebrow" id="session-label">Club server / GT3 Thursday</div><h3 id="session-title">Spa-Francorchamps</h3><p id="session-subtitle">Grand Prix · GT3 · Race</p><div class="session-clock"><strong id="session-clock">18:42</strong><span id="session-clock-label">remaining</span></div></div><div class="map-wrap"><svg class="circuit" role="img" aria-label="Illustrative circuit with sample driver positions"><use href="#circuit"/></svg><div class="map-caption">CIRCUIT VIEW · SCHEMATIC</div></div></div>
+                <div class="session-meta"><div><small>Session</small><strong id="session-phase">Race · 30 min</strong></div><div><small>Conditions</small><strong>Clear · 24°C</strong></div><div><small>Track grip</small><strong>Optimum · 100%</strong></div></div>
+              </section>
+              <section class="panel timing"><div class="panel-head"><h3 id="timing-title">Live timing <span class="muted" style="font-size:9px;margin-left:5px">Top 3 / 18</span></h3><button class="text-button" data-action="control">Race control <svg class="icon"><use href="#i-arrow"/></svg></button></div><div class="table-wrap" id="timing-table"><table aria-label="Sample live race standings"><thead><tr><th>Pos</th><th>Driver</th><th>Best lap</th><th>Gap</th></tr></thead><tbody><tr><td class="mono">01</td><td><div class="driver-cell"><span class="driver-color"></span><div>Alex Morgan<small>Ferrari 488 GT3</small></div></div></td><td class="mono best">2:18.426</td><td class="mono">Leader</td></tr><tr><td class="mono">02</td><td><div class="driver-cell"><span class="driver-color"></span><div>Jamie Chen<small>Mercedes-AMG GT3</small></div></div></td><td class="mono">2:18.902</td><td class="mono">+1.284</td></tr><tr><td class="mono">03</td><td><div class="driver-cell"><span class="driver-color"></span><div>Robin Berg<small>McLaren 650S GT3</small></div></div></td><td class="mono">2:19.173</td><td class="mono">+3.619</td></tr></tbody></table></div><div id="timing-empty" hidden style="padding:15px 18px 24px"><p style="font-size:12px;margin-bottom:10px">Ready when you are.</p><p class="muted" style="font-size:10px;line-height:1.8">The practice setup is loaded. Review the run plan to see what will run on this server.</p><button class="text-button" data-action="plan">Review practice plan <svg class="icon"><use href="#i-arrow"/></svg></button></div></section>
+            </div>
+            <div class="race-aside"><section class="panel"><div class="panel-head"><h3>Up next</h3><span class="eyebrow" id="queue-server">Club server</span></div><ol class="plan-list" id="pit-plan"><li data-race="Monza"><span class="plan-number">01</span><div><div class="eyebrow">Next race</div><h4>Monza</h4><p>GT3 sprint<br>Practice 10m · Qualify 10m · Race 20m</p></div></li><li data-race="Silverstone"><span class="plan-number">02</span><div><h4>Silverstone</h4><p>GT3 sprint · 40 min</p></div><button class="tiny-button" id="move-race" aria-label="Move Silverstone to next race"><svg class="icon"><use href="#i-up"/></svg></button></li></ol><div id="practice-plan" hidden style="padding:0 18px 20px"><div class="eyebrow" style="color:#d1eb91;margin:6px 0 12px">Ready to run</div><h4 style="font-size:13px;margin-bottom:8px">Brands Hatch</h4><p class="muted" style="font-size:10px">Open practice · 60 min · Repeat</p></div><div class="panel-footer"><button class="text-button" data-action="plan">View full run plan <svg class="icon"><use href="#i-arrow"/></svg></button></div></section><section class="panel activity"><h3>Race activity</h3><div class="activity-line"><span class="dot"></span><div id="activity-primary">Alex Morgan set the fastest lap<small>2:18.426 · Lap 05</small></div></div><div class="activity-line"><span class="dot" style="color:#a9b4bb"></span><div>All drivers connected successfully<small>SESSION START · 11 MIN AGO</small></div></div></section></div>
+          </div>
+        </div>
+        <footer class="preview-footer"><span>SERVER MANAGER / PITWALL</span><span>Sample session · telemetry paused</span></footer>
+      </div>
+    </div>
+  </section>
+  <div class="reason" data-reason="pitwall"><div><h2><span>01 / My recommendation</span>Everything an operator needs.<br>Exactly where they expect it.</h2></div><div><h3>The design move</h3><p>Charcoal surfaces, restrained sage accents, and tabular timing. The current race, standings, and upcoming sessions share one focused workspace.</p></div><div><h3>Best fit</h3><p>Running a busy race night. This is my strongest all-round direction: clear server context, fast scanning, and room for detailed controls without crowding the overview.</p></div></div>
+
+  <section class="concept paddock" id="paddock" data-theme="dark" role="tabpanel" aria-labelledby="tab-paddock" tabindex="0" hidden>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Paddock navigation"><div class="brandmark" aria-label="Server Manager"><i></i><i></i><i></i></div><nav class="nav-group"><button class="nav-item" aria-label="Server overview" data-go="pitwall"><svg class="icon"><use href="#i-grid"/></svg></button><button class="nav-item active" aria-label="Race setups" data-action="builder"><svg class="icon"><use href="#i-flag"/></svg></button><button class="nav-item" aria-label="Evening run plan" data-action="evening"><svg class="icon"><use href="#i-list"/></svg></button><button class="nav-item" aria-label="Driver results" data-action="drivers"><svg class="icon"><use href="#i-users"/></svg></button><button class="nav-item" aria-label="Workspace settings" data-action="settings"><svg class="icon"><use href="#i-settings"/></svg></button></nav><div class="avatar">AD</div></aside>
+      <div class="app-main"><header class="topbar"><div class="workspace-name">Server Manager <span>Club workspace</span></div><div class="paddock-tools"><div class="connection"><span class="dot"></span>All systems ready</div><div class="theme-switch" role="group" aria-label="Paddock appearance"><button type="button" data-paddock-theme="light" aria-pressed="false">Light</button><button type="button" data-paddock-theme="dark" aria-pressed="true">Dark</button></div></div></header>
+        <div class="app-content"><div class="page-heading"><div><h2>A good race starts here.</h2><p>Build a great evening from the setups you already love.</p></div><button class="button primary" data-action="new-setup"><svg class="icon"><use href="#i-plus"/></svg>New setup</button></div>
+          <div class="workspace-tabs"><span>Race setups</span><button data-action="templates">Saved templates</button><button data-action="drivers">Recent results</button><small>YOUR CLUB, YOUR WAY</small></div>
+          <div class="paddock-grid"><div><div class="section-title"><h3>Start with a favorite</h3><small>3 reusable templates</small></div>
+            <div class="template-grid" aria-label="Choose a sample template"><button class="template" data-template="gt3" aria-pressed="true"><div class="template-art"><svg aria-hidden="true"><use href="#circuit"/></svg><span class="template-code">01 / GT3</span></div><div class="template-copy"><strong>GT3 sprint</strong><small>40 min · 24 drivers</small></div></button><button class="template" data-template="trackday" aria-pressed="false"><div class="template-art"><svg aria-hidden="true"><use href="#circuit"/></svg><span class="template-code">02 / OPEN</span></div><div class="template-copy"><strong>Track day</strong><small>60 min · 16 drivers</small></div></button><button class="template" data-template="drift" aria-pressed="false"><div class="template-art"><svg aria-hidden="true"><use href="#circuit"/></svg><span class="template-code">03 / DRIFT</span></div><div class="template-copy"><strong>Drift evening</strong><small>45 min · 12 drivers</small></div></button></div>
+            <form class="builder" id="builder-form"><div class="builder-heading between"><h3>Make it yours</h3><span id="template-badge">FROM GT3 SPRINT</span></div><div class="fields"><div class="field wide"><label for="race-name">Race name</label><input id="race-name" name="name" value="Thursday night sprint" maxlength="80" required></div><div class="field"><label for="race-track">Circuit</label><select id="race-track" name="track"><option>Monza</option><option>Spa-Francorchamps</option><option>Silverstone</option><option>Brands Hatch</option><option>Drift playground</option></select></div><div class="field"><label for="race-server">Run on</label><select id="race-server" name="server"><option>Club server</option><option>Practice server</option></select></div></div><div class="preset-summary" aria-live="polite"><span id="preset-cars">GT3 class</span><span id="preset-format">10m practice / 10m qualify / 20m race</span><span>Clear skies</span></div><div class="builder-actions"><p>Your template stays reusable.<br>This setup gets its own changes.</p><button class="button primary" type="submit">Review & queue <svg class="icon"><use href="#i-arrow"/></svg></button></div></form>
+          </div><div class="paddock-aside"><section class="evening"><div class="between"><div class="eyebrow">The evening ahead</div><span class="pill" id="plan-count">2 races</span></div><h3>Your run plan.</h3><p id="evening-server">Club server · runs in order</p><div class="evening-status"><span class="dot"></span>Current race: Spa-Francorchamps</div><ol class="evening-list" id="evening-list"><li><span class="step">1</span><div><strong>Monza</strong><p>GT3 sprint · 40 min<br>Next after the current race</p></div></li><li><span class="step">2</span><div><strong>Silverstone</strong><p>GT3 sprint · 40 min</p></div></li></ol><div class="plan-summary"><span>Queued driving time</span><strong class="mono" id="plan-duration">1h 20m</strong></div></section><section class="quiet-card"><h3>Keep the good stuff.</h3><p>Car classes, weather, difficulty, and session formats travel with your template. Change only what this race needs.</p><button class="text-button" data-action="templates">Explore template details <svg class="icon"><use href="#i-arrow"/></svg></button></section></div></div>
+        </div><footer class="preview-footer"><span>SERVER MANAGER / PADDOCK</span><span>Draft changes stay in this preview</span></footer>
+      </div>
+    </div>
+  </section>
+  <div class="reason" data-reason="paddock" hidden><div><h2><span>02 / The approachable option</span>Less setup friction.<br>More time on the grid.</h2></div><div><h3>The design move</h3><p>Warm whites by day; deep forest tones and soft mint accents at night. Both keep the generous spacing, recognizable templates, and visible run plan. Compare them with the Light / Dark control.</p></div><div><h3>Best fit</h3><p>Club organizers and newer admins. Preparation becomes a clear sequence: choose a template, adjust the essentials, review, and queue. The icon rail trades labels for more working space.</p></div></div>
+
+  <section class="concept apex" id="apex" role="tabpanel" aria-labelledby="tab-apex" tabindex="0" hidden>
+    <header class="apex-nav"><div class="apex-brand"><div class="brandmark" aria-hidden="true"><i></i><i></i><i></i></div>SM / APEX</div><nav class="apex-links" aria-label="Apex navigation"><button class="active" data-action="apex-live">Race day</button><button data-go="paddock">Race setups</button><button data-action="plan">Run plan</button><button data-action="drivers">Results</button></nav><div class="connection"><span class="dot"></span>18 DRIVERS ONLINE</div></header>
+    <div class="apex-body"><div class="race-kicker"><div class="eyebrow">Thursday club series / Round 04</div><div class="live-tag"><span class="dot"></span>RACE IN PROGRESS</div></div>
+      <section class="apex-hero" aria-labelledby="apex-title"><div class="apex-copy"><div class="eyebrow">Club server / GT3 class</div><h2 id="apex-title">FULL GRID.<span>FULL SEND.</span></h2><p>Spa-Francorchamps · Grand Prix · 30-minute race</p><div class="apex-cta"><button class="button primary" data-action="apex-control">Enter race control <svg class="icon"><use href="#i-arrow"/></svg></button><button class="button" data-action="broadcast"><svg class="icon"><use href="#i-play"/></svg>Broadcast</button></div></div><div class="apex-track"><div class="track-coordinate">CIRCUIT 01 / SCHEMATIC</div><svg class="circuit" role="img" aria-label="Stylized schematic circuit with sample cars on track"><use href="#circuit"/></svg><div class="track-data"><span><span class="dot"></span> 18 CARS ON TRACK</span><span>RACE / 05</span></div></div></section>
+      <div class="race-stats"><div class="race-stat"><span>Time remaining</span><strong>18:42</strong></div><div class="race-stat"><span>Drivers on track</span><strong>18 <small>/ 24</small></strong></div><div class="race-stat"><span>Fastest lap</span><strong>2:18.426</strong></div><div class="race-stat"><span>Track conditions</span><strong>24° <small>Clear</small></strong></div></div>
+      <div class="apex-lower"><section><div class="section-title"><h3>The front runners</h3><button class="text-button" data-action="drivers">All results <svg class="icon"><use href="#i-arrow"/></svg></button></div><table class="apex-leaderboard" aria-label="Sample front-running drivers"><tbody><tr><td class="leader-rank" style="color:#d4ff3f">01</td><td>Alex Morgan<small>FERRARI 488 GT3</small></td><td class="mono">2:18.426<small>FASTEST LAP</small></td></tr><tr><td class="leader-rank">02</td><td>Jamie Chen<small>MERCEDES-AMG GT3</small></td><td class="mono">+1.284<small>GAP TO LEADER</small></td></tr><tr><td class="leader-rank">03</td><td>Robin Berg<small>MCLAREN 650S GT3</small></td><td class="mono">+3.619<small>GAP TO LEADER</small></td></tr></tbody></table></section><section><div class="section-title"><h3>Keep the night going</h3><span class="eyebrow" style="font-size:8px;color:#b2bea0">Up next</span></div><div class="next-race"><svg aria-hidden="true" viewBox="0 0 320 190"><use href="#circuit"/></svg><div><div class="eyebrow">Next destination</div><h4 id="apex-next">Monza</h4><p>GT3 sprint · 40 min</p></div><button data-action="club-plan" aria-label="View next race in the club run plan"><svg class="icon"><use href="#i-arrow"/></svg></button></div><div class="apex-feed"><span class="dot"></span><span>Race control is clear. All 18 drivers are connected.<br><span style="color:#929e83;font:8px var(--mono)">SAMPLE SNAPSHOT / SESSION LAP 05</span></span></div></section></div>
+    </div><footer class="preview-footer"><span>SERVER MANAGER / APEX</span><span>BUILT FOR THE NEXT GREEN LIGHT</span></footer>
+  </section>
+  <div class="reason" data-reason="apex" hidden><div><h2><span>03 / The motorsport statement</span>Make it feel like race day.<br>Every time you open it.</h2></div><div><h3>The design move</h3><p>Acid lime, dark olive, square edges, oversized condensed type, and circuit graphics. A wide race canvas puts the live session at the center of the experience.</p></div><div><h3>Best fit</h3><p>A distinctive club portal and race-night display. Strong visual identity and immediate session context; detailed administration sits one step deeper in Race Control.</p></div></div>
+
+  <footer class="page-footer"><span>Server Manager / Assetto Corsa<br>UI design explorations · September 2026</span><span>Local prototype · no server connection<br>Try the tabs, templates, and run plan.</span></footer>
+</main>
+<dialog id="detail-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description"><div class="eyebrow">Server Manager / Design preview</div><h2 id="dialog-title"></h2><p id="dialog-description"></p><div class="dialog-content" id="dialog-content"></div><div class="dialog-actions"><button class="button" id="dialog-close">Close preview</button><button class="button primary" id="dialog-confirm" hidden>Add to sample plan</button></div></dialog>
+<div class="notice" role="status" id="notice" hidden></div>
+<script>
+  const $ = id => document.getElementById(id);
+  const conceptNames = ['pitwall', 'paddock', 'apex'];
+  const captions = ['01 / Pitwall — race operations', '02 / Paddock — race preparation', '03 / Apex — race day'];
+  const tabs = Array.from(document.querySelectorAll('[data-concept]'));
+  let currentConcept = 'pitwall';
+  function showConcept(name, moveFocus = false) {
+    if (!conceptNames.includes(name)) return;
+    currentConcept = name;
+    tabs.forEach(tab => {
+      const selected = tab.dataset.concept === name;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    conceptNames.forEach(id => $(id).hidden = id !== name);
+    document.querySelectorAll('[data-reason]').forEach(el => el.hidden = el.dataset.reason !== name);
+    $('preview-caption').textContent = captions[conceptNames.indexOf(name)] + (name === 'paddock' ? ' / ' + $('paddock').dataset.theme : '');
+    if (moveFocus) $('tab-' + name).focus({preventScroll:true});
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => showConcept(tab.dataset.concept));
+    tab.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = tabs.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      showConcept(tabs[next].dataset.concept, true);
+    });
+  });
+  document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showConcept(button.dataset.go, true)));
+  if (conceptNames.includes(location.hash.slice(1))) showConcept(location.hash.slice(1));
+
+  function setPaddockTheme(theme) {
+    $('paddock').dataset.theme = theme;
+    document.querySelectorAll('[data-paddock-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.paddockTheme === theme)));
+    if (currentConcept === 'paddock') $('preview-caption').textContent = captions[1] + ' / ' + theme;
+  }
+  try { if (localStorage.getItem('sm-concept-paddock-theme') === 'light') setPaddockTheme('light'); } catch {}
+  document.querySelectorAll('[data-paddock-theme]').forEach(button => button.addEventListener('click', () => {
+    setPaddockTheme(button.dataset.paddockTheme);
+    try { localStorage.setItem('sm-concept-paddock-theme', button.dataset.paddockTheme); } catch {}
+  }));
+
+  let noticeTimer;
+  function notify(message) {
+    clearTimeout(noticeTimer);
+    $('notice').dataset.theme = currentConcept === 'paddock' ? $('paddock').dataset.theme : 'light';
+    $('notice').textContent = message;
+    $('notice').hidden = false;
+    noticeTimer = setTimeout(() => $('notice').hidden = true, 4500);
+  }
+  const dialog = $('detail-dialog');
+  let dialogTrigger;
+  let confirmAction;
+  function openDetail(title, description, rows = [], onConfirm = null) {
+    dialogTrigger = document.activeElement;
+    dialog.dataset.theme = currentConcept === 'paddock' ? $('paddock').dataset.theme : 'light';
+    confirmAction = onConfirm;
+    $('dialog-title').textContent = title;
+    $('dialog-description').textContent = description;
+    $('dialog-content').replaceChildren();
+    if (rows.length) {
+      const list = document.createElement('dl');
+      rows.forEach(([label, value]) => {
+        const term = document.createElement('dt');
+        const detail = document.createElement('dd');
+        term.textContent = label; detail.textContent = value;
+        list.append(term, detail);
+      });
+      $('dialog-content').append(list);
+    }
+    $('dialog-confirm').hidden = !onConfirm;
+    $('dialog-close').textContent = onConfirm ? 'Keep editing' : 'Close preview';
+    dialog.showModal();
+    $('dialog-close').focus();
+  }
+  $('dialog-close').addEventListener('click', () => dialog.close());
+  $('dialog-confirm').addEventListener('click', () => {
+    const action = confirmAction;
+    confirmAction = null;
+    dialog.close();
+    if (action) action();
+  });
+  dialog.addEventListener('close', () => { confirmAction = null; dialogTrigger?.focus({preventScroll:true}); });
+
+  const plans = {
+    'Club server': [
+      {name:'Monza',track:'Monza',template:'GT3 sprint',minutes:40},
+      {name:'Silverstone',track:'Silverstone',template:'GT3 sprint',minutes:40}
+    ],
+    'Practice server': [{name:'Brands Hatch',track:'Brands Hatch',template:'Open practice',minutes:60}]
+  };
+  let selectedServer = 'club';
+  const serverName = () => selectedServer === 'club' ? 'Club server' : 'Practice server';
+  function showRunPlan(name) {
+    openDetail(name + ' run plan', 'Sample queue. Races run in this order; preparing or queueing a race does not start the server.',
+      plans[name].map((race, index) => [String(index + 1).padStart(2, '0') + ' · ' + race.name, race.template + ' · ' + race.minutes + ' min']));
+  }
+  function showControl(name) {
+    const racing = name === 'Club server';
+    openDetail(name + ' race control', racing ? 'A focused session view for the steward. This is an illustrative snapshot; it cannot control a server.' : 'The sample practice server is ready, with a reusable open session loaded.', [
+      ['Server state', racing ? 'Racing' : 'Ready · stopped'],
+      ['Circuit', racing ? 'Spa-Francorchamps' : 'Brands Hatch'],
+      ['Session', racing ? 'Race · 18:42 remaining' : 'Open practice · 60 min'],
+      ['Drivers', racing ? '18 / 24' : '0 / 16'],
+      ['Next setup', plans[name][0].name],
+      ['Race actions', racing ? 'Restart / skip / stop with review' : 'Review setup before starting']
+    ]);
+  }
+  document.querySelectorAll('[data-server]').forEach(button => button.addEventListener('click', () => {
+    selectedServer = button.dataset.server;
+    const club = selectedServer === 'club';
+    document.querySelectorAll('[data-server]').forEach(el => el.setAttribute('aria-pressed', String(el === button)));
+    $('session-label').textContent = club ? 'Club server / GT3 Thursday' : 'Practice server / Open practice';
+    $('session-title').textContent = club ? 'Spa-Francorchamps' : 'Brands Hatch';
+    $('session-subtitle').textContent = club ? 'Grand Prix · GT3 · Race' : 'Grand Prix · Open class · Practice';
+    $('session-clock').textContent = club ? '18:42' : '60:00';
+    $('session-clock-label').textContent = club ? 'remaining' : 'session length';
+    $('session-phase').textContent = club ? 'Race · 30 min' : 'Practice · 60 min';
+    $('timing-title').textContent = club ? 'Live timing · Top 3 / 18' : 'No drivers on track';
+    $('timing-table').hidden = !club; $('timing-empty').hidden = club;
+    $('pit-plan').hidden = !club; $('practice-plan').hidden = club;
+    $('queue-server').textContent = serverName();
+    $('pit-count').textContent = String(plans[serverName()].length).padStart(2, '0');
+    $('activity-primary').textContent = club ? 'Alex Morgan set the fastest lap · 2:18.426' : 'Practice setup passed its readiness checks';
+    document.querySelectorAll('.activity-line')[1].lastElementChild.textContent = club ? 'All drivers connected successfully · session start' : 'No drivers connected yet · waiting to start';
+  }));
+  $('move-race').addEventListener('click', () => {
+    const list = $('pit-plan');
+    const rows = Array.from(list.children);
+    list.prepend(rows[1]);
+    plans['Club server'] = [plans['Club server'][1], plans['Club server'][0], ...plans['Club server'].slice(2)];
+    Array.from(list.children).forEach((row, index) => {
+      row.querySelector('.plan-number').textContent = String(index + 1).padStart(2, '0');
+      row.querySelector('.eyebrow')?.remove();
+      if (index === 0) {
+        const next = document.createElement('div'); next.className = 'eyebrow'; next.textContent = 'Next race';
+        row.querySelector('h4').before(next);
+      }
+    });
+    const button = $('move-race');
+    list.lastElementChild.append(button);
+    button.setAttribute('aria-label', 'Move ' + list.lastElementChild.dataset.race + ' to next race');
+    button.focus({preventScroll:true});
+    $('apex-next').textContent = plans['Club server'][0].track;
+    renderEvening();
+    notify(plans['Club server'][0].name + ' is next in the sample plan.');
+  });
+
+  const templates = {
+    gt3:{name:'GT3 sprint',cars:'GT3 class',format:'10m practice / 10m qualify / 20m race',minutes:40,track:'Monza',race:'Thursday night sprint'},
+    trackday:{name:'Track day',cars:'Open class',format:'60m open practice',minutes:60,track:'Brands Hatch',race:'Sunday track day'},
+    drift:{name:'Drift evening',cars:'Drift class',format:'45m open drift session',minutes:45,track:'Drift playground',race:'Friday drift evening'}
+  };
+  let selectedTemplate = 'gt3';
+  function chooseTemplate(key) {
+    selectedTemplate = key;
+    const template = templates[key];
+    document.querySelectorAll('[data-template]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.template === key)));
+    $('race-name').value = template.race;
+    $('race-name').setCustomValidity('');
+    $('race-track').value = template.track;
+    $('template-badge').textContent = 'FROM ' + template.name.toUpperCase();
+    $('preset-cars').textContent = template.cars;
+    $('preset-format').textContent = template.format;
+  }
+  document.querySelectorAll('[data-template]').forEach(button => button.addEventListener('click', () => chooseTemplate(button.dataset.template)));
+  function renderEvening() {
+    const name = $('race-server').value;
+    const races = plans[name];
+    const list = $('evening-list');
+    list.replaceChildren();
+    races.forEach((race, index) => {
+      const row = document.createElement('li');
+      const step = document.createElement('span'); step.className = 'step'; step.textContent = index + 1;
+      const copy = document.createElement('div');
+      const title = document.createElement('strong'); title.textContent = race.name;
+      const detail = document.createElement('p'); detail.textContent = race.template + ' · ' + race.minutes + ' min' + (race.name !== race.track ? ' · ' + race.track : '');
+      copy.append(title, detail); row.append(step, copy); list.append(row);
+    });
+    $('plan-count').textContent = races.length + (races.length === 1 ? ' race' : ' races');
+    $('evening-server').textContent = name + ' · runs in order';
+    document.querySelector('.evening-status').lastChild.textContent = name === 'Club server' ? 'Current race: Spa-Francorchamps' : 'Server ready · waiting to start';
+    const minutes = races.reduce((total, race) => total + race.minutes, 0);
+    $('plan-duration').textContent = [Math.floor(minutes / 60) ? Math.floor(minutes / 60) + 'h' : '', minutes % 60 ? (minutes % 60) + 'm' : ''].filter(Boolean).join(' ') || '0m';
+    $('pit-count').textContent = String(plans[serverName()].length).padStart(2, '0');
+  }
+  $('race-server').addEventListener('change', renderEvening);
+  $('race-name').addEventListener('input', () => $('race-name').setCustomValidity(''));
+  $('builder-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const name = $('race-name').value.trim();
+    if (!name) { $('race-name').setCustomValidity('Give your race a name.'); $('race-name').reportValidity(); return; }
+    const template = templates[selectedTemplate];
+    const destination = $('race-server').value;
+    const race = {name,track:$('race-track').value,template:template.name,minutes:template.minutes};
+    openDetail('Ready for the run plan?', 'Review this sample setup. Adding it to the plan queues it after the existing races; it does not start or interrupt a session.', [
+      ['Race',race.name],['Circuit',race.track],['Server',destination],['Class',template.cars],['Sessions',template.format],['Position in plan',String(plans[destination].length + 1)]
+    ], () => {
+      plans[destination].push(race);
+      renderEvening();
+      notify(race.name + ' added to the ' + destination.toLowerCase() + ' sample plan.');
+    });
+  });
+  const actions = {
+    overview: () => notify('Overview selected. Choose a server to inspect its session.'),
+    control: () => showControl(serverName()),
+    'apex-control': () => showControl('Club server'),
+    plan: () => showRunPlan(currentConcept === 'apex' ? 'Club server' : serverName()),
+    'club-plan': () => showRunPlan('Club server'),
+    evening: () => showRunPlan($('race-server').value),
+    drivers: () => openDetail('The people on your grid', 'Sample results view. Driver profiles would combine session history, personal bests, and recent performance.', [['01 · Alex Morgan','2:18.426 · Leader'],['02 · Jamie Chen','2:18.902 · +1.284'],['03 · Robin Berg','2:19.173 · +3.619'],['Circuit / class','Spa-Francorchamps / GT3']]),
+    settings: () => openDetail('A quieter home for admin', 'Installation, content, users, and preferences sit together, separate from the daily race workflow.', [['Workspace','Club workspace'],['Servers','Club / Practice'],['Content','Tracks & car classes'],['Access','Administrator / Steward / Viewer']]),
+    builder: () => $('race-name').focus(),
+    'new-setup': () => { chooseTemplate('gt3'); $('race-name').value = ''; $('race-name').focus(); },
+    templates: () => openDetail('Your reusable starting point', 'A template brings four existing Server Manager presets together. Each new race can be adjusted without changing the original template.', [['Car class','GT3 / Open / Drift'],['Session format','Practice / Qualify / Race'],['Time & weather','Clear day / Weather presets'],['Difficulty','Assists / Damage / Rules']]),
+    'apex-live': () => notify('Race day selected. The sample session is paused at 18:42 remaining.'),
+    broadcast: () => {
+      openDetail('Race-night broadcast', 'A clean spectator view would feature timing, track position, and available driver streams. This sample illustrates the composition; no video is connected.', [['Leading','Alex Morgan · Ferrari 488 GT3'],['Time remaining','18:42'],['Closest battle','Morgan / Chen · 1.284 seconds']]);
+      const map = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      map.setAttribute('class','circuit'); map.setAttribute('viewBox','0 0 320 190'); map.setAttribute('aria-hidden','true');
+      const use = document.createElementNS('http://www.w3.org/2000/svg','use'); use.setAttribute('href','#circuit'); map.append(use); $('dialog-content').prepend(map);
+    }
+  };
+  document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => actions[button.dataset.action]()));
+</script>
+</body>
+</html>

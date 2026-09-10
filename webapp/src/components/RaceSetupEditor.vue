@@ -156,16 +156,26 @@ watch(() => JSON.stringify([draft.value, props.instanceId]), () => { review.valu
       <p class="font-semibold text-danger">Race options could not be loaded</p><p class="mt-1 text-muted">{{ loadError }}</p>
       <Button variant="dark" class="mt-3" :disabled="loading" @click="loadEditor">{{ loading ? 'Loading…' : 'Retry' }}</Button>
     </div>
+    <section v-if="templates.length" class="mb-6">
+      <div class="mb-4"><div class="flex items-center justify-between gap-3"><h3 class="text-base font-medium">Start with a favorite</h3><span class="text-xs text-dim">Saved templates</span></div><p class="mt-2 text-xs text-muted">Reuse a track and preset choices. The original template stays unchanged.</p></div>
+      <div class="template-gallery">
+        <button v-for="template in templates.slice(0, 3)" :key="template.id!" type="button" class="template-tile" :disabled="loading || !template.id" :aria-label="`Use template ${template.name || template.track_name}`" @click="templateId = template.id!; applyTemplate()">
+          <TrackImage variant="map" :track-key="template.track_key" :config="template.track_config" class="h-24 w-full sm:h-28" />
+          <span class="block p-3"><span class="block truncate text-xs font-semibold sm:text-sm">{{ template.name || template.track_name }}</span><span class="mt-1.5 block truncate text-[10px] text-muted sm:text-xs">{{ template.class_name }} · {{ template.session_name }}</span></span>
+        </button>
+      </div>
+    </section>
     <div class="editor-layout">
-      <div class="min-w-0">
-        <FormRow v-if="templates.length" label="Start from a saved template" hint="Reuses a track and preset choices. It does not change the original template or start a server.">
+      <div class="editor-fields min-w-0 rounded-md border border-line bg-surface p-5 sm:p-6">
+        <div class="mb-6"><h3 class="text-lg font-medium tracking-tight">Make it yours</h3><p class="mt-2 text-xs leading-relaxed text-muted">Choose the circuit and reusable presets for this race.</p></div>
+        <FormRow v-if="templates.length > 3" label="All saved templates" hint="Reuses a track and preset choices. It does not change the original template or start a server.">
           <div class="flex flex-wrap gap-2">
             <Combobox v-model="templateId" class="min-w-40 flex-1" :options="templates.map(item => ({ value: item.id!, label: item.name || item.track_name }))" placeholder="Choose a template…" />
             <Button variant="dark" :disabled="!templateId" @click="applyTemplate">Use template</Button>
           </div>
         </FormRow>
         <FormRow v-slot="{ id, describedBy }" label="Track" required>
-          <button :id="id" type="button" :aria-label="draft.track_key ? `Change track: ${draft.track_name}` : 'Choose a track (required)'" :aria-describedby="describedBy" class="flex min-h-20 w-full cursor-pointer items-center gap-4 overflow-hidden rounded-md border border-control bg-surface-2 p-3 text-left hover:bg-surface-3" @click="openTrackPicker">
+          <button :id="id" type="button" :aria-label="draft.track_key ? `Change track: ${draft.track_name}` : 'Choose a track (required)'" :aria-describedby="describedBy" class="flex min-h-20 w-full cursor-pointer items-center gap-4 overflow-hidden rounded-md border border-control bg-input p-3 text-left hover:bg-surface-3" @click="openTrackPicker">
             <TrackImage v-if="draft.track_key" :track-key="draft.track_key" :config="draft.track_config" class="h-20 w-28 shrink-0 rounded-sm" />
             <span class="min-w-0"><span class="block text-sm font-semibold">{{ draft.track_name || 'Choose a track…' }}</span><span v-if="draft.track_key" class="mt-1 block text-xs text-muted">{{ draft.track_config || 'Default layout' }} · {{ draft.pitboxes ?? '—' }} pitboxes<span v-if="selectedTrack?.version"> · {{ selectedTrack.version }}</span><br>Change track →</span></span>
           </button>
@@ -187,7 +197,7 @@ watch(() => JSON.stringify([draft.value, props.instanceId]), () => { review.valu
           </div>
         </details>
       </div>
-      <aside class="editor-review h-fit rounded-md border border-line bg-surface-2/40 p-5">
+      <aside class="editor-review paddock-plan h-fit rounded-md border p-5 sm:p-6">
         <h3 class="mb-4 text-base font-semibold">What will run</h3>
         <dl class="space-y-3 text-sm">
           <div><dt class="text-xs text-muted">Track</dt><dd class="mt-1 font-medium">{{ draft.track_name || 'Not chosen' }}</dd></div>

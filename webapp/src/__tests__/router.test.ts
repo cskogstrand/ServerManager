@@ -23,3 +23,8 @@ it("preserves the destination when login is required", async () => {
   expect(router.currentRoute.value.name).toBe("login");
   expect(router.currentRoute.value.query.redirect).toBe("/queue?instance=2");
 });
+it("keeps global broadcast in the workspace and dedicated displays standalone", () => {
+  expect(router.resolve("/broadcast").meta.bare).toBeUndefined();
+  expect(router.resolve("/server/2/broadcast").meta.bare).toBe(true);
+  expect(router.resolve("/leaderboard").meta.bare).toBe(true);
+});

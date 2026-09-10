@@ -14,10 +14,6 @@ function toggleFullscreen() {
 
 <template>
   <div class="bcast fixed inset-0 z-50 overflow-hidden bg-bg text-text select-none">
-    <!-- Atmosphere layers -->
-    <div class="bcast-bg pointer-events-none absolute inset-0" />
-    <div class="bcast-scan pointer-events-none absolute inset-0" />
-    <div class="bcast-vignette pointer-events-none absolute inset-0" />
 
     <!-- ░░ Top strap ░░ -->
     <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 sm:gap-4 sm:px-5">
@@ -57,43 +53,3 @@ function toggleFullscreen() {
     </div>
   </div>
 </template>
-
-<style scoped>
-/* Blueprint grid + depth glow behind the stage. */
-.bcast-bg {
-  background-color: var(--color-bg);
-  background-image: radial-gradient(ellipse 80% 60% at 50% 18%, rgba(98, 179, 232, 0.1), transparent 70%),
-    linear-gradient(var(--color-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
-  background-size: 100% 100%, 44px 44px, 44px 44px;
-  background-position: 0 0, -1px -1px, -1px -1px;
-  opacity: 0.9;
-}
-
-/* Cinematic vignette so the corners fall off behind the overlays. */
-.bcast-vignette {
-  background: radial-gradient(ellipse 75% 75% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
-}
-
-/* Faint broadcast scanlines, drifting slowly. */
-.bcast-scan {
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.018) 0px,
-    rgba(255, 255, 255, 0.018) 1px,
-    transparent 2px,
-    transparent 4px
-  );
-  animation: scan 14s linear infinite;
-  mix-blend-mode: overlay;
-}
-
-@keyframes scan {
-  from {
-    background-position-y: 0;
-  }
-  to {
-    background-position-y: 200px;
-  }
-}
-</style>

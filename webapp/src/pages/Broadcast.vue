@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Full-screen broadcast overlay for one instance — a trackside TV graphics
+// Broadcast view for the workspace or a dedicated instance — a trackside TV graphics
 // surface meant for a second screen. Two equal columns: the live track map
 // fills the left half (car pucks glide over it), and the right half holds one
 // card per driver, in running order, each pairing that driver's telemetry and
@@ -282,11 +282,8 @@ const MAP_EDGE_INSET_PCT = 6;
 // --- Map geometry (mirrors ServerDetail's projection) ---
 function mapWrapStyle(meta: TrackMapMeta) {
   const ratio = (meta.width || 16) / (meta.height || 9);
-  // Fit the column: cap width so the derived height never exceeds the height
-  // budget (--map-h). That budget is the full stage on desktop, but a small
-  // slice on mobile where the map sits stacked above the cards — keeps the
-  // map from overflowing the stage in the y direction.
-  return {aspectRatio: String(ratio), width: `min(100%, calc(var(--map-h) * ${ratio}))`, margin: "auto"};
+  // Fit the actual map panel, including the space used by app navigation.
+  return {aspectRatio: String(ratio), width: `min(100%, calc(100cqh * ${ratio}))`, margin: "auto"};
 }
 
 function timingFor(carId: number): TimingRow | undefined {
@@ -488,14 +485,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="bcast fixed inset-0 z-50 overflow-hidden bg-bg text-text select-none">
-    <!-- Atmosphere layers -->
-    <div class="bcast-bg pointer-events-none absolute inset-0"/>
-    <div class="bcast-scan pointer-events-none absolute inset-0"/>
-    <div class="bcast-vignette pointer-events-none absolute inset-0"/>
+  <div class="bcast isolate overflow-hidden bg-bg text-text select-none" :class="autoMode ? 'relative min-h-0 flex-1' : 'fixed inset-0 z-50'">
 
     <!-- ░░ Top strap ░░ -->
-    <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 sm:gap-4 sm:px-5">
+    <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 @min-[640px]/broadcast:gap-4 @min-[640px]/broadcast:px-5">
       <div class="flex min-w-0 items-center gap-2.5">
         <span
             class="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-black tracking-[0.2em]"
@@ -506,7 +499,7 @@ onBeforeUnmount(() => {
         </span>
         <span
             v-if="autoMode"
-            class="hidden items-center gap-1 rounded-sm bg-accent-dim px-1.5 py-1 text-[10px] font-black tracking-[0.2em] text-accent sm:inline-flex"
+            class="hidden items-center gap-1 rounded-sm bg-accent-dim px-1.5 py-1 text-[10px] font-black tracking-[0.2em] text-accent @min-[640px]/broadcast:inline-flex"
             title="Auto-following the busiest server"
         >
           <Icon name="repeat" :size="12"/>
@@ -526,7 +519,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Session clock -->
-      <div v-if="clock" class="mx-auto hidden items-center gap-5 sm:flex">
+      <div v-if="clock" class="mx-auto hidden items-center gap-5 @min-[640px]/broadcast:flex">
         <div class="text-right leading-none">
           <div class="text-[11px] font-bold tracking-[0.25em] text-accent uppercase">{{ clock.type }}</div>
           <div class="font-mono text-[10px] text-dim">Session {{ clock.index }} / {{ clock.count }}</div>
@@ -539,11 +532,11 @@ onBeforeUnmount(() => {
           <div class="font-mono text-[10px] tracking-wide text-dim uppercase">{{ clock.lapsLabel }}</div>
         </div>
       </div>
-      <div v-else class="mx-auto hidden numerals text-3xl text-dim tracking-tight sm:block">— STANDBY —</div>
+      <div v-else class="mx-auto hidden numerals text-3xl text-dim tracking-tight @min-[640px]/broadcast:block">— STANDBY —</div>
 
       <!-- Track + conditions -->
-      <div class="ml-auto flex items-center gap-2 sm:gap-4">
-        <div class="hidden text-right leading-tight md:block">
+      <div class="ml-auto flex items-center gap-2 @min-[640px]/broadcast:gap-4">
+        <div class="hidden text-right leading-tight @min-[768px]/broadcast:block">
           <div class="max-w-[18ch] truncate text-sm font-bold">
             {{ detail?.current_event?.track || activeTrack?.key || "—" }}
           </div>
@@ -556,13 +549,13 @@ onBeforeUnmount(() => {
             v-if="detail?.current_event?.weather_key"
             :src="weatherImageUrl(detail.current_event.weather_key)"
             alt=""
-            class="hidden size-9 rounded-full border border-line object-cover sm:block"
+            class="hidden size-9 rounded-full border border-line object-cover @min-[640px]/broadcast:block"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex items-center gap-1.5">
           <span
               v-if="streamChannels.length"
-              class="hidden h-9 items-center gap-1.5 rounded-md border border-line bg-surface/70 px-2.5 text-xs font-semibold text-muted sm:inline-flex"
+              class="hidden h-9 items-center gap-1.5 rounded-md border border-line bg-surface/70 px-2.5 text-xs font-semibold text-muted @min-[640px]/broadcast:inline-flex"
               title="Driver streams online / total"
           >
             <Icon name="broadcast" :size="16"/>
@@ -571,7 +564,7 @@ onBeforeUnmount(() => {
           <button
               v-if="debug"
               type="button"
-              class="grid size-8 place-items-center sm:size-9 rounded-md border border-accent/60 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
+              class="grid size-8 place-items-center @min-[640px]/broadcast:size-9 rounded-md border border-accent/60 bg-accent-dim text-accent transition-colors hover:bg-accent/20"
               title="Reshuffle demo grid"
               @click="demo.regenerate()"
           >
@@ -579,7 +572,7 @@ onBeforeUnmount(() => {
           </button>
           <button
               type="button"
-              class="grid size-8 place-items-center sm:size-9 rounded-md border transition-colors"
+              class="grid size-8 place-items-center @min-[640px]/broadcast:size-9 rounded-md border transition-colors"
               :class="
               debug
                 ? 'border-accent/60 bg-accent-dim text-accent'
@@ -592,7 +585,7 @@ onBeforeUnmount(() => {
           </button>
           <button
               type="button"
-              class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
+              class="grid size-8 place-items-center @min-[640px]/broadcast:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
               title="Toggle fullscreen"
               @click="toggleFullscreen"
           >
@@ -600,7 +593,7 @@ onBeforeUnmount(() => {
           </button>
           <RouterLink
               :to="exitTo"
-              class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
+              class="grid size-8 place-items-center @min-[640px]/broadcast:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
               title="Exit broadcast"
           >
             <Icon name="x" :size="16"/>
@@ -612,10 +605,10 @@ onBeforeUnmount(() => {
     <!-- ░░ Two-column stage: map (1/2) + driver cards (1/2) ░░ -->
     <div
         v-if="!aggregate"
-        class="absolute inset-x-0 bottom-0 top-16 z-10 flex flex-col gap-3 px-3 pb-3 lg:flex-row lg:gap-4 lg:px-4 lg:pb-4"
+        class="absolute inset-x-0 bottom-0 top-16 z-10 flex flex-col gap-3 px-3 pb-3 @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:gap-4 @min-[1024px]/broadcast:px-4 @min-[1024px]/broadcast:pb-4"
     >
       <section
-          class="relative flex w-full min-h-0 shrink-0 basis-2/5 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm lg:w-1/2 lg:basis-auto">
+          class="relative [container-type:size] flex w-full min-h-0 shrink-0 basis-2/5 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm @min-[1024px]/broadcast:w-1/2 @min-[1024px]/broadcast:basis-auto">
         <div
             v-if="activeTrack && effectiveMapMeta && mapImageOk"
             class="bcast-map relative"
@@ -716,7 +709,7 @@ onBeforeUnmount(() => {
           <article
               v-for="card in driverCards"
               :key="card.row.car_id"
-              class="tower-card flex h-auto shrink-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-surface/60 shadow-sm backdrop-blur-md transition-all duration-200 lg:h-[calc(50%-0.375rem)] lg:flex-row"
+              class="tower-card flex h-auto shrink-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-surface/60 shadow-sm backdrop-blur-md transition-all duration-200 @min-[1024px]/broadcast:h-[calc(50%-0.375rem)] @min-[1024px]/broadcast:flex-row"
               :class="
           focusRow?.car_id === card.row.car_id
             ? 'border-accent bg-surface-2/80 ring-1 ring-accent/30'
@@ -727,7 +720,7 @@ onBeforeUnmount(() => {
               @click="focusCar(card.row.car_id)"
           >
             <!-- Metrics side -->
-            <div class="flex w-full min-w-0 shrink-0 flex-col gap-3 p-4 lg:w-auto xl:w-72">
+            <div class="flex w-full min-w-0 shrink-0 flex-col gap-3 p-4 @min-[1024px]/broadcast:w-auto @min-[1280px]/broadcast:w-72">
               <!-- Identity: position · driver + car -->
               <header class="flex items-center gap-3">
                 <span
@@ -739,12 +732,12 @@ onBeforeUnmount(() => {
                 <img
                     :src="carImageUrl(card.row.carModel, card.row.skin)"
                     alt=""
-                    class="h-10 w-16 shrink-0 rounded border border-line bg-surface-4 object-cover lg:hidden"
+                    class="h-10 w-16 shrink-0 rounded border border-line bg-surface-4 object-cover @min-[1024px]/broadcast:hidden"
                     @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
                 />
                 <div class="min-w-0 flex-1">
                   <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
-                  <p class="truncate font-mono text-xs tracking-tight text-dim lg:hidden">{{ carName(card.row.carModel) }}</p>
+                  <p class="truncate font-mono text-xs tracking-tight text-dim @min-[1024px]/broadcast:hidden">{{ carName(card.row.carModel) }}</p>
                 </div>
                 <!-- Driver-detail link (any role); capture controls live over the stream -->
                 <RouterLink
@@ -763,11 +756,11 @@ onBeforeUnmount(() => {
               <div class="flex flex-1 flex-col justify-center gap-3">
                 <div class="flex items-end justify-between leading-none">
                   <div class="flex items-baseline">
-                    <span class="numerals text-5xl font-light tabular-nums xl:text-6xl">{{ speedKmh(card.row.pos) }}</span>
+                    <span class="numerals text-5xl font-light tabular-nums @min-[1280px]/broadcast:text-6xl">{{ speedKmh(card.row.pos) }}</span>
                     <span class="ml-1 font-mono text-xs text-dim">km/h</span>
                   </div>
                   <div class="flex flex-col items-center">
-                    <span class="numerals text-4xl font-bold text-accent tabular-nums xl:text-5xl">{{ gearLabel(card.row.pos) }}</span>
+                    <span class="numerals text-4xl font-bold text-accent tabular-nums @min-[1280px]/broadcast:text-5xl">{{ gearLabel(card.row.pos) }}</span>
                     <span class="mt-0.5 font-mono text-[9px] tracking-widest text-dim uppercase">Gear</span>
                   </div>
                 </div>
@@ -780,7 +773,7 @@ onBeforeUnmount(() => {
                 </div>
                 <!-- Car name + livery, below the RPM bar where there is room.
                      On mobile this moves inline into the name header. -->
-                <div class="mt-3 hidden flex-col gap-1.5 lg:flex">
+                <div class="mt-3 hidden flex-col gap-1.5 @min-[1024px]/broadcast:flex">
                   <p class="truncate text-center font-mono text-xs tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
                   <img
                       :src="carImageUrl(card.row.carModel, card.row.skin)"
@@ -795,10 +788,10 @@ onBeforeUnmount(() => {
                    score; everyone else keeps the standings + lap times. -->
               <footer
                   class="border-t border-line/60 pt-3"
-                  :class="isDrift ? 'grid grid-cols-3 gap-2 lg:flex lg:flex-col lg:gap-1.5' : 'flex flex-col gap-1.5'"
+                  :class="isDrift ? 'grid grid-cols-3 gap-2 @min-[1024px]/broadcast:flex @min-[1024px]/broadcast:flex-col @min-[1024px]/broadcast:gap-1.5' : 'flex flex-col gap-1.5'"
               >
                 <template v-if="isDrift">
-                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
+                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Live</span>
                     <span
                         class="numerals text-lg font-semibold tabular-nums"
@@ -807,7 +800,7 @@ onBeforeUnmount(() => {
                       {{ card.row.driftLive ? card.row.driftLive.toLocaleString() : "—" }}
                     </span>
                   </div>
-                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
+                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Best</span>
                     <span
                         class="numerals text-lg font-semibold tabular-nums"
@@ -816,7 +809,7 @@ onBeforeUnmount(() => {
                       {{ card.row.driftBest ? card.row.driftBest.toLocaleString() : "—" }}
                     </span>
                   </div>
-                  <div class="flex flex-col items-center lg:flex-row lg:items-center lg:justify-between">
+                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
                     <span class="font-mono text-xs tracking-wider text-dim uppercase">Last</span>
                     <span
                         class="numerals text-lg font-medium tabular-nums"
@@ -862,7 +855,7 @@ onBeforeUnmount(() => {
               </footer>
             </div>
 
-            <div class="relative aspect-video w-full min-h-0 flex-1 border-t border-line bg-bg lg:aspect-auto lg:w-auto xl:border-l xl:border-t-0">
+            <div class="relative aspect-video w-full min-h-0 flex-1 border-t border-line bg-bg @min-[1024px]/broadcast:aspect-auto @min-[1024px]/broadcast:w-auto @min-[1280px]/broadcast:border-l @min-[1280px]/broadcast:border-t-0">
               <!-- Capture controls (operate role): top-left over the stream -->
               <div
                 v-if="auth.canOperate && guidForCar(card.row.car_id)"
@@ -946,7 +939,7 @@ onBeforeUnmount(() => {
     <!-- ░░ All-servers leaderboard: auto mode, nobody online ░░ -->
     <div
         v-else
-        class="absolute inset-x-0 bottom-0 top-16 z-10 px-3 pb-3 lg:px-4 lg:pb-4"
+        class="absolute inset-x-0 bottom-0 top-16 z-10 px-3 pb-3 @min-[1024px]/broadcast:px-4 @min-[1024px]/broadcast:pb-4"
     >
       <BroadcastLeaderboard/>
     </div>
@@ -961,76 +954,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Distinctive broadcast display face for big numerals/timers; body text stays
-   on the app's Plus Jakarta Sans for cohesion. */
-@import url("https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&display=swap");
+/* Stable-width numerals keep live timing readable as values update. */
 
 .numerals {
-  font-family: "Saira Condensed", "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }
 
-/* Blueprint grid + depth glow behind the stage. */
-.bcast-bg {
-  background-color: var(--color-bg);
-  background-image: radial-gradient(ellipse 80% 60% at 50% 18%, rgba(98, 179, 232, 0.1), transparent 70%),
-  linear-gradient(var(--color-line) 1px, transparent 1px),
-  linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
-  background-size: 100% 100%,
-  44px 44px,
-  44px 44px;
-  background-position: 0 0,
-  -1px -1px,
-  -1px -1px;
-  opacity: 0.9;
-}
-
-/* Cinematic vignette so the corners fall off behind the overlays. */
-.bcast-vignette {
-  background: radial-gradient(ellipse 75% 75% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
-}
-
-/* Faint broadcast scanlines, drifting slowly. */
-.bcast-scan {
-  background: repeating-linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.018) 0px,
-      rgba(255, 255, 255, 0.018) 1px,
-      transparent 2px,
-      transparent 4px
-  );
-  animation: scan 14s linear infinite;
-  mix-blend-mode: overlay;
-}
-
-@keyframes scan {
-  from {
-    background-position-y: 0;
-  }
-  to {
-    background-position-y: 200px;
-  }
-}
-
-/* Map height budget: a small slice on mobile (map stacked above cards),
-   the full stage minus the top strap on desktop. mapWrapStyle() derives the
-   map width from this so the layout never overflows vertically. */
+/* The app rail changes the available width independently of the viewport. */
 .bcast {
-  --map-h: 36vh;
-}
-@media (min-width: 1024px) {
-  .bcast {
-    --map-h: calc(100vh - 6rem);
-  }
+  container: broadcast / size;
 }
 
 .bcast-map {
   overflow: hidden;
   border: 1px solid var(--color-line-hi);
   border-radius: var(--radius-md);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55),
-  inset 0 0 60px rgba(98, 179, 232, 0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Car pucks glide between SSE position frames (≈200ms publish cadence). */

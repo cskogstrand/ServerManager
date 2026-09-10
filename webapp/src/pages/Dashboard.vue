@@ -79,24 +79,24 @@ onMounted(() => { void loadDashboard(); void driverStreams.loadStreams(); });
 <template>
   <PageHeader title="Your servers" subtitle="See what’s running, prepare the next race, and resolve anything that needs attention." icon="dashboard">
     <template #actions>
-      <RouterLink v-if="auth.canOperate" to="/events" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-white hover:brightness-110"><Icon name="plus" :size="17" />Prepare a race</RouterLink>
+      <RouterLink v-if="auth.canOperate" to="/events" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-on-primary hover:brightness-110"><Icon name="plus" :size="17" />Prepare a race</RouterLink>
     </template>
   </PageHeader>
   <p v-if="route.query.choose === 'server'" role="status" class="mb-5 rounded-md border border-accent/40 bg-accent-dim px-4 py-3 text-sm">Choose a server below to open its Race Control.</p>
   <div v-if="loadError" role="alert" class="mb-5 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="font-semibold text-danger">Could not refresh the overview</p><p class="mt-1 text-muted">{{ loadError }}</p><Button class="mt-3" variant="dark" @click="loadDashboard">Retry</Button></div>
   <div v-if="loading && !server.instanceList.length" class="grid gap-4 lg:grid-cols-2"><Skeleton v-for="n in 2" :key="n" class="h-72" /></div>
   <EmptyState v-else-if="!server.instanceList.length && !loadError" icon="instances" title="No servers yet" :message="auth.isAdmin ? 'Add a server instance, then choose a race setup to run.' : 'An administrator needs to add a server before races can run.'">
-    <RouterLink v-if="auth.isAdmin" to="/settings/instances" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-white">Add a server</RouterLink>
+    <RouterLink v-if="auth.isAdmin" to="/settings/instances" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-on-primary">Add a server</RouterLink>
   </EmptyState>
   <template v-else-if="server.instanceList.length">
-    <div class="mb-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted"><span><strong class="text-text">{{ server.instanceList.length }}</strong> servers</span><span><strong class="text-text">{{ runningCount }}</strong> running</span><span><strong class="text-text">{{ driversCount }}</strong> drivers</span><span class="ml-auto">{{ server.connected ? 'Live connection' : 'Last known state' }}</span></div>
+    <div class="mb-7 flex flex-wrap items-center gap-x-8 gap-y-3 border-y border-line py-4 text-xs text-muted"><span><strong class="mr-1.5 font-mono text-lg font-medium text-text">{{ server.instanceList.length }}</strong> servers</span><span><strong class="mr-1.5 font-mono text-lg font-medium text-text">{{ runningCount }}</strong> running</span><span><strong class="mr-1.5 font-mono text-lg font-medium text-text">{{ driversCount }}</strong> drivers</span><span class="ml-auto">{{ server.connected ? 'Live connection' : 'Last known state' }}</span></div>
     <div class="grid items-start gap-5 lg:grid-cols-2">
-      <article v-for="instance in server.instanceList" :key="instance.id" class="overflow-hidden rounded-lg border border-line bg-surface shadow-sm">
+      <article v-for="instance in server.instanceList" :key="instance.id" class="overflow-hidden rounded-md border border-line bg-surface">
         <header class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5"><h2 class="text-base font-semibold"><RouterLink :to="controlTo(instance.id)" class="hover:text-accent">{{ instance.name }}</RouterLink></h2><span class="inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-xs font-semibold" :class="detailErrors[instance.id] || server.statusErrors[instance.id] ? 'bg-warn-glow text-warn' : instance.running ? 'bg-ok-glow text-ok' : 'bg-surface-2 text-muted'"><Icon :name="instance.running ? 'activity' : 'stop'" :size="13" />{{ status(instance) }}</span></header>
         <div class="p-5">
           <p v-if="detailErrors[instance.id]" role="alert" class="mb-4 text-sm text-warn">{{ detailErrors[instance.id] }} <button type="button" class="min-h-11 text-accent underline" @click="fetchDetail(instance.id)">Retry details</button></p>
           <template v-if="details[instance.id]?.current_event?.id">
-            <TrackImage :track-key="details[instance.id].current_event.track_key" :config="details[instance.id].current_event.track_config" class="mb-4 h-36 w-full rounded-md border border-line" />
+            <TrackImage variant="map" :track-key="details[instance.id].current_event.track_key" :config="details[instance.id].current_event.track_config" class="mb-4 h-40 w-full rounded-md" />
             <p class="mb-1 text-xs font-medium text-muted">{{ instance.running ? 'On track' : 'Last loaded race' }}</p>
             <h3 class="text-xl font-semibold tracking-tight">{{ details[instance.id].current_event.name || details[instance.id].current_event.track }}</h3>
             <p class="mt-2 text-sm text-muted">{{ details[instance.id].current_event.class }} · {{ details[instance.id].current_event.session }} · {{ details[instance.id].current_event.time }}</p>
@@ -109,9 +109,9 @@ onMounted(() => { void loadDashboard(); void driverStreams.loadStreams(); });
           </div>
           <p v-if="actionErrors[instance.id]" role="alert" class="mt-4 text-sm text-danger">{{ actionErrors[instance.id] }}</p>
         </div>
-        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
+        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-rail px-5 py-4">
           <RouterLink :to="queueTo(instance.id)" class="inline-flex min-h-11 items-center text-sm text-accent hover:underline">Run plan →</RouterLink>
-          <RouterLink v-if="instance.running || !auth.canOperate" :to="controlTo(instance.id)" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-white hover:brightness-110">Race Control →</RouterLink>
+          <RouterLink v-if="instance.running || !auth.canOperate" :to="controlTo(instance.id)" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-on-primary hover:brightness-110">Race Control →</RouterLink>
           <Button v-else-if="startable(instance)" :disabled="busy[instance.id] || !!detailErrors[instance.id]" @click="start(instance)"><Icon name="power" :size="16" />{{ busy[instance.id] ? 'Starting…' : 'Start ' + instance.name }}</Button>
           <RouterLink v-else-if="auth.isAdmin && summary && !summary.can_start" to="/setup" class="inline-flex min-h-11 items-center rounded-md border border-line bg-surface-2 px-4 text-sm font-medium">Finish server setup</RouterLink>
           <RouterLink v-else :to="queueTo(instance.id)" class="inline-flex min-h-11 items-center rounded-md border border-line bg-surface-2 px-4 text-sm font-medium">Choose race setup →</RouterLink>

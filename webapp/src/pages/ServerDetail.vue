@@ -575,8 +575,8 @@ const carChartSeries = computed(() => {
   const c = carCurves.value;
   if (!c) return [];
   const out: { name: string; color: string; values: number[]; unit?: string }[] = [];
-  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "#62b3e8", values: c.power, unit: " bhp" });
-  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "#f0b95a", values: c.torque, unit: " Nm" });
+  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "var(--color-accent)", values: c.power, unit: " bhp" });
+  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "var(--color-warn)", values: c.torque, unit: " Nm" });
   return out;
 });
 
@@ -969,7 +969,7 @@ onBeforeUnmount(() => {
       </div>
       <span
         class="size-2.5 rounded-full"
-        :class="inst.running ? 'bg-ok shadow-[0_0_16px_rgba(79,216,132,0.6)]' : 'bg-dim'"
+        :class="inst.running ? 'bg-ok' : 'bg-dim'"
       />
       <h1 class="text-xl font-black tracking-tight">Race Control</h1>
       <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
@@ -990,8 +990,7 @@ onBeforeUnmount(() => {
         <RouterLink
           :to="broadcastTo"
           class="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-accent/45 bg-accent/15 px-2.5 text-xs font-semibold text-accent transition-colors hover:border-accent/70 hover:bg-accent/25"
-          :class="inst.running ? 'shadow-[0_0_20px_rgba(98,179,232,0.28)]' : ''"
-          title="Open the full-screen broadcast overlay"
+            title="Open the full-screen broadcast overlay"
         >
           <span v-if="inst.running" class="size-1.5 animate-pulse rounded-full bg-accent" />
           <Icon name="broadcast" :size="14" />
@@ -1081,7 +1080,7 @@ onBeforeUnmount(() => {
           <div class="mt-1 flex items-center gap-2">
             <span
               class="size-2.5 rounded-full"
-              :class="inst.running ? 'bg-ok shadow-[0_0_12px_rgba(79,216,132,0.55)]' : 'bg-dim'"
+              :class="inst.running ? 'bg-ok' : 'bg-dim'"
             />
             <span class="text-base font-bold" :class="inst.running ? 'text-text' : 'text-dim'">
               {{ inst.running ? "Running" : "Stopped" }}
@@ -1284,7 +1283,7 @@ onBeforeUnmount(() => {
                   class="grid size-6 place-items-center rounded-full border text-[9px] font-black"
                   :class="
                     timingFor(car.driver.car_id)?.isLeader
-                      ? 'border-bg bg-accent text-bg shadow-[0_0_18px_rgba(98,179,232,0.7)]'
+                      ? 'border-bg bg-accent text-bg ring-2 ring-accent/30'
                       : 'border-bg bg-surface-4 text-text shadow-[0_0_12px_rgba(0,0,0,0.6)]'
                   "
                 >
@@ -2092,7 +2091,7 @@ onBeforeUnmount(() => {
 .map-canvas {
   background-color: color-mix(in srgb, var(--color-bg) 76%, transparent);
   background-image:
-    radial-gradient(ellipse at 30% 0%, rgba(98, 179, 232, 0.07), transparent 60%),
+    radial-gradient(ellipse at 30% 0%, var(--color-accent-glow), transparent 60%),
     linear-gradient(var(--color-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
   background-size:

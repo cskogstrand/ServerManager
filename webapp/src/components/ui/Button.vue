@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Port of pw-btn: primary / ghost / dark / danger / success variants
+// Semantic colors keep actions readable in both Paddock themes.
 withDefaults(
   defineProps<{
     variant?: "primary" | "ghost" | "dark" | "danger" | "success";
@@ -11,7 +11,7 @@ withDefaults(
 );
 
 const variants: Record<string, string> = {
-  primary: "bg-primary text-white border-primary hover:brightness-110",
+  primary: "bg-primary text-on-primary border-primary hover:brightness-110",
   ghost: "bg-transparent text-muted border-line hover:border-line-hi hover:bg-surface-2/70 hover:text-text",
   dark: "bg-surface-2 text-muted border-line hover:bg-surface-3 hover:text-text hover:border-line-hi",
   danger: "bg-danger-glow text-danger border-danger/45 hover:bg-danger/20 hover:border-danger/70",

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import PageHeader from "@/components/ui/PageHeader.vue";
-import Card from "@/components/ui/Card.vue";
-import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 
 const adminItems = [
@@ -19,24 +17,16 @@ const adminItems = [
 
 <template>
   <PageHeader
-    title="Admin"
-    subtitle="System setup, configuration, diagnostics, users, and maintenance."
+    title="Your workspace, configured."
+    subtitle="Server setup, content, and the people who keep your race nights running."
     icon="lock"
   />
 
-  <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-    <Card v-for="item in adminItems" :key="item.to">
-      <template #header>
-        <Icon :name="item.icon" :size="16" class="text-accent" />
-        <h2 class="min-w-0 truncate text-sm font-bold">{{ item.label }}</h2>
-      </template>
-      <p class="mb-3 text-sm text-muted">{{ item.detail }}</p>
-      <RouterLink :to="item.to">
-        <Button variant="dark" size="sm">
-          Open
-          <Icon name="arrowUp" :size="14" class="rotate-90" />
-        </Button>
-      </RouterLink>
-    </Card>
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <RouterLink v-for="item in adminItems" :key="item.to" :to="item.to" class="group rounded-md border border-line bg-surface p-6 transition-colors hover:border-accent/60 hover:bg-surface-2/40">
+      <div class="mb-5 flex items-center justify-between"><span class="grid size-11 place-items-center rounded-md bg-accent-dim text-accent"><Icon :name="item.icon" :size="20" /></span><Icon name="arrowUp" :size="16" class="rotate-90 text-dim group-hover:text-accent" /></div>
+      <h2 class="text-base font-medium">{{ item.label }}</h2>
+      <p class="mt-2 text-sm leading-relaxed text-muted">{{ item.detail }}</p>
+    </RouterLink>
   </div>
 </template>

@@ -863,7 +863,7 @@ async function removeSession(session: DriverSession) {
 <style scoped>
 .hero {
   background:
-    radial-gradient(130% 150% at 0% 0%, rgba(98, 179, 232, 0.12), transparent 55%),
+    radial-gradient(130% 150% at 0% 0%, var(--color-accent-glow), transparent 55%),
     linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
 }
 .hero-grid {
@@ -871,8 +871,8 @@ async function removeSession(session: DriverSession) {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(53, 80, 106, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 80, 106, 0.18) 1px, transparent 1px);
+    linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: radial-gradient(120% 120% at 100% 0%, #000 0%, transparent 70%);
 }
@@ -897,11 +897,11 @@ async function removeSession(session: DriverSession) {
 }
 @keyframes ping-soft {
   0% {
-    box-shadow: 0 0 0 0 rgba(79, 216, 132, 0.5);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 40%, transparent);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 5px rgba(79, 216, 132, 0);
+    box-shadow: 0 0 0 5px transparent;
   }
 }
 .live-dot {

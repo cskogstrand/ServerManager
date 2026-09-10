@@ -523,14 +523,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Distinctive broadcast display face for the big score/lap numerals; body text
-   stays on the app's Plus Jakarta Sans. Scoped styles don't reach into child
-   components, so the font-family is declared here for this component's own DOM.
-   The @import is deduped by the browser when the host page also loads it. */
-@import url("https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&display=swap");
-
+/* Shared tabular numerals keep timing and scores stable as values update. */
 .numerals {
-  font-family: "Saira Condensed", "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }

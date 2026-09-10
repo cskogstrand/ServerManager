@@ -2,8 +2,6 @@
 import { computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import PageHeader from "@/components/ui/PageHeader.vue";
-import Card from "@/components/ui/Card.vue";
-import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 
 const auth = useAuthStore();
@@ -56,19 +54,11 @@ const templates = computed(() =>
     icon="settings"
   />
 
-  <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-    <Card v-for="t in templates" :key="t.to">
-      <template #header>
-        <Icon :name="t.icon" :size="16" class="text-accent" />
-        <h2 class="text-sm font-bold">{{ t.label }}</h2>
-      </template>
-      <p class="mb-3 text-sm text-muted">{{ t.detail }}</p>
-      <RouterLink :to="t.to">
-        <Button variant="dark" size="sm">
-          Open
-          <Icon name="arrowUp" :size="14" class="rotate-90" />
-        </Button>
-      </RouterLink>
-    </Card>
+  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events">Race setups</RouterLink><RouterLink to="/presets" aria-current="page">Templates</RouterLink><RouterLink to="/queue">Run plan</RouterLink></nav>
+  <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+    <RouterLink v-for="(t, index) in templates" :key="t.to" :to="t.to" class="template-tile group">
+      <div class="track-art flex h-28 items-center justify-between px-6"><span class="self-start pt-4 font-mono text-[10px] text-muted">{{ String(index + 1).padStart(2, '0') }} / PRESET</span><Icon :name="t.icon" :size="42" class="text-text/60" /></div>
+      <div class="p-6"><h2 class="text-lg font-medium tracking-tight">{{ t.label }}</h2><p class="mt-2 min-h-12 text-sm leading-relaxed text-muted">{{ t.detail }}</p><span class="mt-5 inline-flex items-center gap-2 text-xs font-medium text-accent">Explore presets<Icon name="arrowUp" :size="14" class="rotate-90" /></span></div>
+    </RouterLink>
   </div>
 </template>

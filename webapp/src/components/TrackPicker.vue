@@ -43,7 +43,7 @@ function isSelected(t: { key?: string; config?: string }) {
         :key="`${t.key}:${t.config}`"
         type="button"
         class="cursor-pointer overflow-hidden rounded-md border bg-surface-2 text-left transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        :class="isSelected(t) ? 'border-accent shadow-[0_0_0_1px_rgba(98,179,232,0.25)]' : 'border-line hover:border-line-hi'"
+        :class="isSelected(t) ? 'border-accent ring-1 ring-accent/25' : 'border-line hover:border-line-hi'"
         @click="
           emit('select', {
             key: t.key ?? '',

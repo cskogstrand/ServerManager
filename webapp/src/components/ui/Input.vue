@@ -40,7 +40,7 @@ function onInput(e: Event) {
     :step="step"
     :autocomplete="autocomplete"
     :required="required"
-    class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-text outline-none transition-colors duration-200 placeholder:text-muted hover:border-accent focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+    class="min-h-11 w-full rounded-md border border-control bg-input px-3 text-sm text-text outline-none transition-colors duration-200 placeholder:text-muted hover:border-accent focus:border-accent focus:bg-input focus:ring-2 focus:ring-accent/20"
     @input="onInput"
   />
 </template>

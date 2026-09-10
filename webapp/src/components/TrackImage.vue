@@ -5,6 +5,7 @@
 // drop shadow so it stays legible over any preview photo.
 import { computed, ref, watch } from "vue";
 import { useContentStore } from "@/stores/content";
+import Icon from "@/components/ui/Icon.vue";
 
 const content = useContentStore();
 
@@ -16,8 +17,9 @@ const props = withDefaults(
     config?: string | null;
     // Pass :overlay="false" for tiny thumbs where the layout would be noise.
     overlay?: boolean;
+    variant?: "photo" | "map";
   }>(),
-  { overlay: true },
+  { overlay: true, variant: "photo" },
 );
 
 function url(kind: "preview" | "map" | "outline"): string {
@@ -53,9 +55,9 @@ function onOverlayError() {
 </script>
 
 <template>
-  <div class="relative overflow-hidden">
+  <div class="relative overflow-hidden bg-surface-2" :class="{ 'track-art': variant === 'map' }">
     <img
-      v-if="previewUrl && previewOk"
+      v-if="variant === 'photo' && previewUrl && previewOk"
       :src="previewUrl"
       alt=""
       loading="lazy"
@@ -71,9 +73,11 @@ function onOverlayError() {
       :src="overlaySrc"
       alt=""
       loading="lazy"
-      class="pointer-events-none absolute object-contain"
-      style="inset: 8%; width: 84%; height: 84%; opacity: 0.9; filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));"
+      class="track-map pointer-events-none absolute object-contain"
+      style="inset: 12%; width: 76%; height: 76%;"
+      :style="variant === 'photo' ? { opacity: 0.9, filter: 'brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85))' } : undefined"
       @error="onOverlayError"
     />
+    <div v-else-if="variant === 'map' || !previewUrl || !previewOk" class="absolute inset-0 grid place-items-center text-accent/60"><Icon name="events" :size="28" /></div>
   </div>
 </template>

@@ -316,8 +316,8 @@ const carChartSeries = computed(() => {
   const c = carCurves.value;
   if (!c) return [];
   const out: { name: string; color: string; values: number[]; unit?: string }[] = [];
-  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "#62b3e8", values: c.power, unit: " bhp" });
-  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "#f0b95a", values: c.torque, unit: " Nm" });
+  if (c.power?.some((v) => v > 0)) out.push({ name: "Power", color: "var(--color-accent)", values: c.power, unit: " bhp" });
+  if (c.torque?.some((v) => v > 0)) out.push({ name: "Torque", color: "var(--color-warn)", values: c.torque, unit: " Nm" });
   return out;
 });
 
@@ -1076,7 +1076,7 @@ function jobMeta(job: ContentJob): string[] {
           </button>
           <button
             type="button"
-            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
+            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger-glow hover:text-danger focus:opacity-100"
             :aria-label="`Delete ${t.name || t.key}`"
             @click.stop="deleteTrack(t)"
           >
@@ -1112,7 +1112,7 @@ function jobMeta(job: ContentJob): string[] {
           </button>
           <button
             type="button"
-            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger hover:text-white focus:opacity-100"
+            class="absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-md bg-surface/80 text-muted opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-danger-glow hover:text-danger focus:opacity-100"
             :aria-label="`Delete ${c.name || c.key}`"
             @click.stop="deleteCar(c)"
           >
@@ -1126,7 +1126,7 @@ function jobMeta(job: ContentJob): string[] {
           <span class="min-w-0 flex-1 truncate">{{ w.name }}</span>
           <button
             type="button"
-            class="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition hover:bg-danger hover:text-white"
+            class="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition hover:bg-danger-glow hover:text-danger"
             :aria-label="`Delete ${w.name || w.key}`"
             @click="deleteWeather(w)"
           >

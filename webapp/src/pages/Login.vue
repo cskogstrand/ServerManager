@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.vue";
 import FormRow from "@/components/ui/FormRow.vue";
 import Icon from "@/components/ui/Icon.vue";
 import Input from "@/components/ui/Input.vue";
+import BrandMark from "@/components/ui/BrandMark.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -33,24 +34,23 @@ async function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 flex items-center justify-center bg-bg p-4">
+  <div class="login-page min-h-dvh bg-bg p-5 pt-24">
+    <div class="login-intro"><BrandMark /><p class="mt-8 font-mono text-[11px] tracking-widest text-dim uppercase">Server Manager / Paddock</p><h2 class="mt-5 text-5xl leading-tight font-medium tracking-tighter lg:text-6xl">A better place<br><span class="text-accent">to run your races.</span></h2><p class="mt-6 max-w-sm text-sm leading-relaxed text-muted">Your servers, your setups, your next great race night. Everything in one calm workspace.</p><div class="mt-10 flex gap-3 border-t border-plan-line pt-6 text-xs text-muted"><Icon name="events" :size="17" />Assetto Corsa · Server management</div></div>
     <form
-      class="w-full max-w-sm rounded-md border border-line bg-surface p-6 shadow-2xl"
+      class="login-form w-full max-w-md rounded-lg border border-line bg-surface p-7 sm:p-9"
       @submit.prevent="submit"
     >
-      <div class="mb-5 flex items-center gap-3">
-        <div class="grid size-10 place-items-center rounded-md border border-accent/30 bg-accent-dim text-sm font-black text-accent">
-          SM
-        </div>
+      <div class="mb-8 flex items-center gap-4">
+        <BrandMark />
         <div>
-          <h1 class="text-lg font-black tracking-tight">Server Manager</h1>
-          <p class="text-sm text-muted">Sign in to manage your race servers</p>
+          <h1 class="text-2xl font-medium tracking-tight">Welcome to the paddock.</h1>
+          <p class="mt-2 text-xs leading-relaxed text-muted">Sign in to manage your race servers.</p>
         </div>
       </div>
 
       <p
         v-if="error"
-        class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger"
+        role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow px-3 py-2 text-sm text-danger"
       >
         {{ error }}
       </p>
@@ -80,3 +80,9 @@ async function submit() {
     </form>
   </div>
 </template>
+
+<style scoped>
+.login-page { display: flex; align-items: center; justify-content: center; gap: clamp(40px, 8vw, 120px); }
+.login-intro { max-width: 540px; }
+@media (max-width: 899px) { .login-intro { display: none; } }
+</style>

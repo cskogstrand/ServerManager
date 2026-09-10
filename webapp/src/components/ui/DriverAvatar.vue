@@ -3,8 +3,7 @@ import { computed } from "vue";
 
 // Placeholder driver avatar: a deterministic tinted monogram derived from the
 // driver guid (so a driver keeps the same color everywhere) until a real photo
-// is uploaded. Colors come from the muted OPS-SLATE status palette — no neon.
-// Dynamic colors are applied inline, never as Tailwind arbitrary classes.
+// is uploaded. Semantic colors adapt the monogram to both Paddock themes.
 const props = withDefaults(
   defineProps<{
     name: string;
@@ -16,14 +15,7 @@ const props = withDefaults(
   { size: 44, radius: "md" },
 );
 
-const TINTS = [
-  { bg: "rgba(98,179,232,0.16)", fg: "#a6d4f4", ring: "rgba(98,179,232,0.45)" },
-  { bg: "rgba(79,216,132,0.15)", fg: "#8ce8b1", ring: "rgba(79,216,132,0.42)" },
-  { bg: "rgba(240,185,90,0.16)", fg: "#f4d29a", ring: "rgba(240,185,90,0.45)" },
-  { bg: "rgba(239,113,104,0.15)", fg: "#f3a39d", ring: "rgba(239,113,104,0.42)" },
-  { bg: "rgba(150,140,232,0.16)", fg: "#c4bcf2", ring: "rgba(150,140,232,0.45)" },
-  { bg: "rgba(96,202,202,0.15)", fg: "#9adede", ring: "rgba(96,202,202,0.42)" },
-];
+const TINTS = ["accent", "ok", "warn", "danger", "lilac", "info"];
 
 const initials = computed(() => {
   const parts = props.name.trim().split(/\s+/).filter(Boolean);
@@ -35,7 +27,8 @@ const tint = computed(() => {
   const seed = props.guid || props.name;
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return TINTS[h % TINTS.length];
+  const color = `var(--color-${TINTS[h % TINTS.length]})`;
+  return { bg: `color-mix(in srgb, ${color} 12%, var(--color-surface))`, fg: color, ring: `color-mix(in srgb, ${color} 35%, transparent)` };
 });
 </script>
 

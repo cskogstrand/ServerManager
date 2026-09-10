@@ -2,7 +2,6 @@
 import { presetResource } from "@/lib/presets";
 import { usePresetPage } from "@/lib/usePresetPage";
 import { prepareTime } from "@/lib/presetForms";
-import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import type { UserTime } from "@/types/generated";
 import PresetShell from "@/components/presets/PresetShell.vue";
 import PresetNotices from "@/components/presets/PresetNotices.vue";
@@ -12,7 +11,6 @@ import Button from "@/components/ui/Button.vue";
 const resource = presetResource<UserTime>("times", "time");
 const page = usePresetPage(resource, prepareTime);
 const { form } = page;
-useUnsavedGuard(page.isDirty);
 </script>
 
 <template>

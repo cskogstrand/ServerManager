@@ -61,3 +61,26 @@ it("clears completed rows only on the selected server", async () => {
   expect(api.post).not.toHaveBeenCalled();
   wrapper.unmount();
 });
+
+it("clears a selected race when changing groups and offers all groups again", async () => {
+  vi.mocked(api.get).mockImplementation(async (url: string) => ({ items:
+    url === "/api/categories" ? [{ id: 1, name: "Sprints" }, { id: 2, name: "Endurance" }] :
+    url === "/api/events" ? [{ id: 10, name: "Sprint", event_category_id: 1 }, { id: 20, name: "Endurance", event_category_id: 2 }] : []
+  }) as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/queue", component: Queue }] });
+  await router.push("/queue?instance=2");
+  const wrapper = mount(RouterView, { global: { plugins: [createPinia(), router], stubs: { Sheet: true, Modal: true, RaceSetupEditor: true } } });
+  await flushPromises();
+  const combos = wrapper.findAllComponents({ name: "Combobox" });
+  combos[0].vm.$emit("update:modelValue", 1);
+  combos[1].vm.$emit("update:modelValue", 10);
+  await flushPromises();
+  const add = wrapper.findAll("button").find(button => button.text() === "Add to run plan")!;
+  expect(add.attributes("disabled")).toBeUndefined();
+  combos[0].vm.$emit("update:modelValue", 2); await flushPromises();
+  expect(add.attributes("disabled")).toBeDefined();
+  expect(combos[1].props("modelValue")).toBeNull();
+  combos[0].vm.$emit("update:modelValue", 0); await flushPromises();
+  expect(combos[1].props("options")).toHaveLength(2);
+  wrapper.unmount();
+});

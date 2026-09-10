@@ -130,6 +130,10 @@ async function load() {
   }
 }
 
+async function loadStreams() {
+  streams.value = (await api.get<{ streams: DriverStream[] }>("/api/driver-streams")).streams ?? [];
+}
+
 function skins(carKey: string) {
   return content.carByKey(carKey)?.skins ?? [];
 }
@@ -250,7 +254,7 @@ async function saveDriverStream() {
     if (f.id) await api.put(`/api/driver-streams/${f.id}`, body);
     else await api.post("/api/driver-streams", body);
     driverOpen.value = false;
-    await load();
+    await loadStreams();
     toast.success("Driver stream saved.");
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
@@ -272,7 +276,7 @@ async function removeDriverStream(stream: DriverStream) {
   busy.value = true;
   try {
     await api.delete(`/api/driver-streams/${stream.id}`);
-    await load();
+    await loadStreams();
     toast.success("Driver stream deleted.");
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));

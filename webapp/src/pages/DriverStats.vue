@@ -5,10 +5,12 @@
 // depending on what kind of session it was. Live drivers are pulled from the
 // SSE store and pinned/marked online on top of the stats snapshot.
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { listDrivers, describeResult, fmtScore, shortGuid, timeAgo } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
 import { ApiError } from "@/lib/api";
-import { useToastStore } from "@/stores/toast";
+import { useQueryParam, enumParam } from "@/lib/useQueryParam";
+import Button from "@/components/ui/Button.vue";
 import { useServerStore } from "@/stores/server";
 import type { DriverState } from "@/stores/server";
 import type { DriverSummary } from "@/types/driverStats";
@@ -18,16 +20,19 @@ import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 import Sparkline from "@/components/ui/Sparkline.vue";
 
-const toast = useToastStore();
+const error = ref("");
 const server = useServerStore();
+const router = useRouter();
+function clearFilters() { void router.replace({ query: { ...router.currentRoute.value.query, q: undefined, live: undefined } }); }
 
 const raw = ref<DriverSummary[]>([]);
 const loading = ref(true);
-const search = ref("");
-const onlineOnly = ref(false);
+const search = useQueryParam("q", "");
+const liveFilter = useQueryParam("live", "", enumParam(["", "1"] as const, ""));
+const onlineOnly = computed({ get: () => liveFilter.value === "1", set: (value: boolean) => { liveFilter.value = value ? "1" : ""; } });
 
 type SortKey = "drift" | "recent" | "laps" | "name";
-const sort = ref<SortKey>("drift");
+const sort = useQueryParam<SortKey>("sort", "drift", enumParam(["drift", "recent", "laps", "name"] as const, "drift"));
 const sortOptions: { value: SortKey; label: string }[] = [
   { value: "drift", label: "Drift" },
   { value: "recent", label: "Recent" },
@@ -103,8 +108,9 @@ async function load() {
   loading.value = true;
   try {
     raw.value = await listDrivers();
+    error.value = "";
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
+    error.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     loading.value = false;
   }
@@ -128,6 +134,8 @@ onMounted(load);
       </span>
     </template>
   </PageHeader>
+
+  <div v-if="error" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">Driver stats could not be loaded. {{ error }}</p><Button variant="dark" class="mt-3" :disabled="loading" @click="load">Retry loading drivers</Button></div>
 
   <!-- KPI strip -->
   <div class="mb-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
@@ -174,8 +182,9 @@ onMounted(load);
       <input
         v-model="search"
         type="search"
+        aria-label="Search drivers by name or GUID"
         placeholder="Search by driver or GUID…"
-        class="h-9 w-full rounded-md border border-line bg-surface-2 pr-3 pl-9 text-sm text-text transition-colors placeholder:text-dim focus:border-accent/60 focus:outline-none"
+        class="min-h-11 w-full rounded-md border border-line bg-surface-2 pr-3 pl-9 text-sm text-text transition-colors placeholder:text-dim focus:border-accent/60 focus:outline-none"
       />
     </div>
     <div class="flex rounded-md border border-line bg-surface-2 p-0.5">
@@ -183,18 +192,18 @@ onMounted(load);
         v-for="o in sortOptions"
         :key="o.value"
         type="button"
-        class="h-8 cursor-pointer rounded-sm px-2.5 text-xs font-semibold transition-colors"
+        class="min-h-11 cursor-pointer rounded-sm px-2.5 text-xs font-semibold transition-colors"
         :class="sort === o.value ? 'bg-accent-dim text-accent' : 'text-muted hover:text-text'"
-        @click="sort = o.value"
+        :aria-pressed="sort === o.value" @click="sort = o.value"
       >
         {{ o.label }}
       </button>
     </div>
     <button
       type="button"
-      class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors"
+      class="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors"
       :class="onlineOnly ? 'border-ok/45 bg-ok-glow text-ok' : 'border-line bg-surface-2 text-muted hover:text-text'"
-      @click="onlineOnly = !onlineOnly"
+      :aria-pressed="onlineOnly" @click="onlineOnly = !onlineOnly"
     >
       <span class="size-1.5 rounded-full" :class="onlineOnly ? 'bg-ok' : 'bg-dim'" />
       Live only
@@ -212,15 +221,18 @@ onMounted(load);
       <div v-for="n in 6" :key="n" class="h-[66px] animate-pulse rounded-md border border-line bg-surface-2/50" />
     </div>
 
+    <p v-else-if="error && !drivers.length" class="py-10 text-center text-sm text-muted">Use Retry loading drivers above to try again.</p>
+
     <!-- Empty -->
     <div v-else-if="!filtered.length" class="py-14 text-center">
       <div class="mx-auto grid size-12 place-items-center rounded-lg border border-line bg-surface-2 text-dim">
         <Icon name="users" :size="22" />
       </div>
-      <p class="mt-3 text-sm font-semibold text-text">No drivers match</p>
+      <p class="mt-3 text-sm font-semibold text-text">{{ search || onlineOnly ? "No drivers match" : "No drivers yet" }}</p>
       <p class="mt-0.5 text-sm text-muted">
         {{ search || onlineOnly ? "Try clearing the search or the live-only filter." : "Drivers appear here once they join a session." }}
       </p>
+      <Button v-if="search || onlineOnly" variant="dark" class="mt-3" @click="clearFilters">Clear filters</Button>
     </div>
 
     <!-- Rows -->

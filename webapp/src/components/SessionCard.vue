@@ -119,16 +119,16 @@ function submitTag() {
     <!-- HEADER -->
     <header
       class="flex cursor-pointer flex-col gap-3 p-3.5 sm:p-4"
-      role="button"
-      :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
       <div class="flex items-start gap-3">
         <button
           type="button"
-          class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-muted transition-transform"
+          class="mt-0.5 grid size-11 shrink-0 place-items-center rounded-md border border-line bg-surface-3 text-muted transition-transform"
           :class="expanded ? 'rotate-180' : ''"
-          tabindex="-1"
+          :aria-label="`${expanded ? 'Collapse' : 'Expand'} session at ${session.track.name}`"
+          :aria-expanded="expanded"
+          @click.stop="expanded = !expanded"
         >
           <Icon name="arrowDown" :size="14" />
         </button>
@@ -182,7 +182,7 @@ function submitTag() {
             v-if="taggable"
             type="button"
             class="grid size-3.5 cursor-pointer place-items-center rounded-full text-accent/70 hover:bg-accent/20 hover:text-accent"
-            title="Remove tag"
+            title="Remove tag" :aria-label="`Remove tag ${t}`"
             @click="emit('remove-tag', t)"
           >
             <Icon name="x" :size="10" />
@@ -197,7 +197,7 @@ function submitTag() {
             v-model="newTag"
             type="text"
             maxlength="40"
-            placeholder="+ tag"
+            placeholder="+ tag" aria-label="Add session tag"
             class="h-6 w-20 rounded-full border border-dashed border-line bg-surface px-2.5 text-[11px] text-text placeholder:text-dim focus:w-28 focus:border-accent/50 focus:outline-none"
             @keydown.enter.prevent="submitTag"
             @keydown.stop

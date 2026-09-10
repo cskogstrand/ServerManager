@@ -17,6 +17,10 @@ const toast = useToastStore();
 const form = ref<UserConfig | null>(null);
 const busy = ref(false);
 const pathValid = ref<boolean | null>(null);
+const checking = ref(false);
+const loading = ref(true);
+const loadError = ref("");
+const pathError = ref("");
 
 const snapshot = () =>
   form.value
@@ -47,32 +51,46 @@ const cspPhycars = intToggle("csp_phycars");
 const cspPhytracks = intToggle("csp_phytracks");
 const cspHidepit = intToggle("csp_hidepit");
 
-onMounted(async () => {
-  form.value = await api.get<UserConfig>("/api/config");
-  markClean();
-});
+async function load() {
+  loading.value = true;
+  loadError.value = "";
+  try {
+    form.value = await api.get<UserConfig>("/api/config");
+    markClean();
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : "Installation settings could not be loaded.";
+  } finally { loading.value = false; }
+}
+onMounted(load);
 
 async function validatePath() {
+  if (checking.value) return false;
+  checking.value = true;
   pathValid.value = null;
-  const data = new FormData();
-  data.append("path", form.value?.install_path ?? "");
-  const res = await fetch("/api/validate/installpath", {
-    method: "POST",
-    headers: { "X-CSRF-Token": csrfToken() },
-    body: data,
-  });
-  pathValid.value = (await res.json()).result === true;
-  return pathValid.value;
+  pathError.value = "";
+  try {
+    const data = new FormData();
+    data.append("path", form.value?.install_path ?? "");
+    const res = await fetch("/api/validate/installpath", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken() },
+      body: data,
+    });
+    if (!res.ok) throw new Error("Could not check the installation. Try again.");
+    pathValid.value = (await res.json()).result === true;
+    if (!pathValid.value) pathError.value = "No server binary found. Choose the Assetto Corsa folder containing server/acServer (or server/acServer.exe on Windows).";
+    return pathValid.value;
+  } catch (e) {
+    pathError.value = e instanceof Error ? e.message : "Could not check the installation. Try again.";
+    return false;
+  } finally { checking.value = false; }
 }
 
 async function save() {
   if (!form.value) return;
   busy.value = true;
   try {
-    if (!(await validatePath())) {
-      toast.error("No acServer binary found under that path - expected <path>/server/acServer.");
-      return;
-    }
+    if (!(await validatePath())) return;
     await api.put("/api/config/content", form.value);
     markClean();
     toast.success("Installation settings saved. Rebuild the content cache to import content.");
@@ -103,22 +121,26 @@ async function save() {
     </template>
   </PageHeader>
 
+  <p v-if="loading" role="status" class="text-sm text-muted">Loading installation settings…</p>
+  <div v-if="loadError" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">{{ loadError }}</p><Button class="mt-3" variant="dark" :disabled="loading" @click="load">Retry loading settings</Button></div>
   <form v-if="form" class="max-w-2xl" @submit.prevent="save">
     <Card title="Install path">
       <FormRow
         label="Assetto Corsa install path"
         for-id="installpath"
+        :error="pathError"
         hint="Folder containing server/acServer - e.g. .../steamapps/common/assettocorsa (or /corsa in docker)"
       >
         <div class="flex gap-1">
-          <Input id="installpath" v-model="form.install_path" class="flex-1" @update:model-value="pathValid = null" />
-          <Button type="button" variant="dark" size="sm" @click="validatePath">
+          <Input id="installpath" v-model="form.install_path" class="min-w-0 flex-1" :disabled="busy || checking" @update:model-value="pathValid = null; pathError = ''" />
+          <Button type="button" variant="dark" size="sm" :disabled="checking || busy || !form.install_path?.trim()" @click="validatePath">
             <Icon v-if="pathValid === true" name="check" :size="14" />
             <Icon v-else-if="pathValid === false" name="x" :size="14" />
-            <span>{{ pathValid === null ? "Check" : pathValid ? "Valid" : "Invalid" }}</span>
+            <span>{{ checking ? "Checking…" : "Check path" }}</span>
           </Button>
         </div>
       </FormRow>
+      <p v-if="pathValid" role="status" class="mb-3 text-sm text-ok">Server binary found. Save installation to use this path.</p>
 
       <div class="mt-4 border-t border-line pt-4">
         <Toggle v-model="cspRequired" label="Require Custom Shaders Patch (CSP)" />
@@ -135,7 +157,7 @@ async function save() {
       </div>
     </Card>
 
-    <Button class="mt-4" type="submit" :disabled="busy">
+    <Button class="mt-4" type="submit" :disabled="busy || checking || !form.install_path?.trim()">
       <Icon name="check" :size="15" />
       {{ busy ? "Saving..." : "Save installation" }}
     </Button>

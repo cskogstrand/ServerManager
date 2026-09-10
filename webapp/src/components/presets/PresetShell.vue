@@ -74,28 +74,28 @@ const selectedUses = computed(() => uses(props.selectedId));
   <div class="flex flex-col gap-5 lg:flex-row">
     <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
       <form class="mb-2 flex gap-2" @submit.prevent="submitCreate">
-        <Input v-model="newName" :placeholder="`New ${title.toLowerCase()}…`" />
-        <Button type="submit" variant="dark" :disabled="busy" aria-label="Add">
+        <Input v-model="newName" :aria-label="`New ${title.toLowerCase()} name`" :placeholder="`New ${title.toLowerCase()}…`" />
+        <Button type="submit" variant="dark" :disabled="busy || !newName.trim()" aria-label="Create preset">
           <Icon name="plus" :size="15" />
         </Button>
       </form>
 
-      <div v-if="items.length > 6" class="relative mb-2">
+      <div v-if="items.length > 6 || search" class="relative mb-2">
         <Icon name="search" :size="14" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
-        <Input v-model="search" :placeholder="`Search ${title.toLowerCase()}…`" class="!pl-8" />
+        <Input v-model="search" :aria-label="`Search ${title.toLowerCase()}`" :placeholder="`Search ${title.toLowerCase()}…`" class="!pl-8" />
       </div>
 
       <ul class="space-y-1">
         <li v-for="item in filtered" :key="item.id ?? 0" class="group flex items-center">
           <button
             type="button"
-            class="flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors"
+            class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors"
             :class="
               item.id === selectedId
                 ? 'bg-accent-dim text-accent'
                 : 'text-muted hover:bg-surface-2 hover:text-text'
             "
-            @click="emit('select', item.id!)"
+            :disabled="busy" :aria-pressed="item.id === selectedId" @click="emit('select', item.id!)"
           >
             <span class="min-w-0 flex-1 truncate">{{ item.name }}</span>
             <span
@@ -109,16 +109,16 @@ const selectedUses = computed(() => uses(props.selectedId));
           <button
             v-if="duplicatable"
             type="button"
-            class="ml-1 hidden size-8 cursor-pointer place-items-center rounded-md text-dim transition-colors group-hover:grid hover:bg-surface-2 hover:text-text"
-            :aria-label="`Duplicate ${item.name}`"
+            class="ml-1 grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dim transition-colors hover:bg-surface-2 hover:text-text"
+            :disabled="busy" :aria-label="`Duplicate ${item.name}`"
             @click="emit('duplicate', item.id!)"
           >
             <Icon name="copy" :size="14" />
           </button>
           <button
             type="button"
-            class="ml-1 hidden size-8 cursor-pointer place-items-center rounded-md text-dim transition-colors group-hover:grid hover:bg-danger-glow hover:text-danger"
-            :aria-label="`Delete ${item.name}`"
+            class="ml-1 grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dim transition-colors hover:bg-danger-glow hover:text-danger"
+            :disabled="busy" :aria-label="`Delete ${item.name}`"
             @click="emit('remove', item.id!)"
           >
             <Icon name="trash" :size="14" />
@@ -126,7 +126,7 @@ const selectedUses = computed(() => uses(props.selectedId));
         </li>
       </ul>
       <p v-if="items.length === 0" class="px-1 text-sm text-dim">Nothing here yet — add one above.</p>
-      <p v-else-if="filtered.length === 0" class="px-1 text-sm text-dim">No matches for “{{ search }}”.</p>
+      <p v-else-if="filtered.length === 0" class="px-1 text-sm text-dim">No matches for “{{ search }}”. <button type="button" class="min-h-11 text-accent underline" @click="search = ''">Clear search</button></p>
     </aside>
 
     <div class="min-w-0 flex-1">

@@ -257,6 +257,13 @@ const actionTarget = ref<LibrarySetup | null>(null);
 const actionInstanceId = ref<number | null>(null);
 const actionKind = ref<"queue" | "start" | "repeat">("queue");
 const actionQueuedOn = ref<number | null>(null);
+const actionInstance = computed(() => actionInstanceId.value === null ? null : server.instances[actionInstanceId.value]);
+const actionBlocked = computed(() => {
+  if (!actionInstance.value) return "Choose a server to continue.";
+  if (actionKind.value !== "repeat" && actionInstance.value.run_mode === "repeat_event") return "This server is repeating one race. Switch to the manual queue in its run plan before adding races.";
+  if (actionKind.value === "start" && actionInstance.value.running) return "This server is already running. Use Add to run plan to queue another race.";
+  return "";
+});
 
 function openAction(s: LibrarySetup, kind: "queue" | "start" | "repeat") {
   error.value = "";
@@ -271,7 +278,7 @@ const confirmAction = () =>
   guard(async () => {
     const s = actionTarget.value;
     const iid = actionInstanceId.value;
-    if (!s?.id || iid === null || !server.instances[iid]) return;
+    if (!s?.id || iid === null || actionBlocked.value) return;
     server.selectInstance(iid);
     const inst = server.instanceList.find((i) => i.id === iid);
     if (actionKind.value === "repeat") {
@@ -499,7 +506,7 @@ onMounted(loadLibrary);
         <details class="w-full rounded-md border border-line bg-surface-2/40">
           <summary class="min-h-11 cursor-pointer px-3 py-2.5 text-sm text-muted" :aria-label="`More actions for ${s.name || s.track_name}`">More actions</summary>
           <div class="flex flex-wrap gap-2 border-t border-line p-3">
-            <Button variant="dark" size="sm" @click="openAction(s, 'start')">Start now</Button>
+            <Button variant="dark" size="sm" @click="openAction(s, 'start')">Queue &amp; start server</Button>
             <Button variant="dark" size="sm" @click="openAction(s, 'repeat')">Repeat</Button>
             <Button variant="ghost" size="sm" @click="duplicateSetup(s)">Duplicate</Button>
             <Button variant="ghost" size="sm" @click="saveAsTemplate(s)">Save as template</Button>
@@ -545,29 +552,32 @@ onMounted(loadLibrary);
   <!-- Instance action picker -->
   <Modal
     :open="actionOpen"
-    :title="actionKind === 'repeat' ? 'Run repeatedly' : actionKind === 'start' ? 'Start on instance' : 'Queue on instance'"
+    :title="actionKind === 'repeat' ? 'Repeat race setup' : actionKind === 'start' ? 'Queue & start server' : 'Add to run plan'"
     @close="actionOpen = false"
   >
     <p class="mb-3 text-sm text-muted">
       <span class="font-medium text-text">{{ actionTarget?.name || actionTarget?.track_name }}</span>
-      <template v-if="actionKind === 'repeat'"> will re-run every time the race finishes (manual queue paused).</template>
-      <template v-else-if="actionKind === 'start'"> will be queued and the server started.</template>
-      <template v-else> will be added to the instance's queue.</template>
+      <template v-if="actionKind === 'repeat'"> will repeat when the current race finishes. The manual queue is kept and paused. A stopped server stays stopped until you start it.</template>
+      <template v-else-if="actionKind === 'start'"> will be added to the end of the run plan, then the server will start from the first queued race. Races already ahead of it run first.</template>
+      <template v-else> will be added to the end of this server’s run plan.</template>
     </p>
     <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
     <FormRow label="Server" for-id="actinst"
         :disabled="actionQueuedOn !== null">
       <Select
         id="actinst"
-        :disabled="actionQueuedOn !== null"
+        :disabled="busy || actionQueuedOn !== null"
         v-model="actionInstanceId"
         :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
       />
     </FormRow>
+    <p v-if="actionQueuedOn !== null" role="status" class="mt-3 text-sm text-muted">This setup is already queued. Retrying starts the server without adding another copy.</p>
+    <p v-if="actionBlocked" role="status" class="mt-3 text-sm text-warn">{{ actionBlocked }}</p>
+    <RouterLink v-if="actionInstance" :to="`/queue?instance=${actionInstance.id}`" class="mt-3 inline-flex min-h-11 items-center text-sm text-accent underline">View {{ actionInstance.name }} run plan</RouterLink>
     <template #footer>
       <Button variant="ghost" @click="actionOpen = false">Cancel</Button>
-      <Button :disabled="busy || actionInstanceId === null" @click="confirmAction">
-        {{ actionKind === "repeat" ? "Set repeat" : actionKind === "start" ? "Start" : "Queue" }}
+      <Button :disabled="busy || !!actionBlocked" @click="confirmAction">
+        {{ busy ? "Working…" : actionKind === "repeat" ? "Set repeat mode" : actionKind === "start" ? actionQueuedOn !== null ? "Retry start" : "Queue & start server" : "Add to run plan" }}
       </Button>
     </template>
   </Modal>

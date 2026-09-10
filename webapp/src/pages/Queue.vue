@@ -63,6 +63,9 @@ const repeatMode = computed(() => instance.value?.run_mode === "repeat_event");
 const eventsInCategory = computed(() =>
   allEvents.value.filter((e) => !addCategory.value || e.event_category_id === addCategory.value),
 );
+watch(eventsInCategory, (events) => {
+  if (!events.some(event => event.id === addEvent.value)) addEvent.value = null;
+});
 const pendingRows = computed(() => rows.value.filter((r) => !r.finished));
 const activeRow = computed(
   () => rows.value.find((r) => !r.finished && (r.started_at ?? 0) > 0 && instance.value?.running) ?? null,
@@ -237,7 +240,7 @@ const switchToManual = () =>
 
 const addEventToQueue = () =>
   act(async () => {
-    if (!addEvent.value) return;
+    if (!addEvent.value || !eventsInCategory.value.some(event => event.id === addEvent.value)) return;
     await api.post(`/api/queue/event/${addEvent.value}?instance=${instanceId.value}`);
     toast.success("Event queued.");
   });
@@ -557,20 +560,15 @@ watch(
         <span class="h-px flex-1 bg-line" />
       </div>
 
-      <FormRow label="Event group" for-id="qcat">
+      <FormRow label="Filter by group" for-id="qcat" hint="Optional. Search all setups or narrow the list to a group.">
         <Combobox
           id="qcat"
           v-model="addCategory"
-          placeholder="Search event groups..."
-          :options="categories.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))"
+          placeholder="All groups"
+          :options="[{ value: 0, label: 'All groups' }, ...categories.map((c) => ({ value: c.id ?? 0, label: c.name ?? '' }))]"
         />
       </FormRow>
-      <Button variant="dark" class="mb-4 w-full" :disabled="!addCategory || busy" @click="addCategoryToQueue">
-        <Icon name="plus" :size="15" />
-        Add all from group
-      </Button>
-
-      <FormRow label="Single event" for-id="qevent">
+      <FormRow label="Race setup" for-id="qevent">
         <Combobox
           id="qevent"
           v-model="addEvent"
@@ -580,7 +578,10 @@ watch(
       </FormRow>
       <Button variant="dark" class="w-full" :disabled="!addEvent || busy" @click="addEventToQueue">
         <Icon name="plus" :size="15" />
-        Add event
+        Add to run plan
+      </Button>
+      <Button v-if="addCategory" variant="ghost" class="mt-2 w-full" :disabled="!eventsInCategory.length || busy" @click="addCategoryToQueue">
+        Add all {{ eventsInCategory.length }} setups from group
       </Button>
     </Card>
   </div>

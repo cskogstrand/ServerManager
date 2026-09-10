@@ -22,7 +22,8 @@ defineEmits<{
     <button
       type="button"
       title="Download"
-      class="grid size-7 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:border-accent/50 hover:text-accent"
+      :aria-label="`Download ${item.kind === 'clip' ? 'clip' : 'screenshot'}`"
+      class="grid size-11 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:border-accent/50 hover:text-accent"
       @click.stop="$emit('download')"
     >
       <Icon name="download" :size="14" />
@@ -31,8 +32,9 @@ defineEmits<{
       v-if="canDelete"
       type="button"
       title="Delete"
+      :aria-label="`Delete ${item.kind === 'clip' ? 'clip' : 'screenshot'}`"
       :disabled="deleting"
-      class="grid size-7 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:border-danger/60 hover:text-danger disabled:opacity-50"
+      class="grid size-11 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:border-danger/60 hover:text-danger disabled:opacity-50"
       @click.stop="$emit('delete')"
     >
       <Icon name="trash" :size="14" />

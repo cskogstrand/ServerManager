@@ -38,7 +38,7 @@ const router = useRouter();
 const toast = useToastStore();
 const server = useServerStore();
 const content = useContentStore();
-const { summary, loading, reload } = useSetupSummary();
+const { summary, loading, error: summaryError, reload } = useSetupSummary();
 
 const STEP_META: Record<SetupStep, { label: string; icon: string }> = {
   install: { label: "Install", icon: "folder" },
@@ -286,7 +286,9 @@ const saveRaceSetup = () =>
   });
 
 // --- Step: Run ---
-const runReady = computed(() => savedEventId.value !== null && draftSnapshot() === savedDraftSnapshot.value && runInstanceId.value !== null && !!server.instances[runInstanceId.value] && canStart.value && (runAction.value === "queue" || !server.instances[runInstanceId.value].running));
+const queuedOn = ref<number | null>(null);
+const queueLocked = computed(() => runInstanceId.value !== null && server.instances[runInstanceId.value]?.run_mode === "repeat_event" && runAction.value !== "repeat");
+const runReady = computed(() => !summaryError.value && !queueLocked.value && savedEventId.value !== null && draftSnapshot() === savedDraftSnapshot.value && runInstanceId.value !== null && !!server.instances[runInstanceId.value] && canStart.value && (runAction.value === "queue" || !server.instances[runInstanceId.value].running));
 
 const runNow = () =>
   guard(async () => {
@@ -300,7 +302,10 @@ const runNow = () =>
       await api.post(`/api/server/start?instance=${iid}`);
       toast.success("Repeat mode set and server starting.");
     } else {
-      await api.post(`/api/queue/event/${eid}?instance=${iid}`);
+      if (queuedOn.value !== iid) {
+        await api.post(`/api/queue/event/${eid}?instance=${iid}`);
+        queuedOn.value = iid;
+      }
       if (runAction.value === "start") {
         await api.post(`/api/server/start?instance=${iid}`);
         toast.success("Event queued and server starting.");
@@ -335,41 +340,23 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
     </template>
   </PageHeader>
 
+  <div v-if="summaryError" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">Setup status could not be loaded. {{ summaryError }}</p><Button variant="dark" class="mt-3" :disabled="busy" @click="refresh">Retry setup status</Button></div>
+
   <div v-if="loading" class="space-y-4">
     <Skeleton class="h-12" />
     <Skeleton class="h-96" />
   </div>
 
   <template v-else-if="summary">
-    <!-- Readiness bar -->
-    <div class="mb-4 flex flex-wrap gap-2">
-      <button
-        v-for="s in steps"
-        :key="s.id"
-        type="button"
-        class="inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors"
-        :class="
-          step === s.id
-            ? 'border-accent/50 bg-accent-dim text-accent'
-            : s.done
-              ? 'border-ok/40 bg-ok-glow text-ok hover:border-ok/60'
-              : 'border-line bg-surface text-muted hover:border-line-hi'
-        "
-        @click="go(s.id)"
-      >
-        <Icon :name="s.done ? 'check' : s.icon" :size="14" />
-        {{ s.label }}
-      </button>
-    </div>
-
     <div class="grid gap-4 lg:grid-cols-[200px_1fr_280px]">
       <!-- Left rail -->
-      <nav class="flex flex-row flex-wrap gap-1.5 lg:flex-col">
+      <nav aria-label="Server setup steps" class="flex flex-row flex-wrap gap-1.5 lg:flex-col">
         <button
           v-for="s in steps"
           :key="s.id"
           type="button"
-          class="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+          class="flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+          :aria-current="step === s.id ? 'step' : undefined"
           :class="step === s.id ? 'border-accent/50 bg-accent-dim text-text' : 'border-line bg-surface text-muted hover:border-line-hi hover:text-text'"
           @click="go(s.id)"
         >
@@ -542,6 +529,7 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
           <FormRow v-if="summary.instances.length > 1" label="Instance">
             <Select
               v-model="runInstanceId"
+              :disabled="busy || queuedOn !== null"
               :options="summary.instances.map((i) => ({ value: i.id, label: i.name + (i.is_running ? ' (running)' : '') }))"
             />
           </FormRow>
@@ -549,13 +537,18 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
           <FormRow label="When you start">
             <Select
               v-model="runAction"
+              :disabled="busy || queuedOn !== null"
               :options="[
-                { value: 'start', label: 'Start now' },
+                { value: 'start', label: 'Queue & start server' },
                 { value: 'queue', label: 'Queue only' },
-                { value: 'repeat', label: 'Repeat continuously' },
+                { value: 'repeat', label: 'Repeat & start server' },
               ]"
             />
           </FormRow>
+
+          <p v-if="runAction === 'start'" class="mb-3 text-sm text-muted">Adds this setup to the end of the run plan, then starts the first queued race. Races already ahead of it run first.</p>
+          <p v-if="queuedOn !== null" role="status" class="mb-3 text-sm text-muted">Your setup is already queued. Retry starts the server without adding another copy.</p>
+          <p v-if="queueLocked" role="status" class="mb-3 text-sm text-warn">This server is in repeat mode. Switch to its manual queue in the <RouterLink :to="`/queue?instance=${runInstanceId}`" class="underline">run plan</RouterLink> before adding races.</p>
 
           <p v-if="runInstance?.is_running && runAction !== 'queue'" role="status" class="mb-3 text-sm text-warn">{{ runInstance.name }} is already running. Choose Queue only to add this race, or manage the live session in Race Control.</p>
           <p v-if="!savedEventId || draftSnapshot() !== savedDraftSnapshot" class="mb-3 flex items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2 text-xs text-warn">
@@ -566,7 +559,7 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
 
           <Button :variant="runReady ? 'success' : 'primary'" :disabled="busy || !runReady" @click="runNow">
             <Icon name="power" :size="15" />
-            {{ runAction === "queue" ? "Queue event" : "Start server" }}
+            {{ busy ? "Working…" : runAction === "queue" ? "Add to run plan" : queuedOn !== null ? "Retry start" : "Start server" }}
           </Button>
         </template>
 

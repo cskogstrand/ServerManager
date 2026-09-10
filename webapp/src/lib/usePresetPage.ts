@@ -1,7 +1,9 @@
-import { onMounted, ref, type Ref } from "vue";
+import { onMounted, ref, watch, type Ref } from "vue";
+import { onBeforeRouteUpdate } from "vue-router";
 import { api, ApiError } from "@/lib/api";
 import { restartServersUsingTemplate } from "@/lib/restartServersForTemplate";
 import { useQueryParam, numberParam } from "@/lib/useQueryParam";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useConfirmStore } from "@/stores/confirm";
 import type { presetResource } from "@/lib/presets";
 import type { DropDownList } from "@/types/generated";
@@ -16,7 +18,8 @@ export function usePresetPage<T extends { id?: number }>(
 ) {
   const items: Ref<DropDownList[]> = ref([]);
   // Selected preset mirrored to ?sel so refresh/back reopens the same one.
-  const selectedId = useQueryParam<number | null>("sel", null, numberParam());
+  const requestedId = useQueryParam<number | null>("sel", null, numberParam());
+  const selectedId = ref<number | null>(null);
   const form = ref<T | null>(null) as Ref<T | null>;
   const busy = ref(false);
   const notice = ref("");
@@ -41,6 +44,7 @@ export function usePresetPage<T extends { id?: number }>(
   const snapshot = () => (form.value ? JSON.stringify(form.value) : "");
   const markClean = () => (baseline = snapshot());
   const isDirty = () => form.value !== null && snapshot() !== baseline;
+  const guardSwitch = useUnsavedGuard(isDirty);
 
   async function guard(fn: () => Promise<void>) {
     busy.value = true;
@@ -59,20 +63,50 @@ export function usePresetPage<T extends { id?: number }>(
     items.value = await resource.list();
   };
 
-  const select = (id: number) =>
-    guard(async () => {
+  let selectionVersion = 0;
+  async function loadPreset(id: number | null) {
+    const version = ++selectionVersion;
+    try {
+      if (id === null) {
+        form.value = null;
+        selectedId.value = null;
+        markClean();
+        return;
+      }
       const data = await resource.get(id);
+      if (version !== selectionVersion) return;
       form.value = prepare ? prepare(data) : data;
       selectedId.value = id;
       markClean();
-    });
+      requestedId.value = id;
+    } catch (error) {
+      if (version !== selectionVersion) return;
+      requestedId.value = selectedId.value;
+      throw error;
+    }
+  }
+
+  const select = (id: number) => {
+    if (busy.value || id === selectedId.value) return;
+    return guardSwitch(() => guard(() => loadPreset(id)));
+  };
+
+  onBeforeRouteUpdate(async (to, from) => {
+    if (to.query.sel === from.query.sel || Number(to.query.sel) === selectedId.value) return true;
+    let allowed = false;
+    await guardSwitch(() => { allowed = true; });
+    return allowed;
+  });
+  watch(requestedId, (id) => {
+    if (id !== selectedId.value) void guard(() => loadPreset(id));
+  });
 
   const create = (name: string) =>
-    guard(async () => {
+    guardSwitch(() => guard(async () => {
       const id = await resource.create(name);
       await reloadList();
-      await select(id);
-    });
+      await loadPreset(id);
+    }));
 
   const remove = (id: number) =>
     guard(async () => {
@@ -87,6 +121,7 @@ export function usePresetPage<T extends { id?: number }>(
       await resource.remove(id);
       if (selectedId.value === id) {
         selectedId.value = null;
+        requestedId.value = null;
         form.value = null;
       }
       await Promise.all([reloadList(), reloadUsage()]);
@@ -105,27 +140,25 @@ export function usePresetPage<T extends { id?: number }>(
   // Clone-before-edit: copy a preset and switch to the new one so a shared
   // preset can be changed without affecting the events already using the source.
   const duplicate = (id: number) =>
-    guard(async () => {
+    guardSwitch(() => guard(async () => {
       const src = await resource.get(id);
       const baseName = items.value.find((i) => i.id === id)?.name ?? "Preset";
       const copyName = `${baseName} copy`;
       const newId = await resource.create(copyName);
       await resource.update(newId, { ...src, id: newId, name: copyName } as T);
       await Promise.all([reloadList(), reloadUsage()]);
-      await select(newId);
+      await loadPreset(newId);
       notice.value = "Duplicated — you're editing the copy.";
-    });
+    }));
 
   onMounted(() =>
     guard(async () => {
       await Promise.all([reloadList(), reloadUsage()]);
       // Restore the preset named in ?sel (if it still exists).
-      if (selectedId.value != null && items.value.some((i) => i.id === selectedId.value)) {
-        const data = await resource.get(selectedId.value);
-        form.value = prepare ? prepare(data) : data;
-        markClean();
-      } else if (selectedId.value != null) {
-        selectedId.value = null;
+      if (requestedId.value != null && items.value.some((i) => i.id === requestedId.value)) {
+        await loadPreset(requestedId.value);
+      } else if (requestedId.value != null) {
+        requestedId.value = null;
       }
     }),
   );

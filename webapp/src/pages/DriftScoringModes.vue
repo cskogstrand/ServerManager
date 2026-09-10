@@ -32,7 +32,7 @@ const newName = ref("");
 let baseline = "";
 const snapshot = () => (form.value ? JSON.stringify(form.value) : "");
 const markClean = () => (baseline = snapshot());
-useUnsavedGuard(() => form.value !== null && snapshot() !== baseline);
+const guardSwitch = useUnsavedGuard(() => form.value !== null && snapshot() !== baseline);
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
@@ -88,23 +88,26 @@ const multiplierGainHint = computed(() => {
   return `At ${multiplierGainReferenceKmh} km/h, +1x multiplier every ${seconds.toFixed(1)} seconds.`;
 });
 
-const select = (id: number) =>
-  guard(async () => {
+async function loadMode(id: number) {
     const res = await api.get<{ data: DriftScoringMode }>(`/api/drift-scoring-mode/${id}`);
     form.value = res.data;
     selectedId.value = id;
     markClean();
-  });
+}
+const select = (id: number) => {
+  if (busy.value || id === selectedId.value) return;
+  return guardSwitch(() => guard(() => loadMode(id)));
+};
 
 const create = () =>
-  guard(async () => {
+  guardSwitch(() => guard(async () => {
     const name = newName.value.trim();
     if (!name) return;
     const res = await api.post<{ id: number }>("/api/drift-scoring-modes", { name });
     newName.value = "";
     await reloadList();
-    await select(res.id);
-  });
+    await loadMode(res.id);
+  }));
 
 const save = () =>
   guard(async () => {
@@ -137,7 +140,7 @@ const remove = (id: number) =>
 onMounted(() =>
   guard(async () => {
     await reloadList();
-    if (items.value[0]?.id) await select(items.value[0].id);
+    if (items.value[0]?.id) await loadMode(items.value[0].id);
   }),
 );
 </script>
@@ -166,8 +169,8 @@ onMounted(() =>
   <div class="flex flex-col gap-5 lg:flex-row">
     <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
       <form class="mb-2 flex gap-2" @submit.prevent="create">
-        <Input v-model="newName" placeholder="New scoring mode..." />
-        <Button type="submit" variant="dark" :disabled="busy" aria-label="Add">
+        <Input v-model="newName" aria-label="New scoring mode name" placeholder="New scoring mode..." />
+        <Button type="submit" variant="dark" :disabled="busy || !newName.trim()" aria-label="Create scoring mode">
           <Icon name="plus" :size="15" />
         </Button>
       </form>
@@ -176,7 +179,8 @@ onMounted(() =>
         <li v-for="item in items" :key="item.id ?? 0" class="group flex items-center">
           <button
             type="button"
-            class="flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors"
+            class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors"
+            :disabled="busy" :aria-pressed="item.id === selectedId"
             :class="item.id === selectedId ? 'bg-accent-dim text-accent' : 'text-muted hover:bg-surface-2 hover:text-text'"
             @click="select(item.id!)"
           >
@@ -191,8 +195,9 @@ onMounted(() =>
           </button>
           <button
             type="button"
-            class="ml-1 hidden size-8 cursor-pointer place-items-center rounded-md text-dim transition-colors group-hover:grid hover:bg-danger-glow hover:text-danger disabled:hidden"
-            :disabled="item.id === 1 || !!usage[String(item.id)]"
+            class="ml-1 grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dim transition-colors hover:bg-danger-glow hover:text-danger disabled:opacity-40"
+            :disabled="busy || item.id === 1 || !!usage[String(item.id)]"
+            :title="item.id === 1 ? 'The default scoring mode cannot be deleted' : usage[String(item.id)] ? 'In use by a server or race setup' : `Delete ${item.name}`"
             :aria-label="`Delete ${item.name}`"
             @click="remove(item.id!)"
           >

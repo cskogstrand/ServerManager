@@ -76,6 +76,7 @@ function nextFree(values: (number | null)[], fallback: number): number {
 }
 
 function openCreate() {
+  error.value = "";
   const list = server.instanceList;
   // Suggest the next port block so new instances don't collide.
   // Game docker mappings cover 9601-9609 / 8082-8090 out of the box.
@@ -106,6 +107,7 @@ function openCreate() {
 }
 
 function openEdit(inst: InstanceState) {
+  error.value = "";
   form.value = {
     id: inst.id,
     name: inst.name,
@@ -282,27 +284,28 @@ async function loadDriftModes() {
   </div>
 
   <Modal :open="editorOpen" :title="form?.id ? 'Edit instance' : 'New instance'" @close="closeEditor">
-    <template v-if="form">
+    <p v-if="error" role="alert" class="mb-4 rounded-md bg-danger-glow p-3 text-sm text-danger">{{ error }} Your changes are still here.</p>
+    <form v-if="form" id="instance-form" @submit.prevent="save">
       <FormRow label="Name" for-id="iname" hint="Shown in the Assetto Corsa lobby">
-        <Input id="iname" v-model="form.name" />
+        <Input id="iname" v-model="form.name" required />
       </FormRow>
       <div class="grid gap-x-4 sm:grid-cols-2">
         <FormRow label="UDP port" for-id="iudp">
-          <Input id="iudp" v-model="form.udp_port" type="number" :min="1024" :max="65535" />
+          <Input id="iudp" v-model="form.udp_port" type="number" required :min="1024" :max="65535" />
         </FormRow>
         <FormRow label="TCP port" for-id="itcp">
-          <Input id="itcp" v-model="form.tcp_port" type="number" :min="1024" :max="65535" />
+          <Input id="itcp" v-model="form.tcp_port" type="number" required :min="1024" :max="65535" />
         </FormRow>
         <FormRow label="HTTP port" for-id="ihttp">
-          <Input id="ihttp" v-model="form.http_port" type="number" :min="1024" :max="65535" />
+          <Input id="ihttp" v-model="form.http_port" type="number" required :min="1024" :max="65535" />
         </FormRow>
       </div>
       <div class="grid gap-x-4 sm:grid-cols-2">
         <FormRow label="Plugin port (acServer)" for-id="iplugin">
-          <Input id="iplugin" v-model="form.plugin_port" type="number" :min="1024" :max="65535" />
+          <Input id="iplugin" v-model="form.plugin_port" type="number" required :min="1024" :max="65535" />
         </FormRow>
         <FormRow label="Plugin listen port (SM)" for-id="ipluginl">
-          <Input id="ipluginl" v-model="form.plugin_listen_port" type="number" :min="1024" :max="65535" />
+          <Input id="ipluginl" v-model="form.plugin_listen_port" type="number" required :min="1024" :max="65535" />
         </FormRow>
       </div>
       <div class="mt-2 border-t border-line pt-4">
@@ -327,10 +330,10 @@ async function loadDriftModes() {
         Docker setups map 9601-9609 (game) and 8082-8090 (http) by default — stay inside those ranges or extend the
         compose file. Plugin ports never leave the machine.
       </p>
-    </template>
+    </form>
     <template #footer>
       <Button variant="ghost" @click="closeEditor">Cancel</Button>
-      <Button :disabled="busy" @click="save">{{ form?.id ? "Save" : "Create" }}</Button>
+      <Button type="submit" form="instance-form" :disabled="busy">{{ busy ? "Saving…" : form?.id ? "Save server" : "Create server" }}</Button>
     </template>
   </Modal>
 

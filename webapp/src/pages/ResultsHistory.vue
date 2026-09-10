@@ -22,6 +22,7 @@ const sessions = ref<SessionSearchResult[]>([]);
 const scores = ref<ScoreEntry[]>([]);
 const files = ref<ResultFile[]>([]);
 const loading = ref(true);
+const sessionsLoading = ref(false);
 
 interface ResultFile {
   file: string;
@@ -38,12 +39,13 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function loadSessions() {
   const version = ++sessionVersion;
+  sessionsLoading.value = true;
   try {
     const result = await searchSessions({ q: q.value.trim() });
     if (version === sessionVersion) { sessions.value = result; sessionError.value = ""; }
   } catch (error) {
     if (version === sessionVersion) sessionError.value = error instanceof Error ? error.message : "Session history could not be loaded.";
-  }
+  } finally { if (version === sessionVersion) sessionsLoading.value = false; }
 }
 async function load() {
   loading.value = true;
@@ -57,6 +59,7 @@ async function load() {
 watch(q, () => {
   ++sessionVersion;
   sessions.value = [];
+  sessionsLoading.value = true;
   if (timer) clearTimeout(timer);
   timer = setTimeout(loadSessions, 250);
 });
@@ -155,10 +158,10 @@ function durationLabel(r: SessionSearchResult): string {
     <template #header>
       <Icon name="clock" :size="15" class="text-accent" />
       <h2 class="text-sm font-bold">Recent sessions</h2>
-      <span class="ml-auto text-xs text-dim">{{ loading ? "Loading..." : `${recentSessions.length} shown` }}</span>
+      <span class="ml-auto text-xs text-dim" role="status">{{ sessionsLoading ? "Searching…" : `${recentSessions.length} shown` }}</span>
     </template>
 
-    <div v-if="loading && !recentSessions.length" class="space-y-2">
+    <div v-if="sessionsLoading && !recentSessions.length" class="space-y-2">
       <div v-for="i in 5" :key="i" class="h-14 animate-pulse rounded-md bg-surface-2/60" />
     </div>
 
@@ -193,7 +196,7 @@ function durationLabel(r: SessionSearchResult): string {
           </div>
           <div>
             <div class="font-mono text-sm font-bold">{{ r.laps }}</div>
-            <div class="text-[9px] font-bold tracking-wide text-dim uppercase">Laps in matching sessions</div>
+            <div class="text-[9px] font-bold tracking-wide text-dim uppercase">Laps</div>
           </div>
         </div>
       </RouterLink>
@@ -229,7 +232,7 @@ function durationLabel(r: SessionSearchResult): string {
             <div class="truncate font-medium">{{ f.winner || "-" }}</div>
           </div>
           <div>
-            <div class="text-dim">Best lap · overall</div>
+            <div class="text-dim">Best lap in race</div>
             <div class="font-mono">{{ f.best_lap_ms ? lapTime(f.best_lap_ms) : "-" }}</div>
           </div>
           <div>

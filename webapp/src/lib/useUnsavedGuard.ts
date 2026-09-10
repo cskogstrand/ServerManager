@@ -32,5 +32,5 @@ export function useUnsavedGuard(isDirty: () => boolean, routeGuard = true) {
   };
   if (routeGuard) onBeforeRouteLeave(canLeave);
   // The same guard must run for X, backdrop, Escape and Cancel, not only routes.
-  return async (close: () => void) => { if (await canLeave()) close(); };
+  return async (close: () => void | Promise<void>) => { if (await canLeave()) await close(); };
 }

@@ -1,0 +1,67 @@
+# User-flow review — 10 September 2026
+
+Reviewed the 33 declared routes and their shared interaction components, following the previous visual/accessibility pass. The most useful improvements are clearer action outcomes, preserving edits, and removing dead ends. The existing navigation and visual system can support these changes without a redesign.
+
+This is a code-grounded review with targeted browser walkthroughs, not a claim that every backend action or accessibility requirement has been verified live.
+
+## Implemented
+
+| Flow | Previous friction | Change |
+| --- | --- | --- |
+| Switch, create or duplicate a preset | These actions could silently replace an edited form. Clicking the selected preset also reloaded it. URL selection changes could leave the wrong form on screen. | Preserve the draft behind the existing Keep editing / Discard changes dialog; ignore reselection; synchronize the loaded form with URL navigation. A failed load retains the original preset and save target. Covers car classes, sessions, time/weather and difficulty. |
+| Switch or create a drift scoring mode | Switching could silently discard changes. | Apply the same draft guard before replacement. |
+| Use preset lists with keyboard or touch | Duplicate/delete buttons were hidden until mouse hover. A saved search could hide a short list with no visible search box. | Keep actions visible, use 44px controls, label fields, expose selection state, and show an actionable Clear search option. |
+| Add a race to a run plan | A group looked mandatory. The selected race could belong to the previous group, and there was no All groups option. | Mark the group filter optional, offer All groups, clear incompatible race selections, and put the single-race action first. The bulk action appears only for a selected group and shows its race count. |
+| Start a race from the library | “Start now” actually appended it and started the first queued race, which might be a different one. Repeat-mode servers accepted attempts that the API rejected. | Rename to “Queue & start server,” explain ordering before submission, show the server’s run-plan link, and explain unavailable actions. Retry start explicitly says the race is already queued. Repeat wording distinguishes setting a mode from starting a stopped server. |
+| Complete guided setup | Two separate step navigations repeated the same choices. Start retries could enqueue the same saved race again. Failed setup-summary requests could leave a blank workbench. | Keep one labelled step navigation. Clarify queue/start/repeat outcomes, retain queue success during a failed start, and show setup-status recovery. |
+| Check the installation | Network failures from Check could be unhandled; the changing Check/Valid/Invalid button mixed an action with its result. | Keep a consistent Check path button, show progress and an inline result, clear stale validation after edits, and offer retry when settings cannot load. |
+| Add or edit a server instance | Port errors appeared behind the modal. Number input limits were not enforced by a form submission. | Show failures inside the editor and use native required/range validation, with descriptive save actions. |
+| Save a driver stream | Refreshing the entire page’s data after stream changes overwrote unsaved capture settings. | Refresh only the stream list after creating, updating or deleting a driver stream. |
+| Find a driver and return from a profile | Filters reset when returning; a load failure looked like an empty list. | Preserve search, sort and Live only in the URL; add a clear-filter action and persistent retryable errors. |
+| Search results history | Typing briefly displayed “No matching sessions” while the request was still pending. Per-race labels incorrectly said “overall.” | Show search progress and use labels scoped to the displayed session/race. |
+| Explore session history and highlights | Session expansion was attached to an unfocusable header; media actions had small targets. | Make expansion a labelled native button, enlarge shared media actions to 44px, and label session-tag and media controls. |
+
+## Coverage and remaining opportunities
+
+All routes are represented below. “Retained” means reviewed without a structural change in this pass; it does not mean no further improvements are possible.
+
+| Area and routes | Interactions reviewed | Assessment / next opportunity |
+| --- | --- | --- |
+| Authentication: `/login`, `/access-denied` | Sign in, required fields, login return path, role restrictions | Retained. Clear labels and explicit access-denied explanation already exist. Test account expiry and logout while an editor is dirty in a future account-session pass. |
+| App shell, `/admin` | Desktop/mobile navigation, server context, account menu, theme, connection recovery, admin destinations | Retained. Consider remembering expanded navigation so less frequent users do not have to rediscover icon labels after every reload. Add a not-found route for obsolete URLs. |
+| Dashboard: `/` | Readiness, start, choose server, open run plan/control, stream visibility, activity pagination | Retained. “Prepare a race” does not carry the chosen server into the library explicitly. Activity-feed errors can still look like an empty page. |
+| Guided setup: `/setup` | Installation, cache, identity, instance selection/creation, race creation, queue/start/repeat | Simplified as above. Next: show one strongest next action per step and reuse the installation validator to keep both entry points consistent. |
+| Installation: `/settings/installation` | Load/check/save path, CSP options, content handoff | Recovery improved. The successful-save message could include a direct contextual action to import content. |
+| Content: `/content` | Search/filter/sort tracks/cars/weather, previews, file/URL imports, automatic type detection, retry, overwrite, delete, rebuild, image optimization | Existing batch progress and per-file recovery are useful. Make file upload and URL import explicit alternatives; currently a URL takes precedence even if files are selected. Track picker also needs distinct no-content and no-search-match messages. |
+| Race library: `/events` | Create/edit, track picker, inline presets, templates, groups, duplicate/delete, bulk queue/delete, queue/start/repeat | Action outcomes improved. “Templates” names both complete race copies and preset building blocks. Distinguish “Race templates” from “Presets.” Bulk queue should explain repeat-mode restrictions as clearly as the single-race dialog. |
+| Run plan: `/queue` | Select server, add setup/group, create-and-queue, reorder, remove, completed rows, skip, start/stop, schedule, repeat/manual switch | Picker simplified. Next: label the scheduling time zone; offer undo for a removed pending race; roll back optimistic ordering when saving the new order fails. |
+| Preset hub: `/presets` | Discover reusable building blocks and return to race preparation | Retained. Terminology consolidation above would make this easier to understand. |
+| Preset editors: `/presets/classes`, `/presets/difficulty`, `/presets/sessions`, `/presets/time` | List/filter/select, create/duplicate/delete, shared usage, save/restart, car/skin/count/reorder, session toggles, assists, weather panels | Draft protection and list access improved. Inline preset creation still requires Name → Continue → Edit → Save, and creates an unfinished server record at Continue. A single draft form saved at the end is the next substantial simplification. |
+| Drift modes: `/presets/drift-scoring` | Select/create/delete/save, shared usage/restart, sliders, reset toggles | Draft protection and visible actions improved. Disable reset-time controls while their corresponding reset behavior is off. |
+| Race control: `/server/:id` | Server start/stop/restart, live timing/map/grid, kick, message/admin command, next/restart session, skip, current-race edit scopes, quick grid/weather, console and streams | Retained. “Apply after restart” and “Edit reusable source” both save the same event record; consolidate these into one editor with clear Save / Save & restart outcomes. Failed message/command requests currently clear the input; preserve it for retry. Validate scope changes in a live test session before altering this flow. |
+| Displays: `/broadcast`, `/server/:id/broadcast`, `/leaderboard` | Auto-follow, driver focus, stream theater, fullscreen/exit, leaderboard filters, pagination, clips and attribution | Retained. The standalone leaderboard should preserve last-known scores and expose errors instead of replacing failures with an empty board. The clip overlay needs the same focus/Escape behavior as the shared dialogs. |
+| Driver list: `/drivers` | Search, sort, Live only, profile links, return navigation | Filters and error recovery improved. Viewer accounts can see guest-driver links even though the destination requires an operator role; align visibility with destination access. |
+| Driver/guest profiles: `/drivers/:guid`, `/guest-drivers/:id` | Overview, live stats, avatar, session expansion, tags, session/recording attribution, media preview/download/delete, recording controls | Session and media accessibility improved. A request failure still appears as “not found”; separate unavailable data from a real missing profile. Recheck session deep-links when navigating within an already mounted profile. |
+| Guest roster: `/guest-drivers` | Create/edit/delete, live-car assignment, profile handoff | Retained. Add dirty-form protection when changing roster entries or cancelling; move focus to the edit form on mobile. |
+| Search/history: `/sessions`, `/history` | Name/track/tag search, tag pivots, session deep-links, record cards, result files, empty/error/loading states | Search feedback and scoped labels improved. Consider a single History destination with Sessions / Results tabs after observing user behavior; retain bookmarks. |
+| Configuration: `/settings` | Identity/access, engine install/select, capacity, limits, save | Retained. Initial config-load failure needs an inline retry. Group rarely changed engine limits into Advanced settings. |
+| Server instances: `/settings/instances` | Create/edit/delete, ports, boot behavior, drift options, running-state restrictions | Editor recovery and validation improved. Start with name and suggested ports; put plugin port details behind Advanced settings. |
+| Streaming: `/settings/streaming`, `/settings/streams` | Capture settings, driver/spectator stream editing, deletion, diagnostics refresh/pause, source probe | Capture edits now survive stream saves/deletes. Add a concise explanation distinguishing the browser player URL from the capture URL, with a route from a failing probe back to the relevant stream editor. |
+| Users/preferences: `/settings/users`, `/preferences` | Create user, role change, password reset, delete, personal units/password | Retained. Make immediately saved role changes explicit; disable role controls during a request and restore the displayed role on failure. Keep unit preferences and password-change feedback easy to distinguish. |
+| Maintenance/about: `/maintenance`, `/about` | Backup downloads, staged database restore, restart handoff, paths/version | Retained. Replace “full backup” wording with an exact description of the downloadable files. State that restore applies when **Server Manager** restarts, and keep staged-restore status visible beyond the toast. About also needs retry on load failure. |
+
+## Highest-value follow-up work
+
+1. **Make errors distinguishable from missing data** in profiles, the standalone leaderboard, activity feed, config and About. Add scoped retry while preserving the last useful state.
+2. **Unify draft handling** in remaining roster/account forms and make inline preset creation one form with one final save.
+3. **Clarify setup concepts and edit consequences:** distinguish whole-race templates from presets; merge equivalent Race Control edit scopes; make upload source choice explicit.
+4. **Reduce navigation overlap** only after a short walkthrough with an administrator, steward and viewer. The three history destinations and icon-only navigation are the main candidates.
+
+## Verification
+
+- Production TypeScript/Vite build passed.
+- Vitest: **83 tests in 24 files passed**, including 10 new checks for preset navigation and draft preservation, queue selection, queue/start retry behavior in both entry points, repeat-mode restrictions, capture draft preservation, installation recovery, and session expansion.
+- Browser checks used the local API with the current development UI: preset edit/duplicate cancellation preserved the draft; run-plan selection and group choices were usable on mobile; race-action confirmation spelled out queue order.
+- Run-plan document width matched the viewport at **375, 768, 1024 and 1440px**. Both themes were inspected on mobile. This is targeted layout verification, not an audit of every screen at every breakpoint.
+- No live races were started/stopped/restarted, no saved presets were changed, and no content, accounts or recordings were deleted during the walkthrough. Operational mutations were tested with fixtures. The temporary browser draft and theme changes were restored.
+- Live racing/recording, actual upload/restore, screen-reader testing, and separate steward/viewer browser sessions remain unverified. No production deployment was performed.

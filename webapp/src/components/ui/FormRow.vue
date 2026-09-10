@@ -1,21 +1,24 @@
 <script setup lang="ts">
-// Port of pw-form-row / pw-label / pw-hint
-defineProps<{
-  label: string;
-  hint?: string;
-  forId?: string;
-}>();
+import { computed, provide, useId } from "vue";
+import { formFieldKey } from "@/lib/formField";
+
+const props = defineProps<{ label: string; hint?: string; forId?: string; error?: string; required?: boolean }>();
+const generatedId = useId();
+const id = computed(() => props.forId || generatedId);
+const labelId = `${generatedId}-label`;
+const hintId = `${generatedId}-hint`;
+const errorId = `${generatedId}-error`;
+const describedBy = computed(() => [props.hint && hintId, props.error && errorId].filter(Boolean).join(" ") || undefined);
+provide(formFieldKey, { id, labelId, describedBy, invalid: computed(() => !!props.error) });
 </script>
 
 <template>
-  <div class="mb-3.5">
-    <label
-      :for="forId"
-      class="mb-1.5 block text-xs font-bold tracking-wide text-muted uppercase"
-    >
-      {{ label }}
+  <div class="mb-5">
+    <label :id="labelId" :for="id" class="mb-2 block text-sm font-medium text-text">
+      {{ label }}<span v-if="required" class="ml-1 text-muted">(required)</span>
     </label>
-    <slot />
-    <p v-if="hint" class="mt-1 text-xs text-dim">{{ hint }}</p>
+    <slot :id="id" :described-by="describedBy" />
+    <p v-if="hint" :id="hintId" class="mt-2 text-xs leading-relaxed text-muted">{{ hint }}</p>
+    <p v-if="error" :id="errorId" role="alert" class="mt-2 text-sm text-danger">{{ error }}</p>
   </div>
 </template>

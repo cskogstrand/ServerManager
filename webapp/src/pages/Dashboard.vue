@@ -1,561 +1,128 @@
 <script setup lang="ts">
-// Lightweight multi-instance overview. One compact card per instance with
-// status, the current (or queued) event and the essential start/stop/skip
-// controls. The full race-control surface — map, live timing, grid editor,
-// telemetry, console, streams — lives on the per-instance detail page.
 import { computed, onMounted, ref, watch } from "vue";
-import { api, ApiError } from "@/lib/api";
+import { useRoute } from "vue-router";
+import { api } from "@/lib/api";
 import { useServerStore, type InstanceState } from "@/stores/server";
 import { useContentStore } from "@/stores/content";
-import { useToastStore } from "@/stores/toast";
-import { useConfirmStore } from "@/stores/confirm";
-import { useAuthStore } from "@/stores/auth";
-import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
 import { useDriverStreams, type StreamChannel } from "@/lib/useDriverStreams";
-import {
-  normalizeRaceSetup,
-  raceSetupBody,
-  raceSetupValid,
-  type RaceSetupDraft,
-} from "@/lib/useRaceSetupDraft";
-import Card from "@/components/ui/Card.vue";
-import LiveFeed from "@/components/LiveFeed.vue";
-import StreamTheater from "@/components/StreamTheater.vue";
-import StreamWall from "@/components/StreamWall.vue";
+import { useAuthStore } from "@/stores/auth";
+import PageHeader from "@/components/ui/PageHeader.vue";
 import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
-import Sheet from "@/components/ui/Sheet.vue";
-import PageHeader from "@/components/ui/PageHeader.vue";
 import EmptyState from "@/components/ui/EmptyState.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
-import RaceSetupEditor from "@/components/RaceSetupEditor.vue";
 import TrackImage from "@/components/TrackImage.vue";
-
-interface CurrentEvent {
-  id: number;
-  name: string;
-  category: string;
-  track: string;
-  track_key: string;
-  track_config: string;
-  session: string;
-  class: string;
-  time: string;
-  weather: string;
-}
+import StreamWall from "@/components/StreamWall.vue";
+import StreamTheater from "@/components/StreamTheater.vue";
+import LiveFeed from "@/components/LiveFeed.vue";
 
 interface StatusPayload {
-  instance_id: number;
-  public_ip: string;
-  current_event: CurrentEvent;
-  session: {
-    type: string;
-    current_session_index: number;
-    session_count: number;
-    time: number;
-    laps: number;
-    ambient_temp: number;
-    road_temp: number;
-    elapsed_ms: number;
-  };
+  current_event: { id: number; name: string; track: string; track_key: string; track_config: string; class: string; session: string; time: string; weather: string };
 }
-
+const route = useRoute();
 const server = useServerStore();
 const content = useContentStore();
-const toast = useToastStore();
-const confirm = useConfirmStore();
 const auth = useAuthStore();
-const { summary, reload: reloadSummary } = useSetupSummary();
-
+const { summary, error: readinessError, reload: reloadSummary } = useSetupSummary();
 const details = ref<Record<number, StatusPayload>>({});
+const detailErrors = ref<Record<number, string>>({});
+const actionErrors = ref<Record<number, string>>({});
 const busy = ref<Record<number, boolean>>({});
 const loading = ref(true);
-
-// --- Watchable driver streams (overview-level, no live health poll) ---
-// Streams are configured globally by driver guid, so the dashboard section
-// shows one tile per configured stream. Online state is the union across every
-// instance's connected drivers (a driver may be on any running server).
+const loadError = ref("");
 const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
-
-const allStreamChannels = computed<StreamChannel[]>(() =>
-  driverStreams.allChannelsFor(server.instanceList.flatMap((i) => server.instances[i.id]?.drivers ?? [])),
-);
-const onlineStreamCount = computed(() => allStreamChannels.value.filter((c) => c.online).length);
-
-function openTheater(key?: string) {
-  theaterKey.value = key ?? null;
-  if (allStreamChannels.value.length) theaterOpen.value = true;
+const showOfflineStreams = ref(false);
+const channels = computed<StreamChannel[]>(() => driverStreams.allChannelsFor(server.instanceList.flatMap(i => i.drivers)));
+const onlineChannels = computed(() => channels.value.filter(channel => channel.online));
+const runningCount = computed(() => server.instanceList.filter(instance => instance.running).length);
+const driversCount = computed(() => server.instanceList.reduce((total, instance) => total + instance.players, 0));
+const pendingCount = (id: number) => summary.value?.instances.find(instance => instance.id === id)?.queue_pending ?? 0;
+const startable = (instance: InstanceState) => !readinessError.value && !detailErrors.value[instance.id] && !server.statusErrors[instance.id] && !!summary.value?.can_start && (instance.run_mode === "repeat_event" ? !!instance.repeat_event_id : pendingCount(instance.id) > 0);
+const controlTo = (id: number) => `/server/${id}`;
+const queueTo = (id: number) => ({ name: "queue", query: { instance: id } });
+function elapsed(instance: InstanceState) {
+  const seconds = Math.max(0, Math.floor((instance.session?.elapsed_ms ?? 0) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
-
+function status(instance: InstanceState) {
+  if (detailErrors.value[instance.id] || server.statusErrors[instance.id]) return "Status unavailable";
+  return instance.running ? "Running" : "Stopped";
+}
 async function fetchDetail(id: number) {
-  try {
-    details.value[id] = await api.get<StatusPayload>(`/api/server/status?instance=${id}`);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  }
+  try { details.value[id] = await api.get<StatusPayload>(`/api/server/status?instance=${id}`); delete detailErrors.value[id]; }
+  catch (error) { detailErrors.value[id] = error instanceof Error ? error.message : "Could not load race details."; }
 }
-
-async function refreshAll() {
-  await Promise.all([...server.instanceList.map((i) => fetchDetail(i.id)), reloadSummary()]);
+async function refreshDetails() { await Promise.all([reloadSummary(), ...server.instanceList.map(instance => fetchDetail(instance.id))]); }
+async function loadDashboard() {
+  loadError.value = "";
+  loading.value = true;
+  try { await Promise.all([server.load(), content.load()]); await refreshDetails(); }
+  catch (error) { loadError.value = error instanceof Error ? error.message : "Could not load the overview."; }
+  finally { loading.value = false; }
 }
-
-// --- Readiness-driven next actions for idle instances ---
-// can_start reflects global setup health (install path, content, presets, config,
-// at least one race setup, no port clash). queue_pending is per instance.
-// Live tooltip for the broadcast button: which server it opens (busiest by
-// players), or the all-servers leaderboard when nobody is online.
-const broadcastHint = computed(() => {
-  const live = server.instanceList.filter((i) => i.running && i.players > 0);
-  if (!live.length) return "No players online — opens the all-servers leaderboard";
-  const busiest = live.reduce((best, i) => (i.players > best.players ? i : best));
-  return `Following ${busiest.name} (${busiest.players} player${busiest.players === 1 ? "" : "s"})`;
-});
-
-const canStart = computed(() => summary.value?.can_start ?? false);
-const firstBlocker = computed(() => summary.value?.blocking?.[0]?.message ?? "");
-
-function pendingCount(id: number): number {
-  return summary.value?.instances.find((i) => i.id === id)?.queue_pending ?? 0;
+async function start(instance: InstanceState) {
+  if (!startable(instance) || busy.value[instance.id]) return;
+  busy.value[instance.id] = true;
+  delete actionErrors.value[instance.id];
+  try { await server.start(instance.id); await fetchDetail(instance.id); }
+  catch (error) { actionErrors.value[instance.id] = error instanceof Error ? error.message : "Could not start the server. Try again."; }
+  finally { busy.value[instance.id] = false; }
 }
-// An instance can actually start when setup is healthy and it has something to
-// run — a manual queue with entries, or a pinned repeat event.
-function startable(inst: InstanceState): boolean {
-  return canStart.value && (inst.run_mode === "repeat_event" || pendingCount(inst.id) > 0);
-}
-
-function eventTitle(id: number): string {
-  const ev = details.value[id]?.current_event;
-  if (!ev?.id) return "";
-  return ev.name || ev.track;
-}
-
-function currentEventTrackVersion(id: number): string {
-  const ev = details.value[id]?.current_event;
-  return ev ? (content.trackByKey(ev.track_key, ev.track_config ?? "")?.version ?? "") : "";
-}
-
-function publicIp(): string {
-  const first = server.instanceList[0];
-  return first ? (details.value[first.id]?.public_ip ?? "") : "";
-}
-
-// Live session values come from the SSE-fed store, not the REST detail payload.
-function elapsed(id: number): string {
-  const ms = server.instances[id]?.session?.elapsed_ms ?? 0;
-  if (ms <= 0) return "—";
-  const min = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  return `${min}:${String(sec).padStart(2, "0")}`;
-}
-
-// AC numeric session type → display label (mirrors the backend mapping).
-function sessionTypeLabel(t: number): string {
-  return ["Booking", "Practice", "Qualify", "Race"][t] ?? "—";
-}
-
-async function toggle(id: number, running: boolean) {
-  if (running) {
-    const inst = server.instanceList.find((i) => i.id === id);
-    const ok = await confirm.ask({
-      title: "Stop server",
-      message: `Stop ${inst?.name ?? "this instance"}?`,
-      detail: "Connected players are disconnected.",
-      confirmLabel: "Stop server",
-      tone: "danger",
-    });
-    if (!ok) return;
-  }
-  busy.value[id] = true;
-  try {
-    await (running ? server.stop(id) : server.start(id));
-    await fetchDetail(id);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  } finally {
-    busy.value[id] = false;
-  }
-}
-
-async function restart(id: number) {
-  const inst = server.instanceList.find((i) => i.id === id);
-  const ok = await confirm.ask({
-    title: "Restart server",
-    message: `Restart ${inst?.name ?? "this instance"} now?`,
-    detail: "Connected players are disconnected while the current event reloads.",
-    confirmLabel: "Restart server",
-    tone: "danger",
-  });
-  if (!ok) return;
-  busy.value[id] = true;
-  try {
-    await server.restart(id);
-    await fetchDetail(id);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  } finally {
-    busy.value[id] = false;
-  }
-}
-
-async function skip(id: number) {
-  const ok = await confirm.ask({
-    title: "Skip current event",
-    message: "Skip the current event and advance the queue?",
-    detail: "Everyone on the server is kicked when the event rotates.",
-    confirmLabel: "Skip event",
-    tone: "danger",
-  });
-  if (!ok) return;
-  busy.value[id] = true;
-  try {
-    await api.post(`/api/queue/skipevent?instance=${id}`);
-    await fetchDetail(id);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  } finally {
-    busy.value[id] = false;
-  }
-}
-
-// --- Edit run setup: open the shared editor on the current event (source edit) ---
-const editOpen = ref(false);
-const editDraft = ref<RaceSetupDraft | null>(null);
-const editGroupId = ref<number | null>(null);
-const editEventId = ref<number | null>(null);
-const editInstanceId = ref<number | null>(null);
-const editSaving = ref(false);
-
-let editBaseline = "";
-const markEditClean = () => (editBaseline = editDraft.value ? JSON.stringify(editDraft.value) : "");
-useUnsavedGuard(() => editOpen.value && editDraft.value !== null && JSON.stringify(editDraft.value) !== editBaseline);
-
-const openEditRun = (instId: number, eventId: number) =>
-  withBusy(instId, async () => {
-    const raw = await api.get<Record<string, unknown>>(`/api/event/${eventId}`);
-    editDraft.value = normalizeRaceSetup(raw);
-    editGroupId.value = raw.EventCategoryId != null ? Number(raw.EventCategoryId) : null;
-    editEventId.value = eventId;
-    editInstanceId.value = instId;
-    markEditClean();
-    editOpen.value = true;
-  });
-
-async function withBusy(id: number, fn: () => Promise<void>) {
-  busy.value[id] = true;
-  try {
-    await fn();
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  } finally {
-    busy.value[id] = false;
-  }
-}
-
-async function saveEditRun() {
-  const draft = editDraft.value;
-  if (!draft || editEventId.value === null || editGroupId.value === null) return;
-  if (!raceSetupValid(draft)) {
-    toast.error("Track and all four presets are required.");
-    return;
-  }
-  editSaving.value = true;
-  try {
-    await api.put(`/api/event/${editEventId.value}`, raceSetupBody(draft, editGroupId.value));
-    toast.success("Race setup updated — applies when the event next restarts.");
-    editOpen.value = false;
-    markEditClean();
-    if (editInstanceId.value !== null) await fetchDetail(editInstanceId.value);
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
-  } finally {
-    editSaving.value = false;
-  }
-}
-
-// SSE running-state flips → refetch the affected detail payload
-watch(
-  () => server.instanceList.map((i) => `${i.id}:${i.running}`).join(","),
-  () => void refreshAll(),
-);
-
-onMounted(async () => {
-  await Promise.all([server.load(), content.load()]);
-  void driverStreams.loadStreams();
-  await refreshAll();
-  loading.value = false;
-});
+function watchStream(key?: string) { theaterKey.value = key ?? null; theaterOpen.value = true; }
+watch(() => server.instanceList.map(instance => `${instance.id}:${instance.running}`).join(","), refreshDetails);
+onMounted(() => { void loadDashboard(); void driverStreams.loadStreams(); });
 </script>
 
 <template>
-  <PageHeader
-    title="Dashboard"
-    subtitle="Live status across every server instance. Open Race Control for the map, live timing and server commands."
-    icon="dashboard"
-  >
+  <PageHeader title="Your servers" subtitle="See what’s running, prepare the next race, and resolve anything that needs attention." icon="dashboard">
     <template #actions>
-      <RouterLink :to="{ name: 'broadcast-auto' }">
-        <Button variant="dark" size="sm" :title="broadcastHint">
-          <Icon name="broadcast" :size="15" />
-          Go to broadcast
-        </Button>
-      </RouterLink>
-      <span
-        v-if="publicIp()"
-        class="inline-flex min-h-8 items-center gap-2 rounded-md border border-line bg-surface px-2.5 font-mono text-xs text-dim"
-      >
-        <Icon name="activity" :size="15" />
-        {{ publicIp() }}
-      </span>
+      <RouterLink v-if="auth.canOperate" to="/events" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-white hover:brightness-110"><Icon name="plus" :size="17" />Prepare a race</RouterLink>
     </template>
   </PageHeader>
-
-  <div v-if="loading" class="space-y-3">
-    <Skeleton v-for="n in 3" :key="n" class="h-24" />
-  </div>
-
-  <EmptyState
-    v-else-if="!server.instanceList.length"
-    icon="instances"
-    title="No server instances yet"
-    message="Create a server instance to assign ports and run events on it."
-  >
-    <RouterLink to="/settings/instances">
-      <Button>
-        <Icon name="plus" :size="15" />
-        Add an instance
-      </Button>
-    </RouterLink>
+  <p v-if="route.query.choose === 'server'" role="status" class="mb-5 rounded-md border border-accent/40 bg-accent-dim px-4 py-3 text-sm">Choose a server below to open its Race Control.</p>
+  <div v-if="loadError" role="alert" class="mb-5 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="font-semibold text-danger">Could not refresh the overview</p><p class="mt-1 text-muted">{{ loadError }}</p><Button class="mt-3" variant="dark" @click="loadDashboard">Retry</Button></div>
+  <div v-if="loading && !server.instanceList.length" class="grid gap-4 lg:grid-cols-2"><Skeleton v-for="n in 2" :key="n" class="h-72" /></div>
+  <EmptyState v-else-if="!server.instanceList.length && !loadError" icon="instances" title="No servers yet" :message="auth.isAdmin ? 'Add a server instance, then choose a race setup to run.' : 'An administrator needs to add a server before races can run.'">
+    <RouterLink v-if="auth.isAdmin" to="/settings/instances" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-white">Add a server</RouterLink>
   </EmptyState>
-
-  <div v-else class="grid gap-3 min-[1600px]:grid-cols-2">
-    <Card
-      v-for="inst in server.instanceList"
-      :key="inst.id"
-      class="transition-colors hover:border-line-hi"
-      :class="inst.players > 0 ? 'ring-1 ring-ok/60 shadow-[0_0_24px_rgba(79,174,116,0.16)]' : ''"
-    >
-      <template #header>
-        <span
-          class="size-2 rounded-full"
-          :class="inst.running ? 'bg-ok shadow-[0_0_14px_rgba(79,216,132,0.55)]' : 'bg-dim'"
-        />
-        <RouterLink :to="`/server/${inst.id}`" class="text-sm font-bold hover:text-accent">{{ inst.name }}</RouterLink>
-        <span class="font-mono text-xs text-dim">:{{ inst.tcp_port }}</span>
-        <span
-          v-if="inst.players > 0"
-          class="inline-flex items-center gap-1.5 rounded-md border border-ok/45 bg-ok-glow px-2 py-1 text-xs font-bold text-ok"
-          title="Drivers connected"
-        >
-          <span class="size-1.5 rounded-full bg-ok shadow-[0_0_10px_rgba(79,174,116,0.75)]" />
-          {{ inst.players }} driver{{ inst.players === 1 ? "" : "s" }} active
-        </span>
-        <span v-else-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
-          0 drivers
-        </span>
-        <span
-          v-if="inst.run_mode === 'repeat_event'"
-          class="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-xs text-accent"
-          :title="inst.repeat_event?.track ? `Repeating ${inst.repeat_event.track}` : 'Repeat mode'"
-        >
-          <Icon name="repeat" :size="12" />
-          Repeat
-        </span>
-      </template>
-      <template #actions>
-        <Button
-          v-if="auth.canOperate && inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
-          variant="ghost"
-          size="sm"
-          :disabled="busy[inst.id]"
-          @click="openEditRun(inst.id, details[inst.id]!.current_event.id)"
-        >
-          <Icon name="edit" :size="14" />
-          Edit setup
-        </Button>
-        <RouterLink :to="`/server/${inst.id}`">
-          <Button variant="dark" size="sm">
-            Race Control
-            <Icon name="arrowUp" :size="14" class="rotate-90" />
-          </Button>
-        </RouterLink>
-        <Button
-          v-if="auth.canOperate && inst.running && (details[inst.id]?.current_event?.id ?? 0) > 0"
-          variant="ghost"
-          size="sm"
-          :disabled="busy[inst.id]"
-          @click="skip(inst.id)"
-        >
-          <Icon name="skip" :size="15" />
-          Skip
-        </Button>
-        <Button
-          v-if="auth.canOperate && inst.running"
-          variant="dark"
-          size="sm"
-          :disabled="busy[inst.id]"
-          @click="restart(inst.id)"
-        >
-          <Icon name="repeat" :size="15" />
-          Restart
-        </Button>
-        <Button v-if="auth.canOperate && inst.running" variant="danger" size="sm" :disabled="busy[inst.id]" @click="toggle(inst.id, true)">
-          <Icon name="stop" :size="15" />
-          {{ busy[inst.id] ? "Working" : "Stop" }}
-        </Button>
-        <Button
-          v-else-if="auth.canOperate && startable(inst)"
-          variant="success"
-          size="sm"
-          :disabled="busy[inst.id]"
-          @click="toggle(inst.id, false)"
-        >
-          <Icon name="power" :size="15" />
-          {{ busy[inst.id] ? "Working" : inst.run_mode === "repeat_event" ? "Start repeat" : "Start" }}
-        </Button>
-        <RouterLink v-else-if="auth.isAdmin && !canStart" to="/setup">
-          <Button variant="dark" size="sm">
-            <Icon name="settings" :size="15" />
-            Finish setup
-          </Button>
-        </RouterLink>
-        <RouterLink v-else-if="auth.canOperate" to="/setup">
-          <Button variant="dark" size="sm">
-            <Icon name="plus" :size="15" />
-            Set up a race
-          </Button>
-        </RouterLink>
-      </template>
-
-      <!-- One-line current-event summary -->
-      <RouterLink
-        v-if="details[inst.id]?.current_event?.id"
-        :to="`/server/${inst.id}`"
-        class="flex items-center gap-3 rounded-md p-1 transition-colors hover:bg-surface-2/50"
-      >
-        <TrackImage
-          :track-key="details[inst.id].current_event.track_key"
-          :config="details[inst.id].current_event.track_config"
-          class="h-14 w-24 shrink-0 rounded-sm border border-line"
-        />
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-semibold">{{ eventTitle(inst.id) }}</div>
-          <div class="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-dim">
-            <span>{{ details[inst.id].current_event.class }}</span>
-            <span v-if="currentEventTrackVersion(inst.id)">· version {{ currentEventTrackVersion(inst.id) }}</span>
-            <span>· {{ details[inst.id].current_event.session }}</span>
-            <span>· {{ details[inst.id].current_event.time }}</span>
-            <span v-if="details[inst.id].current_event.weather">· {{ details[inst.id].current_event.weather }}</span>
+  <template v-else-if="server.instanceList.length">
+    <div class="mb-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted"><span><strong class="text-text">{{ server.instanceList.length }}</strong> servers</span><span><strong class="text-text">{{ runningCount }}</strong> running</span><span><strong class="text-text">{{ driversCount }}</strong> drivers</span><span class="ml-auto">{{ server.connected ? 'Live connection' : 'Last known state' }}</span></div>
+    <div class="grid items-start gap-5 lg:grid-cols-2">
+      <article v-for="instance in server.instanceList" :key="instance.id" class="overflow-hidden rounded-lg border border-line bg-surface shadow-sm">
+        <header class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5"><h2 class="text-base font-semibold"><RouterLink :to="controlTo(instance.id)" class="hover:text-accent">{{ instance.name }}</RouterLink></h2><span class="inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-xs font-semibold" :class="detailErrors[instance.id] || server.statusErrors[instance.id] ? 'bg-warn-glow text-warn' : instance.running ? 'bg-ok-glow text-ok' : 'bg-surface-2 text-muted'"><Icon :name="instance.running ? 'activity' : 'stop'" :size="13" />{{ status(instance) }}</span></header>
+        <div class="p-5">
+          <p v-if="detailErrors[instance.id]" role="alert" class="mb-4 text-sm text-warn">{{ detailErrors[instance.id] }} <button type="button" class="min-h-11 text-accent underline" @click="fetchDetail(instance.id)">Retry details</button></p>
+          <template v-if="details[instance.id]?.current_event?.id">
+            <TrackImage :track-key="details[instance.id].current_event.track_key" :config="details[instance.id].current_event.track_config" class="mb-4 h-36 w-full rounded-md border border-line" />
+            <p class="mb-1 text-xs font-medium text-muted">{{ instance.running ? 'On track' : 'Last loaded race' }}</p>
+            <h3 class="text-xl font-semibold tracking-tight">{{ details[instance.id].current_event.name || details[instance.id].current_event.track }}</h3>
+            <p class="mt-2 text-sm text-muted">{{ details[instance.id].current_event.class }} · {{ details[instance.id].current_event.session }} · {{ details[instance.id].current_event.time }}</p>
+          </template>
+          <div v-else class="mb-4 rounded-md border border-line bg-surface-2/50 p-5"><Icon name="events" :size="24" class="mb-3 text-accent" /><h3 class="text-xl font-semibold">{{ startable(instance) ? 'Ready for the next race.' : 'Prepare your next race.' }}</h3><p class="mt-2 text-sm text-muted">{{ instance.running ? 'Waiting for race details.' : startable(instance) ? 'Review the run plan when you are ready to begin.' : 'Choose a saved setup and review it before starting.' }}</p></div>
+          <dl v-if="instance.running" class="mt-5 grid grid-cols-2 gap-4"><div><dt class="text-xs text-muted">{{ ['Booking', 'Practice', 'Qualifying', 'Race'][instance.session?.type ?? -1] || 'Session' }} · elapsed</dt><dd class="mt-1 font-mono text-2xl">{{ instance.session ? elapsed(instance) : '—' }}</dd></div><div><dt class="text-xs text-muted">Drivers connected</dt><dd class="mt-1 font-mono text-2xl">{{ instance.players }}</dd></div></dl>
+          <div v-else class="mt-4 rounded-md border p-4 text-sm" :class="startable(instance) ? 'border-ok/30 bg-ok-glow' : 'border-warn/30 bg-warn-glow'">
+            <p class="font-semibold" :class="startable(instance) ? 'text-ok' : 'text-warn'">{{ startable(instance) ? 'Ready to start' : !summary || readinessError ? 'Readiness unavailable' : !summary.can_start ? 'Setup needs attention' : 'Choose a race to run' }}</p>
+            <p class="mt-1 text-muted">{{ !summary || readinessError ? 'Refresh status to check the installation and run plan.' : !summary.can_start ? summary.blocking[0]?.message : instance.run_mode === 'repeat_event' ? 'Repeats the pinned race. Your manual queue is preserved.' : pendingCount(instance.id) ? `${pendingCount(instance.id)} race${pendingCount(instance.id) === 1 ? '' : 's'} queued on this server.` : 'Nothing is queued on this server yet.' }}</p>
           </div>
+          <p v-if="actionErrors[instance.id]" role="alert" class="mt-4 text-sm text-danger">{{ actionErrors[instance.id] }}</p>
         </div>
-        <!-- Live session stats (running only) -->
-        <dl
-          v-if="inst.running && inst.session"
-          class="hidden shrink-0 grid-cols-2 gap-x-4 gap-y-0.5 text-right text-xs sm:grid"
-        >
-          <dt class="text-dim">Session</dt>
-          <dd class="font-mono">
-            {{ sessionTypeLabel(inst.session.type) }}
-            <span class="text-dim">{{ (inst.session.current_session_index ?? 0) + 1 }}/{{ inst.session.session_count }}</span>
-          </dd>
-          <dt class="text-dim">Elapsed</dt>
-          <dd class="font-mono">{{ elapsed(inst.id) }}</dd>
-          <dt class="text-dim">Air / Road</dt>
-          <dd class="font-mono">{{ inst.session.ambient_temp }}° / {{ inst.session.road_temp }}°</dd>
-        </dl>
-      </RouterLink>
-
-      <!-- Idle: readiness-driven next action -->
-      <div v-else>
-        <!-- Setup incomplete: surface the next blocker, route to setup -->
-        <div
-          v-if="!canStart"
-          class="flex items-start gap-2.5 rounded-md border border-warn/40 bg-warn-glow px-3 py-2.5"
-        >
-          <Icon name="alert" :size="16" class="mt-0.5 shrink-0 text-warn" />
-          <div class="min-w-0 text-sm">
-            <span class="font-semibold text-warn">Can't start yet.</span>
-            <span class="text-muted"> {{ firstBlocker }}</span>
-            <RouterLink v-if="auth.isAdmin" to="/setup" class="ml-1 font-semibold text-accent hover:underline">Open setup →</RouterLink>
-          </div>
-        </div>
-
-        <!-- Repeat mode: pinned event ready to roll -->
-        <div v-else-if="inst.run_mode === 'repeat_event'" class="flex items-center gap-2 text-sm text-muted">
-          <Icon name="repeat" :size="16" class="shrink-0 text-accent" />
-          <span>
-            Repeats
-            <span class="font-medium text-text">{{ inst.repeat_event?.track || "the pinned event" }}</span>
-            on every finish. Press Start repeat to begin.
-          </span>
-        </div>
-
-        <!-- Manual queue with entries ready -->
-        <div v-else-if="pendingCount(inst.id) > 0" class="flex items-center gap-2 text-sm text-muted">
-          <Icon name="queue" :size="16" class="shrink-0 text-accent" />
-          <span>
-            <span class="font-medium text-text">{{ pendingCount(inst.id) }}</span>
-            race{{ pendingCount(inst.id) === 1 ? "" : "s" }} queued — ready to start.
-          </span>
-          <RouterLink to="/queue" class="ml-auto text-xs font-semibold text-accent hover:underline">Run plan →</RouterLink>
-        </div>
-
-        <!-- Ready but nothing to run: queue something -->
-        <div v-else class="flex flex-wrap items-center gap-2 text-sm text-dim">
-          <span>Nothing queued for this instance.</span>
-          <RouterLink v-if="auth.canOperate" to="/setup">
-            <Button variant="dark" size="sm">
-              <Icon name="plus" :size="14" />
-              Set up a race
-            </Button>
-          </RouterLink>
-          <RouterLink v-if="auth.canOperate" to="/events">
-            <Button variant="ghost" size="sm">
-              <Icon name="queue" :size="14" />
-              Queue a saved setup
-            </Button>
-          </RouterLink>
-        </div>
-      </div>
-    </Card>
-  </div>
-
-  <!-- Driver streams: live tiles on the dashboard, watch any full screen -->
-  <section v-if="!loading && allStreamChannels.length" class="mt-6 space-y-3">
-    <div class="flex items-center gap-2">
-      <Icon name="broadcast" :size="16" class="text-accent" />
-      <h2 class="text-sm font-bold">Driver streams</h2>
-      <span class="font-mono text-xs text-dim">{{ onlineStreamCount }}/{{ allStreamChannels.length }} live</span>
-      <Button class="ml-auto" variant="ghost" size="sm" @click="openTheater()">
-        <Icon name="maximize" :size="14" />
-        Theater
-      </Button>
+        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
+          <RouterLink :to="queueTo(instance.id)" class="inline-flex min-h-11 items-center text-sm text-accent hover:underline">Run plan →</RouterLink>
+          <RouterLink v-if="instance.running || !auth.canOperate" :to="controlTo(instance.id)" class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-white hover:brightness-110">Race Control →</RouterLink>
+          <Button v-else-if="startable(instance)" :disabled="busy[instance.id] || !!detailErrors[instance.id]" @click="start(instance)"><Icon name="power" :size="16" />{{ busy[instance.id] ? 'Starting…' : 'Start ' + instance.name }}</Button>
+          <RouterLink v-else-if="auth.isAdmin && summary && !summary.can_start" to="/setup" class="inline-flex min-h-11 items-center rounded-md border border-line bg-surface-2 px-4 text-sm font-medium">Finish server setup</RouterLink>
+          <RouterLink v-else :to="queueTo(instance.id)" class="inline-flex min-h-11 items-center rounded-md border border-line bg-surface-2 px-4 text-sm font-medium">Choose race setup →</RouterLink>
+        </footer>
+      </article>
     </div>
-    <StreamWall :channels="allStreamChannels" @watch="openTheater" />
+  </template>
+  <section v-if="!loading && channels.length" class="mt-6 rounded-md border border-line bg-surface p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-base font-semibold">Driver streams <span class="ml-2 text-sm font-normal text-muted">{{ onlineChannels.length }} live</span></h2><p v-if="!onlineChannels.length" class="mt-1 text-sm text-muted">No streams online. Live video appears here when available.</p></div><div class="flex flex-wrap gap-2"><Button v-if="onlineChannels.length" variant="dark" @click="watchStream()">Theater</Button><button type="button" class="min-h-11 text-sm text-accent underline" :aria-expanded="showOfflineStreams" @click="showOfflineStreams = !showOfflineStreams">{{ showOfflineStreams ? 'Hide offline streams' : 'Show all streams' }}</button></div></div>
+    <StreamWall v-if="onlineChannels.length || showOfflineStreams" class="mt-4" :channels="showOfflineStreams ? channels : onlineChannels" @watch="watchStream" />
   </section>
-
   <LiveFeed class="mt-6" />
-
-  <!-- Edit run setup: shared editor on the current event -->
-  <Sheet :open="editOpen" title="Edit run setup" @close="editOpen = false">
-    <RaceSetupEditor v-if="editDraft" v-model="editDraft" :instance-id="editInstanceId" />
-    <template #footer>
-      <span v-if="!raceSetupValid(editDraft)" class="mr-auto self-center text-xs text-muted">
-        Track and all four presets are required.
-      </span>
-      <Button variant="ghost" @click="editOpen = false">Cancel</Button>
-      <Button :disabled="editSaving || !raceSetupValid(editDraft)" @click="saveEditRun">
-        {{ editSaving ? "Saving…" : "Save setup" }}
-      </Button>
-    </template>
-  </Sheet>
-
-  <StreamTheater
-    :open="theaterOpen"
-    :channels="allStreamChannels"
-    :initial-key="theaterKey"
-    @close="theaterOpen = false"
-  />
+  <StreamTheater :open="theaterOpen" :channels="channels" :initial-key="theaterKey" @close="theaterOpen = false" />
 </template>

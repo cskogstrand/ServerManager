@@ -67,7 +67,8 @@ const form = ref<InstanceForm | null>(null);
 // Unsaved-changes guard for the modal editor.
 let instanceBaseline = "";
 const markInstanceClean = () => (instanceBaseline = form.value ? JSON.stringify(form.value) : "");
-useUnsavedGuard(() => editorOpen.value && form.value !== null && JSON.stringify(form.value) !== instanceBaseline);
+const guardClose = useUnsavedGuard(() => editorOpen.value && form.value !== null && JSON.stringify(form.value) !== instanceBaseline);
+const closeEditor = () => guardClose(() => { editorOpen.value = false; });
 
 function nextFree(values: (number | null)[], fallback: number): number {
   const used = values.filter((v): v is number => v !== null);
@@ -280,7 +281,7 @@ async function loadDriftModes() {
     </Card>
   </div>
 
-  <Modal :open="editorOpen" :title="form?.id ? 'Edit instance' : 'New instance'" @close="editorOpen = false">
+  <Modal :open="editorOpen" :title="form?.id ? 'Edit instance' : 'New instance'" @close="closeEditor">
     <template v-if="form">
       <FormRow label="Name" for-id="iname" hint="Shown in the Assetto Corsa lobby">
         <Input id="iname" v-model="form.name" />
@@ -328,7 +329,7 @@ async function loadDriftModes() {
       </p>
     </template>
     <template #footer>
-      <Button variant="ghost" @click="editorOpen = false">Cancel</Button>
+      <Button variant="ghost" @click="closeEditor">Cancel</Button>
       <Button :disabled="busy" @click="save">{{ form?.id ? "Save" : "Create" }}</Button>
     </template>
   </Modal>

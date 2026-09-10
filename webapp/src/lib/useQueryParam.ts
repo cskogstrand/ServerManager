@@ -40,9 +40,12 @@ export function useQueryParam<T extends string | number | null>(
     const s = serialize(v);
     if (s == null || s === defStr) delete next[key];
     else next[key] = s;
-    void router.replace({ query: next });
+    if (JSON.stringify(next) !== JSON.stringify(router.currentRoute.value.query)) void router.replace({ query: next });
   });
 
+  watch(() => route.query[key], (raw) => {
+    state.value = typeof raw === "string" ? parse(raw) : def;
+  });
   return state;
 }
 

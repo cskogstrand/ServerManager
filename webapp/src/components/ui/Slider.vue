@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { inject } from "vue";
+import { formFieldKey } from "@/lib/formField";
+const field = inject(formFieldKey, null);
 import { computed } from "vue";
 
 const props = withDefaults(
@@ -32,21 +35,26 @@ function setValue(raw: string) {
   <div class="flex items-center gap-3">
     <input
       type="range"
+      :id="field?.id.value"
+      :aria-labelledby="field?.labelId"
+      :aria-describedby="field?.describedBy.value"
       :min="min"
       :max="max"
       :step="step"
       :value="rangeValue"
-      class="h-2 min-w-0 flex-1 cursor-pointer accent-accent"
+      class="h-11 min-w-0 flex-1 cursor-pointer accent-accent"
       @input="setValue(($event.target as HTMLInputElement).value)"
     />
     <div class="flex w-28 shrink-0 items-center gap-1.5">
       <input
         type="number"
+        :aria-labelledby="field?.labelId"
+        :aria-describedby="field?.describedBy.value"
         :min="min"
         :max="max"
         :step="step"
         :value="model ?? ''"
-        class="min-h-9 w-full rounded-md border border-line bg-surface-2 px-2 text-sm text-text outline-none transition-colors duration-200 hover:border-line-hi focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+        class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-2 text-sm text-text outline-none transition-colors duration-200 hover:border-line-hi focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
         @input="setValue(($event.target as HTMLInputElement).value)"
       />
       <span v-if="suffix" class="w-8 shrink-0 text-xs text-dim">{{ suffix }}</span>

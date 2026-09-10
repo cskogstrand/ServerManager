@@ -1,65 +1,25 @@
 <script setup lang="ts">
-// Responsive picker container: side panel on desktop, full-screen sheet on
-// mobile. Replaces the old UI's separate mobile_*.htm picker pages.
+import { toRef, useId } from "vue";
+import { useDialog } from "@/lib/useDialog";
 import Icon from "@/components/ui/Icon.vue";
 
-defineProps<{
-  open: boolean;
-  title?: string;
-}>();
-
+const props = defineProps<{ open: boolean; title?: string; wide?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
+const dialog = useDialog(toRef(props, "open"));
+const titleId = useId();
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="open" class="fixed inset-0 z-40 bg-black/55" @click="emit('close')" />
-    </Transition>
-    <Transition name="slide">
-      <div
-        v-if="open"
-        role="dialog"
-        aria-modal="true"
-        class="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-surface shadow-2xl sm:max-w-md"
-      >
-        <header class="flex min-h-12 items-center border-b border-line bg-surface-2/35 px-4 py-3">
-          <h2 class="text-sm font-bold">{{ title }}</h2>
-          <button
-            type="button"
-            class="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-transparent text-muted transition-colors hover:border-line-hi hover:bg-surface-2 hover:text-text"
-            aria-label="Close"
-            @click="emit('close')"
-          >
-            <Icon name="x" :size="16" />
-          </button>
+    <dialog ref="dialog" :aria-labelledby="titleId" class="app-dialog app-sheet" @cancel.prevent="emit('close')" @click.self="emit('close')">
+      <div v-if="open" class="flex h-dvh w-full flex-col border-l border-line bg-surface text-text shadow-2xl" :class="wide ? 'sm:max-w-5xl' : 'sm:max-w-md'">
+        <header class="flex items-center gap-3 border-b border-line px-5 py-3">
+          <h2 :id="titleId" class="text-lg font-semibold">{{ title || 'Details' }}</h2>
+          <button type="button" class="ml-auto grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-text" aria-label="Close panel" @click="emit('close')"><Icon name="x" :size="18" /></button>
         </header>
-        <div class="min-h-0 flex-1 overflow-y-auto p-4">
-          <slot />
-        </div>
-        <footer v-if="$slots.footer" class="flex flex-wrap items-center justify-end gap-2 border-t border-line px-4 py-3">
-          <slot name="footer" />
-        </footer>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5"><slot /></div>
+        <footer v-if="$slots.footer" class="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"><slot name="footer" /></footer>
       </div>
-    </Transition>
+    </dialog>
   </Teleport>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-.slide-enter-active,
-.slide-leave-active {
-  transition: transform 0.2s ease;
-}
-.slide-enter-from,
-.slide-leave-to {
-  transform: translateX(100%);
-}
-</style>

@@ -93,6 +93,11 @@ useUnsavedGuard(
     (instanceOpen.value && instanceForm.value !== null && JSON.stringify(instanceForm.value) !== instanceBaseline),
 );
 
+const guardDriverClose = useUnsavedGuard(() => driverOpen.value && driverForm.value !== null && JSON.stringify(driverForm.value) !== driverBaseline, false);
+const closeDriver = () => guardDriverClose(() => { driverOpen.value = false; });
+const guardInstanceClose = useUnsavedGuard(() => instanceOpen.value && instanceForm.value !== null && JSON.stringify(instanceForm.value) !== instanceBaseline, false);
+const closeInstance = () => guardInstanceClose(() => { instanceOpen.value = false; });
+
 function intToggle(key: keyof UserConfig) {
   return computed({
     get: () => (form.value?.[key] ?? 0) === 1,
@@ -394,7 +399,7 @@ onMounted(load);
     </div>
   </template>
 
-  <Modal :open="driverOpen" :title="driverForm?.id ? 'Edit driver stream' : 'New driver stream'" @close="driverOpen = false">
+  <Modal :open="driverOpen" :title="driverForm?.id ? 'Edit driver stream' : 'New driver stream'" @close="closeDriver">
     <template v-if="driverForm">
       <Toggle v-model="driverForm.enabled" label="Show this stream when the driver is connected" />
       <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
@@ -420,12 +425,12 @@ onMounted(load);
       </FormRow>
     </template>
     <template #footer>
-      <Button variant="ghost" @click="driverOpen = false">Cancel</Button>
+      <Button variant="ghost" @click="closeDriver">Cancel</Button>
       <Button :disabled="busy" @click="saveDriverStream">{{ driverForm?.id ? "Save" : "Create" }}</Button>
     </template>
   </Modal>
 
-  <Modal :open="instanceOpen" title="Fixed spectator stream" @close="instanceOpen = false">
+  <Modal :open="instanceOpen" title="Fixed spectator stream" @close="closeInstance">
     <template v-if="instanceForm">
       <Toggle v-model="instanceForm.stream_enabled" label="Show fixed spectator stream on dashboard" />
       <div v-if="instanceForm.stream_enabled" class="mt-3">
@@ -468,7 +473,7 @@ onMounted(load);
       </div>
     </template>
     <template #footer>
-      <Button variant="ghost" @click="instanceOpen = false">Cancel</Button>
+      <Button variant="ghost" @click="closeInstance">Cancel</Button>
       <Button :disabled="busy" @click="saveInstanceStream">Save stream</Button>
     </template>
   </Modal>

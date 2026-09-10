@@ -4,6 +4,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError } from "@/lib/api";
 import { useQueryParam, numberParam } from "@/lib/useQueryParam";
+import { queueState } from "@/lib/queueState";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { emptyRaceSetup, raceSetupBody, raceSetupValid, type RaceSetupDraft } from "@/lib/useRaceSetupDraft";
 import { useServerStore } from "@/stores/server";
@@ -46,7 +47,11 @@ const auth = useAuthStore();
 // Selected instance is mirrored to ?instance so refresh/back restores the tab.
 const instanceId = useQueryParam<number | null>("instance", null, numberParam());
 const rows = ref<QueueRow[]>([]);
+const selectionNotice = ref("");
 const busy = ref(false);
+const error = ref("");
+const loading = ref(false);
+let loadVersion = 0;
 
 const categories = ref<DropDownList[]>([]);
 const allEvents = ref<UserEventList[]>([]);
@@ -56,7 +61,7 @@ const addEvent = ref<number | null>(null);
 const instance = computed(() => server.instanceList.find((i) => i.id === instanceId.value) ?? null);
 const repeatMode = computed(() => instance.value?.run_mode === "repeat_event");
 const eventsInCategory = computed(() =>
-  allEvents.value.filter((e) => e.event_category_id === addCategory.value),
+  allEvents.value.filter((e) => !addCategory.value || e.event_category_id === addCategory.value),
 );
 const pendingRows = computed(() => rows.value.filter((r) => !r.finished));
 const activeRow = computed(
@@ -88,18 +93,27 @@ function etaLabel(r: QueueRow): string {
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
+  error.value = "";
   try {
     await fn();
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
+    error.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     busy.value = false;
   }
 }
 
 async function reload() {
-  if (instanceId.value === null) return;
-  rows.value = (await api.get<{ items: QueueRow[] }>(`/api/queue?instance=${instanceId.value}`)).items;
+  const version = ++loadVersion;
+  const id = instanceId.value;
+  if (id === null || !server.instances[id]) { loading.value = false; return; }
+  loading.value = true;
+  try {
+    const result = await api.get<{ items: QueueRow[] }>(`/api/queue?instance=${id}`);
+    if (version === loadVersion && id === instanceId.value) { rows.value = result.items; error.value = ""; }
+  } catch (e) {
+    if (version === loadVersion && id === instanceId.value) error.value = e instanceof Error ? e.message : "Could not load the run plan.";
+  } finally { if (version === loadVersion) loading.value = false; }
 }
 
 const act = (fn: () => Promise<unknown>) =>
@@ -120,7 +134,7 @@ function onDrop(targetId: number) {
   dragId.value = null;
   dragOverId.value = null;
   if (from === null || from === targetId) return;
-  const ids = pendingRows.value.map((r) => r.id);
+  const ids = upcomingRows.value.map((r) => r.id);
   const fi = ids.indexOf(from);
   const ti = ids.indexOf(targetId);
   if (fi < 0 || ti < 0) return;
@@ -129,17 +143,25 @@ function onDrop(targetId: number) {
   const byId = new Map(rows.value.map((r) => [r.id, r]));
   const reordered = ids.map((id) => byId.get(id)!).filter(Boolean);
   const finished = rows.value.filter((r) => r.finished);
-  rows.value = [...finished, ...reordered];
-  act(() => api.put("/api/queue/order", { instance: instanceId.value, ids }));
+  const active = activeRow.value;
+  rows.value = [...finished, ...(active ? [active] : []), ...reordered];
+  act(() => api.put("/api/queue/order", { instance: instanceId.value, ids: [...(active ? [active.id] : []), ...ids] }));
 }
 const removeRow = (id: number) => act(() => api.delete(`/api/queue/${id}`));
-const clearCompleted = () => act(() => api.post("/api/queue/clearcompleted"));
+const clearCompleted = () => act(async () => {
+  // The legacy clearcompleted endpoint clears every server. This page owns only
+  // the selected server's rows, so remove its completed entries individually.
+  for (const row of rows.value.filter(row => row.finished && row.instance_id === instanceId.value)) {
+    await api.delete(`/api/queue/${row.id}`);
+    rows.value = rows.value.filter(item => item.id !== row.id);
+  }
+});
 
 const skip = () =>
   act(async () => {
     const ok = await confirm.ask({
       title: "Skip current event",
-      message: "Skip the current event and advance the queue?",
+      message: `Skip the current event on ${instance.value?.name ?? "this server"} and advance its queue?`,
       detail: "Everyone on the server is kicked when the event rotates.",
       confirmLabel: "Skip event",
       tone: "danger",
@@ -227,11 +249,7 @@ const addCategoryToQueue = () =>
     toast.success("All events from the group queued.");
   });
 
-function rowState(r: QueueRow): "done" | "active" | "pending" {
-  if (r.finished) return "done";
-  if ((r.started_at ?? 0) > 0 && instance.value?.running) return "active";
-  return "pending";
-}
+function rowState(r: QueueRow) { return queueState(r, !!instance.value?.running); }
 
 // --- Inline "New race setup" → save into a group, then queue it on this instance ---
 const newSetupOpen = ref(false);
@@ -239,7 +257,8 @@ const newSetup = ref<RaceSetupDraft>(emptyRaceSetup());
 
 let newSetupBaseline = "";
 const markNewSetupClean = () => (newSetupBaseline = JSON.stringify(newSetup.value));
-useUnsavedGuard(() => newSetupOpen.value && JSON.stringify(newSetup.value) !== newSetupBaseline);
+const guardClose = useUnsavedGuard(() => newSetupOpen.value && JSON.stringify(newSetup.value) !== newSetupBaseline);
+const closeNewSetup = () => guardClose(() => { newSetupOpen.value = false; });
 
 function openNewSetup() {
   newSetup.value = emptyRaceSetup();
@@ -265,8 +284,13 @@ const saveAndQueueSetup = () =>
       return;
     }
     const groupId = await ensureGroup();
-    const { id } = await api.post<{ id: number }>("/api/events", raceSetupBody(newSetup.value, groupId));
-    await api.post(`/api/queue/event/${id}?instance=${instanceId.value}`);
+    const body = raceSetupBody(newSetup.value, groupId);
+    if (newSetup.value.id) await api.put(`/api/event/${newSetup.value.id}`, body);
+    else {
+      const saved = await api.post<{ id: number }>("/api/events", body);
+      newSetup.value.id = saved.id;
+    }
+    await api.post(`/api/queue/event/${newSetup.value.id}?instance=${instanceId.value}`);
     newSetupOpen.value = false;
     allEvents.value = (await api.get<{ items: UserEventList[] }>("/api/events")).items;
     toast.success("Race setup created and queued.");
@@ -276,10 +300,14 @@ onMounted(() =>
   guard(async () => {
     await server.load();
     // Honor ?instance from the URL when it points at a real instance, else
-    // fall back to the first.
-    if (!server.instanceList.some((i) => i.id === instanceId.value)) {
-      instanceId.value = server.instanceList[0]?.id ?? null;
+    // ask for a choice when more than one server is available.
+    if (instanceId.value !== null && !server.instances[instanceId.value]) {
+      selectionNotice.value = "That server is no longer available. Choose a server to view its run plan.";
+      instanceId.value = null;
+    } else if (instanceId.value === null) {
+      instanceId.value = server.selectedInstanceId ?? (server.instanceList.length === 1 ? server.instanceList[0].id : null);
     }
+    if (instanceId.value !== null) server.selectInstance(instanceId.value);
     const [cats, events] = await Promise.all([
       // All event groups — a group is just a folder of events. The legacy
       // ?filled=1 hid groups that were never renamed (filled stays 0 on create),
@@ -294,7 +322,13 @@ onMounted(() =>
   }),
 );
 
-watch(instanceId, () => guard(reload));
+watch(instanceId, () => {
+  rows.value = [];
+  server.selectInstance(instanceId.value);
+  if (instance.value) selectionNotice.value = "";
+  else if (instanceId.value !== null) selectionNotice.value = "That server is no longer available. Choose a server to continue.";
+  void guard(reload);
+});
 
 // Track changes / starts / stops flip running flags — refetch the queue
 watch(
@@ -304,8 +338,10 @@ watch(
 </script>
 
 <template>
+  <div v-if="error" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">{{ error }}</p><Button variant="dark" class="mt-3" :disabled="loading" @click="reload">Retry loading run plan</Button></div>
+  <p v-if="loading" role="status" class="mb-3 text-sm text-muted">Updating run plan…</p>
   <PageHeader
-    title="Run Plan"
+    :title="instance ? `${instance.name} · Run Plan` : 'Run Plan'"
     subtitle="Manage the per-instance run order, start servers, and queue individual race setups or whole groups."
     icon="queue"
   >
@@ -339,6 +375,7 @@ watch(
     </template>
   </PageHeader>
 
+  <p v-if="selectionNotice" role="status" class="mb-3 text-sm text-warn">{{ selectionNotice }}</p>
   <div v-if="server.instanceList.length > 1" class="mb-4 flex flex-wrap gap-1">
     <button
       v-for="inst in server.instanceList"
@@ -350,6 +387,7 @@ watch(
           ? 'border-accent/45 bg-accent-dim text-accent'
           : 'border-line bg-surface text-muted hover:border-line-hi hover:text-text'
       "
+      :aria-pressed="instanceId === inst.id"
       @click="instanceId = inst.id"
     >
       <span class="size-1.5 rounded-full" :class="inst.running ? 'bg-ok' : 'bg-dim'" />
@@ -374,7 +412,8 @@ watch(
   </p>
 
   <!-- Repeat mode: the manual queue is frozen while one event auto-repeats -->
-  <Card v-if="repeatMode">
+  <EmptyState v-if="!instance" icon="instances" title="Choose a server" message="Select a server to see its run order and available actions." />
+  <Card v-else-if="repeatMode">
     <template #header>
       <Icon name="repeat" :size="16" class="text-accent" />
       <h2 class="text-sm font-bold">Repeat mode</h2>
@@ -433,12 +472,12 @@ watch(
         </thead>
         <tbody>
           <tr
-            v-for="(r, i) in rows"
+            v-for="r in rows"
             :key="r.id"
             :draggable="auth.canOperate && rowState(r) === 'pending'"
             class="border-b border-line/60"
             :class="{
-              'opacity-45': rowState(r) === 'done',
+              'bg-surface-2/30': rowState(r) === 'done',
               'bg-accent-dim/40': rowState(r) === 'active',
               'cursor-grab': auth.canOperate && rowState(r) === 'pending',
               'border-t-2 border-t-accent': dragOverId === r.id && dragId !== r.id,
@@ -452,16 +491,17 @@ watch(
             <td class="py-2 pr-2">
               <span v-if="rowState(r) === 'pending'" class="inline-flex items-center gap-1.5 text-muted">
                 <Icon name="menu" :size="14" class="text-dim" />
-                {{ pendingRows.indexOf(r) + 1 }}
+                {{ upcomingRows.indexOf(r) + 1 }}
               </span>
               <Icon v-else-if="rowState(r) === 'active'" name="activity" :size="15" class="text-ok" />
-              <Icon v-else name="check" :size="15" class="text-dim" />
+              <span v-else class="inline-flex items-center gap-1 text-xs text-muted"><Icon name="check" :size="15" />Done</span>
             </td>
             <td class="py-2 pr-2">
               <RouterLink :to="`/server/${r.instance_id}`" class="font-medium transition-colors hover:text-accent">
                 {{ r.name || r.track }}
               </RouterLink>
-              <div class="text-xs text-dim">{{ r.name ? `${r.track} · ${r.category}` : r.category }}</div>
+              <div class="text-xs text-muted">{{ r.name ? `${r.track} · ${r.category}` : r.category }}</div>
+              <details class="mt-2 lg:hidden"><summary class="cursor-pointer py-2 text-xs text-accent">Race details</summary><dl class="space-y-1 py-2 text-xs text-muted"><div><dt class="inline">Class: </dt><dd class="inline">{{ r.class }}</dd></div><div><dt class="inline">Sessions: </dt><dd class="inline">{{ r.session }}</dd></div><div><dt class="inline">Time / weather: </dt><dd class="inline">{{ r.time }}</dd></div><div><dt class="inline">Difficulty: </dt><dd class="inline">{{ r.difficulty }}</dd></div></dl></details>
               <div v-if="rowState(r) === 'pending'" class="mt-0.5 flex items-center gap-1 text-[11px] text-accent/80">
                 <Icon name="clock" :size="11" />
                 {{ etaLabel(r) }}
@@ -472,35 +512,37 @@ watch(
               {{ r.session }} · {{ r.time }} · {{ r.difficulty }}
             </td>
             <td class="py-2 text-right whitespace-nowrap">
-              <template v-if="auth.canOperate && rowState(r) === 'pending'">
-                <Button variant="dark" size="sm" :disabled="i === 0 || busy" aria-label="Move up" @click="moveUp(r.id)">
+              <div v-if="auth.canOperate && rowState(r) === 'pending'" class="ml-auto flex w-24 flex-wrap justify-end gap-1 sm:w-auto sm:flex-nowrap">
+                <Button variant="dark" size="sm" :disabled="upcomingRows[0]?.id === r.id || busy" :aria-label="`Move ${r.name || r.track} up`" @click="moveUp(r.id)">
                   <Icon name="arrowUp" :size="14" />
                 </Button>
                 <Button
                   variant="dark"
                   size="sm"
-                  class="ml-1"
-                  :disabled="i === rows.length - 1 || busy"
-                  aria-label="Move down"
+
+                  :disabled="upcomingRows.at(-1)?.id === r.id || busy"
+                  :aria-label="`Move ${r.name || r.track} down`"
                   @click="moveDown(r.id)"
                 >
                   <Icon name="arrowDown" :size="14" />
                 </Button>
-                <Button variant="ghost" size="sm" class="ml-1" aria-label="Remove" @click="removeRow(r.id)">
+                <Button variant="ghost" size="sm"  :aria-label="`Remove ${r.name || r.track} from queue`" @click="removeRow(r.id)">
                   <Icon name="x" :size="14" />
                 </Button>
-              </template>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
       </div>
 
+      <p v-else-if="loading" role="status" class="py-8 text-sm text-muted">Loading races…</p>
+      <p v-else-if="error" class="py-8 text-sm text-muted">Run plan unavailable. Use Retry loading run plan above.</p>
       <EmptyState
         v-else
         icon="queue"
         title="Queue is empty"
-        message="Add a single event or a whole event group on the right, then start the server."
+        message="Use Add to queue to choose a saved race or create a new setup, then start this server."
       />
     </Card>
 
@@ -544,27 +586,29 @@ watch(
   </div>
 
   <!-- New race setup → create + queue in one step -->
-  <Sheet :open="newSetupOpen" title="New race setup" @close="newSetupOpen = false">
+  <Sheet wide :open="newSetupOpen" title="New race setup" @close="closeNewSetup">
     <p class="mb-3 text-sm text-muted">
       Build a race setup and queue it on
       <span class="font-medium text-text">{{ instance?.name ?? "this instance" }}</span>
       in one step. It is also saved to your library{{ addCategory ? " in the selected group" : "" }}.
     </p>
     <RaceSetupEditor v-model="newSetup" :instance-id="instanceId" />
+    <p v-if="error" role="alert" class="mt-4 text-sm text-danger">{{ error }} {{ newSetup.id ? "The setup is saved in your library. Retry to add it to this run plan." : "Your draft is still here." }}</p>
     <template #footer>
-      <span v-if="!raceSetupValid(newSetup)" class="mr-auto self-center text-xs text-muted">
+      <span v-if="!raceSetupValid(newSetup)" class="basis-full self-center text-xs text-muted">
         Track and all four presets are required.
       </span>
-      <Button variant="ghost" @click="newSetupOpen = false">Cancel</Button>
+      <Button variant="ghost" @click="closeNewSetup">Cancel</Button>
       <Button :disabled="busy || !raceSetupValid(newSetup)" @click="saveAndQueueSetup">
         <Icon name="queue" :size="15" />
-        Create &amp; queue
+        {{ newSetup.id ? "Save & queue" : "Create & queue" }}
       </Button>
     </template>
   </Sheet>
 
   <!-- Schedule start -->
   <Modal :open="scheduleOpen" title="Schedule start" @close="scheduleOpen = false">
+    <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
     <p class="mb-3 text-sm text-muted">
       The server starts automatically at this time (within ~20s), running the queued event or the repeat event.
     </p>
@@ -573,7 +617,7 @@ watch(
         id="sched"
         v-model="scheduleValue"
         type="datetime-local"
-        class="min-h-9 w-full rounded-md border border-line bg-surface-2 px-3 text-sm text-text outline-none focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
+        class="min-h-11 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-text outline-none focus:border-accent focus:bg-surface-3 focus:ring-2 focus:ring-accent/20"
       />
     </FormRow>
     <template #footer>

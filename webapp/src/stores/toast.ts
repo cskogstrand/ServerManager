@@ -21,8 +21,7 @@ export interface Toast {
 let nextId = 1;
 
 // Global toast stack. Replaces the per-page inline notice/error rows so
-// feedback is consistent and non-blocking (errors persist longer than
-// successes; SSE-driven events can push toasts from anywhere).
+// feedback is consistent; errors stay visible until dismissed.
 export const useToastStore = defineStore("toast", {
   state: () => ({
     toasts: [] as Toast[],
@@ -31,8 +30,8 @@ export const useToastStore = defineStore("toast", {
   actions: {
     push(tone: ToastTone, message: string, ttl?: number, action?: ToastAction) {
       const id = nextId++;
-      // Actionable toasts linger a little longer so the button is clickable.
-      const duration = ttl ?? (tone === "error" ? 8000 : action ? 7000 : 4000);
+      // Errors and actions remain available until the user dismisses them.
+      const duration = ttl ?? (tone === "error" || action ? 0 : 4000);
       const timer = duration > 0 ? setTimeout(() => this.dismiss(id), duration) : null;
       this.toasts.push({ id, tone, message, action, timer });
       return id;

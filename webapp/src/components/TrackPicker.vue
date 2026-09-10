@@ -35,7 +35,7 @@ function isSelected(t: { key?: string; config?: string }) {
 
 <template>
   <Sheet :open="open" title="Choose track" @close="emit('close')">
-    <Input v-model="search" placeholder="Search tracks…" class="mb-3" />
+    <Input aria-label="Search tracks" v-model="search" placeholder="Search tracks…" class="mb-3" />
 
     <div class="grid grid-cols-2 gap-3">
       <button

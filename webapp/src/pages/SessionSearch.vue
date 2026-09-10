@@ -2,8 +2,10 @@
 // Global session search — find a driver's stint (connection) again later by tag,
 // driver name or track. Tag chips are clickable to pivot the search; each result
 // deep-links to that session on the driver's detail page.
-import { ref, watch, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { useRouter } from "vue-router";
+import { useQueryParam } from "@/lib/useQueryParam";
+import Button from "@/components/ui/Button.vue";
 import { searchSessions, fmtDate, fmtScore, shortGuid } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
 import type { SessionSearchResult } from "@/types/driverStats";
@@ -11,9 +13,11 @@ import Card from "@/components/ui/Card.vue";
 import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 
-const route = useRoute();
-const q = ref("");
-const tag = ref("");
+const router = useRouter();
+const q = useQueryParam<string>("q", "");
+const tag = useQueryParam<string>("tag", "");
+const error = ref("");
+let version = 0;
 const results = ref<SessionSearchResult[]>([]);
 const loading = ref(false);
 const loaded = ref(false);
@@ -21,32 +25,35 @@ const loaded = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function run() {
+  const request = ++version;
   loading.value = true;
   try {
-    results.value = await searchSessions({ q: q.value.trim(), tag: tag.value.trim() });
+    const rows = await searchSessions({ q: q.value.trim(), tag: tag.value.trim() });
+    if (request === version) { results.value = rows; error.value = ""; }
   } catch {
-    results.value = [];
+    if (request === version) error.value = "Session search is unavailable. Your filters are preserved; try again.";
   } finally {
-    loading.value = false;
-    loaded.value = true;
+    if (request === version) { loading.value = false; loaded.value = true; }
   }
 }
 
 // Debounce keystrokes; tag changes (chip clicks) fire immediately.
 function schedule() {
+  ++version;
+  results.value = [];
+  loading.value = true;
   if (timer) clearTimeout(timer);
   timer = setTimeout(run, 250);
 }
 
 watch(q, schedule);
-watch(tag, run);
+watch(tag, schedule);
 
 function pickTag(t: string) {
   tag.value = tag.value.toLowerCase() === t.toLowerCase() ? "" : t;
 }
 function clearAll() {
-  q.value = "";
-  tag.value = "";
+  void router.replace({ query: { ...router.currentRoute.value.query, q: undefined, tag: undefined } });
 }
 
 function durationLabel(r: SessionSearchResult): string {
@@ -56,11 +63,8 @@ function durationLabel(r: SessionSearchResult): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
-onMounted(() => {
-  if (typeof route.query.tag === "string") tag.value = route.query.tag;
-  if (typeof route.query.q === "string") q.value = route.query.q;
-  void run();
-});
+onMounted(run);
+onBeforeUnmount(() => { if (timer) clearTimeout(timer); ++version; });
 </script>
 
 <template>
@@ -85,24 +89,26 @@ onMounted(() => {
           <Icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dim" />
           <input
             v-model="q"
+            aria-label="Driver name or track"
             type="text"
             placeholder="Driver name or track…"
-            class="h-10 w-full rounded-md border border-line bg-surface pl-9 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
+            class="min-h-11 w-full rounded-md border border-control bg-surface pl-9 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
           />
         </label>
         <label class="relative sm:w-64">
           <span class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-dim">#</span>
           <input
             v-model="tag"
+            aria-label="Session tag"
             type="text"
             placeholder="Tag (e.g. tandem night)"
-            class="h-10 w-full rounded-md border border-line bg-surface pl-8 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
+            class="min-h-11 w-full rounded-md border border-control bg-surface pl-8 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
           />
         </label>
         <button
           v-if="q || tag"
           type="button"
-          class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface-2 px-3 text-sm font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
+          class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface-2 px-3 text-sm font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
           @click="clearAll"
         >
           <Icon name="x" :size="14" /> Clear
@@ -110,6 +116,7 @@ onMounted(() => {
       </div>
     </Card>
 
+    <div v-if="error" role="alert" class="rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">{{ error }}</p><Button variant="dark" class="mt-3" :disabled="loading" @click="run">Retry search</Button></div>
     <!-- Loading -->
     <div v-if="loading && !results.length" class="space-y-2">
       <div v-for="i in 4" :key="i" class="h-20 animate-pulse rounded-lg border border-line bg-surface-2/50" />
@@ -186,7 +193,7 @@ onMounted(() => {
     </div>
 
     <!-- Empty -->
-    <Card v-else-if="loaded">
+    <Card v-else-if="loaded && !error">
       <div class="py-12 text-center">
         <div class="mx-auto grid size-12 place-items-center rounded-lg border border-line bg-surface-2 text-dim">
           <Icon name="search" :size="22" />

@@ -3,6 +3,7 @@
 // the full preset page uses, save — then the builder selects it. Reuses the
 // per-kind *Fields components so there is no duplicated form logic.
 import { ref, computed, watch } from "vue";
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { ApiError } from "@/lib/api";
 import { presetFor, presetMeta, type PresetKind } from "@/lib/presetForms";
 import { useToastStore } from "@/stores/toast";
@@ -31,6 +32,8 @@ const name = ref("");
 const form = ref<any>(null);
 const newId = ref<number | null>(null);
 const busy = ref(false);
+const guardClose = useUnsavedGuard(() => props.open && (!!name.value.trim() || form.value !== null));
+const closeEditor = () => guardClose(() => emit("close"));
 
 const meta = computed(() => presetMeta[props.kind]);
 
@@ -84,7 +87,7 @@ function save() {
 </script>
 
 <template>
-  <Sheet :open="open" :title="`New ${meta.title.toLowerCase()}`" @close="emit('close')">
+  <Sheet :open="open" :title="`New ${meta.title.toLowerCase()}`" @close="closeEditor">
     <template v-if="!form">
       <FormRow label="Name" for-id="presetname" hint="Name it, then fill in the details.">
         <Input id="presetname" v-model="name" @keyup.enter="startEditing" />
@@ -93,7 +96,7 @@ function save() {
     <component :is="fieldsComponent[kind]" v-else v-model="form" />
 
     <template #footer>
-      <Button variant="ghost" @click="emit('close')">Cancel</Button>
+      <Button variant="ghost" @click="closeEditor">Cancel</Button>
       <Button v-if="!form" :disabled="busy || !name.trim()" @click="startEditing">Continue</Button>
       <Button v-else :disabled="busy" @click="save">Save {{ meta.title.toLowerCase() }}</Button>
     </template>

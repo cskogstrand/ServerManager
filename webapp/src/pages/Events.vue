@@ -4,6 +4,7 @@
 // you can create a setup from anywhere. The shared RaceSetupEditor drives
 // create/edit; presets are accelerators chosen or created inline.
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api, ApiError } from "@/lib/api";
 import { useQueryParam, enumParam } from "@/lib/useQueryParam";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
@@ -42,6 +43,8 @@ const toast = useToastStore();
 const confirm = useConfirmStore();
 const auth = useAuthStore();
 
+const router = useRouter();
+const error = ref("");
 const groups = ref<DropDownList[]>([]);
 const setups = ref<LibrarySetup[]>([]);
 const loading = ref(true);
@@ -83,10 +86,11 @@ const selectedSetups = computed(() => setups.value.filter((s) => s.id != null &&
 
 async function guard(fn: () => Promise<void>) {
   busy.value = true;
+  error.value = "";
   try {
     await fn();
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : String(e));
+    error.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     busy.value = false;
   }
@@ -115,11 +119,13 @@ const editing = ref<RaceSetupDraft | null>(null);
 const editingGroupId = ref<number | null>(null);
 
 let builderBaseline = "";
-const markBuilderClean = () => (builderBaseline = editing.value ? JSON.stringify(editing.value) : "");
-useUnsavedGuard(() => builderOpen.value && editing.value !== null && JSON.stringify(editing.value) !== builderBaseline);
+const builderSnapshot = () => JSON.stringify([editing.value, editingGroupId.value]);
+const markBuilderClean = () => (builderBaseline = builderSnapshot());
+const guardBuilderClose = useUnsavedGuard(() => builderOpen.value && editing.value !== null && builderSnapshot() !== builderBaseline);
+const closeBuilder = () => guardBuilderClose(() => { builderOpen.value = false; });
 
 async function ensureGroup(): Promise<number> {
-  if (groupFilter.value !== "all") return groupFilter.value;
+  if (groupFilter.value !== "all" && groups.value.some(group => group.id === groupFilter.value)) return groupFilter.value;
   if (groups.value.length) return groups.value[0].id!;
   const { id } = await api.post<{ id: number }>("/api/categories", { name: "Race setups" });
   await loadAll();
@@ -128,7 +134,7 @@ async function ensureGroup(): Promise<number> {
 
 const openCreate = () =>
   guard(async () => {
-    editingGroupId.value = await ensureGroup();
+    editingGroupId.value = groupFilter.value !== "all" && groups.value.some(group => group.id === groupFilter.value) ? groupFilter.value : groups.value[0]?.id ?? null;
     editing.value = emptyRaceSetup();
     markBuilderClean();
     builderOpen.value = true;
@@ -144,11 +150,12 @@ function openEdit(s: LibrarySetup) {
 const saveSetup = () =>
   guard(async () => {
     const e = editing.value;
-    if (!e || editingGroupId.value === null) return;
+    if (!e) return;
     if (!raceSetupValid(e)) {
       toast.error("Track and all four presets are required.");
       return;
     }
+    editingGroupId.value ??= await ensureGroup();
     const body = raceSetupBody(e, editingGroupId.value);
     if (e.id) await api.put(`/api/event/${e.id}`, body);
     else await api.post("/api/events", body);
@@ -204,16 +211,21 @@ const bulkInstanceOpen = ref(false);
 const bulkInstanceId = ref<number | null>(null);
 
 function openBulkQueue() {
-  bulkInstanceId.value = server.instanceList[0]?.id ?? null;
+  error.value = "";
+  bulkInstanceId.value = server.selectedInstanceId ?? (server.instanceList.length === 1 ? server.instanceList[0].id : null);
   bulkInstanceOpen.value = true;
 }
 
 const queueSelected = () =>
   guard(async () => {
     const iid = bulkInstanceId.value;
-    if (iid === null) return;
+    if (iid === null || !server.instances[iid]) return;
+    server.selectInstance(iid);
     for (const s of selectedSetups.value) {
-      if (s.id) await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+      if (s.id) {
+        await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+        selectedIds.value = selectedIds.value.filter(id => id !== s.id);
+      }
     }
     selectedIds.value = [];
     bulkInstanceOpen.value = false;
@@ -244,11 +256,14 @@ const actionOpen = ref(false);
 const actionTarget = ref<LibrarySetup | null>(null);
 const actionInstanceId = ref<number | null>(null);
 const actionKind = ref<"queue" | "start" | "repeat">("queue");
+const actionQueuedOn = ref<number | null>(null);
 
 function openAction(s: LibrarySetup, kind: "queue" | "start" | "repeat") {
+  error.value = "";
+  actionQueuedOn.value = null;
   actionTarget.value = s;
   actionKind.value = kind;
-  actionInstanceId.value = server.instanceList[0]?.id ?? null;
+  actionInstanceId.value = server.selectedInstanceId ?? (server.instanceList.length === 1 ? server.instanceList[0].id : null);
   actionOpen.value = true;
 }
 
@@ -256,13 +271,17 @@ const confirmAction = () =>
   guard(async () => {
     const s = actionTarget.value;
     const iid = actionInstanceId.value;
-    if (!s?.id || iid === null) return;
+    if (!s?.id || iid === null || !server.instances[iid]) return;
+    server.selectInstance(iid);
     const inst = server.instanceList.find((i) => i.id === iid);
     if (actionKind.value === "repeat") {
       await server.setRunMode(iid, "repeat_event", s.id);
       toast.success(`${inst?.name ?? "Instance"} will repeat ${s.name || s.track_name}.`);
     } else {
-      await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+      if (actionQueuedOn.value !== iid) {
+        await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
+        actionQueuedOn.value = iid;
+      }
       if (actionKind.value === "start") {
         await api.post(`/api/server/start?instance=${iid}`);
         toast.success(`Queued and starting on ${inst?.name ?? "instance"}.`);
@@ -293,6 +312,7 @@ const createGroup = () =>
   });
 
 function openRenameGroup() {
+  error.value = "";
   if (groupFilter.value === "all") return;
   const g = groups.value.find((x) => x.id === groupFilter.value);
   renameGroupName.value = g?.name ?? "";
@@ -337,12 +357,13 @@ const duplicateGroup = () =>
     toast.success("Group duplicated.");
   });
 
-onMounted(() =>
-  guard(async () => {
-    await Promise.all([loadAll(), server.load(), content.load()]);
-    loading.value = false;
-  }),
-);
+async function loadLibrary() {
+  loading.value = true;
+  await guard(async () => { await Promise.all([loadAll(), server.load(), content.load()]); });
+  loading.value = false;
+}
+function clearFilters() { void router.replace({ query: { ...router.currentRoute.value.query, q: undefined, group: undefined, run: undefined } }); }
+onMounted(loadLibrary);
 </script>
 
 <template>
@@ -363,32 +384,33 @@ onMounted(() =>
   <div class="mb-4 flex flex-wrap items-center gap-2">
     <div class="relative min-w-48 flex-1">
       <Icon name="search" :size="15" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
-      <Input v-model="search" placeholder="Search setups…" class="!pl-8" />
+      <Input v-model="search" aria-label="Search race setups" placeholder="Search setups…" class="!pl-8" />
     </div>
     <Select
       v-model="groupFilter"
-      class="w-44"
+      aria-label="Filter race setups by group"
+      class="!w-full sm:!w-44"
       :options="[{ value: 'all', label: 'All groups' }, ...groups.map((g) => ({ value: g.id ?? 0, label: g.name ?? '' }))]"
     />
     <div class="inline-flex overflow-hidden rounded-md border border-line">
       <button
         type="button"
-        class="min-h-9 px-3 text-xs font-semibold transition-colors"
+        class="min-h-11 px-3 text-sm font-semibold transition-colors"
         :class="runFilter === 'all' ? 'bg-accent-dim text-accent' : 'bg-surface text-muted hover:text-text'"
-        @click="runFilter = 'all'"
+        :aria-pressed="runFilter === 'all'" @click="runFilter = 'all'"
       >
         All
       </button>
       <button
         type="button"
-        class="min-h-9 border-l border-line px-3 text-xs font-semibold transition-colors"
+        class="min-h-11 border-l border-line px-3 text-xs font-semibold transition-colors"
         :class="runFilter === 'repeating' ? 'bg-accent-dim text-accent' : 'bg-surface text-muted hover:text-text'"
-        @click="runFilter = 'repeating'"
+        :aria-pressed="runFilter === 'repeating'" @click="runFilter = 'repeating'"
       >
         Repeating
       </button>
     </div>
-    <Button v-if="auth.canOperate" variant="dark" size="sm" @click="groupModalOpen = true">
+    <Button v-if="auth.canOperate" variant="dark" size="sm" @click="error = ''; groupModalOpen = true">
       <Icon name="folder" :size="14" />
       New group
     </Button>
@@ -422,6 +444,7 @@ onMounted(() =>
     <Button variant="ghost" size="sm" @click="selectedIds = []">Clear</Button>
   </div>
 
+  <div v-if="error" role="alert" class="mb-5 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="font-semibold text-danger">Could not complete the request</p><p class="mt-1 text-muted">{{ error }}</p><Button variant="dark" class="mt-3" :disabled="busy" @click="loadLibrary">Reload library</Button></div>
   <div v-if="loading" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     <Skeleton v-for="n in 6" :key="n" class="h-64" />
   </div>
@@ -441,7 +464,7 @@ onMounted(() =>
       </template>
       <template #actions>
         <label v-if="auth.canOperate && s.id" class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
-          <input v-model="selectedIds" type="checkbox" :value="s.id" class="accent-accent" />
+          <input v-model="selectedIds" :aria-label="`Select ${s.name || s.track_name}`" type="checkbox" :value="s.id" class="accent-accent" />
           Select
         </label>
       </template>
@@ -468,33 +491,25 @@ onMounted(() =>
         </span>
       </div>
 
-      <div v-if="auth.canOperate" class="mt-3 flex flex-wrap gap-1.5">
-        <Button variant="success" size="sm" @click="openAction(s, 'start')">
-          <Icon name="power" :size="14" />
-          Start
-        </Button>
-        <Button variant="dark" size="sm" @click="openAction(s, 'queue')">
-          <Icon name="queue" :size="14" />
-          Queue
-        </Button>
-        <Button variant="dark" size="sm" title="Run repeatedly" @click="openAction(s, 'repeat')">
-          <Icon name="repeat" :size="14" />
-          Repeat
-        </Button>
-        <Button variant="ghost" size="sm" @click="openEdit(s)">Edit</Button>
-        <Button variant="ghost" size="sm" aria-label="Duplicate" @click="duplicateSetup(s)">
-          <Icon name="copy" :size="14" />
-        </Button>
-        <Button variant="ghost" size="sm" @click="saveAsTemplate(s)">Template</Button>
-        <Button variant="ghost" size="sm" aria-label="Delete" @click="deleteSetup(s)">
-          <Icon name="trash" :size="14" />
-        </Button>
+      <div v-if="auth.canOperate" class="mt-5 flex flex-wrap items-start gap-2">
+        <Button size="sm" @click="openAction(s, 'queue')"><Icon name="queue" :size="16" />Add to run plan</Button>
+        <Button variant="dark" size="sm" @click="openEdit(s)">Edit</Button>
+        <details class="w-full rounded-md border border-line bg-surface-2/40">
+          <summary class="min-h-11 cursor-pointer px-3 py-2.5 text-sm text-muted" :aria-label="`More actions for ${s.name || s.track_name}`">More actions</summary>
+          <div class="flex flex-wrap gap-2 border-t border-line p-3">
+            <Button variant="dark" size="sm" @click="openAction(s, 'start')">Start now</Button>
+            <Button variant="dark" size="sm" @click="openAction(s, 'repeat')">Repeat</Button>
+            <Button variant="ghost" size="sm" @click="duplicateSetup(s)">Duplicate</Button>
+            <Button variant="ghost" size="sm" @click="saveAsTemplate(s)">Save as template</Button>
+            <Button variant="danger" size="sm" @click="deleteSetup(s)">Delete setup</Button>
+          </div>
+        </details>
       </div>
     </Card>
   </div>
 
   <EmptyState
-    v-else
+    v-else-if="!error"
     icon="events"
     :title="search || groupFilter !== 'all' || runFilter !== 'all' ? 'No setups match' : 'No race setups yet'"
     :message="
@@ -503,24 +518,24 @@ onMounted(() =>
         : 'A race setup bundles a track and presets into one runnable race. Add your first one.'
     "
   >
-    <Button v-if="auth.canOperate" :disabled="busy" @click="openCreate">
+    <Button v-if="search || groupFilter !== 'all' || runFilter !== 'all'" @click="clearFilters">Clear filters</Button>
+    <Button v-else-if="auth.canOperate" :disabled="busy" @click="openCreate">
       <Icon name="plus" :size="15" />
       New race setup
     </Button>
   </EmptyState>
 
   <!-- Builder -->
-  <Sheet :open="builderOpen" :title="editing?.id ? 'Edit race setup' : 'New race setup'" @close="builderOpen = false">
-    <FormRow v-if="editing" label="Group" hint="Which group this setup belongs to.">
-      <Select
-        v-model="editingGroupId"
-        :options="groups.map((g) => ({ value: g.id ?? 0, label: g.name ?? '' }))"
-      />
-    </FormRow>
-    <RaceSetupEditor v-if="editing" v-model="editing" :instance-id="server.instanceList[0]?.id ?? null" />
+  <Sheet wide :open="builderOpen" :title="editing?.id ? 'Edit race setup' : 'New race setup'" @close="closeBuilder">
+    <p class="mb-5 text-sm text-muted">{{ editing?.id ? 'Changes update this saved setup wherever it is used. Running servers keep their current configuration until restarted.' : 'Save a reusable setup first, then add it to a server’s run plan.' }}</p>
+    <RaceSetupEditor v-if="editing" v-model="editing" :instance-id="server.selectedInstanceId" />
+    <details class="mt-5 rounded-md border border-line p-4"><summary class="cursor-pointer text-sm font-medium">Organization</summary>
+      <FormRow v-if="editing" class="mt-4" label="Group" hint="Which group this setup belongs to."><Select v-model="editingGroupId" :options="groups.map(g => ({ value: g.id ?? 0, label: g.name ?? '' }))" /></FormRow>
+    </details>
+    <p v-if="error" role="alert" class="mt-4 rounded-md bg-danger-glow p-3 text-sm text-danger">{{ error }} Your draft is still here; try saving again.</p>
     <template #footer>
-      <span v-if="!raceSetupValid(editing)" class="mr-auto self-center text-xs text-muted">Track and all four presets are required.</span>
-      <Button variant="ghost" @click="builderOpen = false">Cancel</Button>
+      <span v-if="!raceSetupValid(editing)" class="basis-full self-center text-xs text-muted">Track and all four presets are required.</span>
+      <Button variant="ghost" @click="closeBuilder">Cancel</Button>
       <Button :disabled="busy || !raceSetupValid(editing)" @click="saveSetup">{{ editing?.id ? "Save race setup" : "Add race setup" }}</Button>
     </template>
   </Sheet>
@@ -537,9 +552,12 @@ onMounted(() =>
       <template v-else-if="actionKind === 'start'"> will be queued and the server started.</template>
       <template v-else> will be added to the instance's queue.</template>
     </p>
-    <FormRow label="Instance" for-id="actinst">
+    <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
+    <FormRow label="Server" for-id="actinst"
+        :disabled="actionQueuedOn !== null">
       <Select
         id="actinst"
+        :disabled="actionQueuedOn !== null"
         v-model="actionInstanceId"
         :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
       />
@@ -554,6 +572,7 @@ onMounted(() =>
 
   <!-- New group -->
   <Modal :open="groupModalOpen" title="New group" @close="groupModalOpen = false">
+    <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
     <FormRow label="Group name" for-id="grpname" hint="Organise setups — e.g. a championship or a casual rotation.">
       <Input id="grpname" v-model="newGroupName" @keyup.enter="createGroup" />
     </FormRow>
@@ -565,6 +584,7 @@ onMounted(() =>
 
   <!-- Rename group -->
   <Modal :open="renameModalOpen" title="Rename group" @close="renameModalOpen = false">
+    <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
     <FormRow label="Group name" for-id="renamegrp">
       <Input id="renamegrp" v-model="renameGroupName" @keyup.enter="renameGroup" />
     </FormRow>
@@ -576,6 +596,7 @@ onMounted(() =>
 
   <!-- Bulk queue -->
   <Modal :open="bulkInstanceOpen" title="Queue selected setups" @close="bulkInstanceOpen = false">
+    <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
     <p class="mb-3 text-sm text-muted">
       Add {{ selectedIds.length }} selected setup{{ selectedIds.length === 1 ? "" : "s" }} to one instance.
     </p>

@@ -11,6 +11,7 @@ import { useContentStore } from "@/stores/content";
 import { useToastStore } from "@/stores/toast";
 import { useConfirmStore } from "@/stores/confirm";
 import { useAuthStore } from "@/stores/auth";
+import { queueState } from "@/lib/queueState";
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { useSetupSummary } from "@/lib/useSetupSummary";
 import {
@@ -740,6 +741,10 @@ const gridForm = ref<UserClass | null>(null);
 const gridWeatherKey = ref("");
 const gridRestart = ref(false);
 const gridSaving = ref(false);
+let gridBaseline = "";
+const gridSnapshot = () => JSON.stringify([gridForm.value, gridWeatherKey.value, gridRestart.value]);
+const guardGridClose = useUnsavedGuard(() => gridOpen.value && gridSnapshot() !== gridBaseline);
+const closeGrid = () => guardGridClose(() => { gridOpen.value = false; });
 
 async function openGrid() {
   const ev = detail.value?.current_event;
@@ -756,6 +761,7 @@ async function openGrid() {
     data.entries ??= [];
     for (const e of data.entries) e.count ??= 1;
     gridForm.value = data;
+    gridBaseline = gridSnapshot();
     gridOpen.value = true;
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : String(e));
@@ -819,7 +825,8 @@ const editSaving = ref(false);
 
 let editBaseline = "";
 const markEditClean = () => (editBaseline = editDraft.value ? JSON.stringify(editDraft.value) : "");
-useUnsavedGuard(() => editOpen.value && editDraft.value !== null && JSON.stringify(editDraft.value) !== editBaseline);
+const guardClose = useUnsavedGuard(() => editOpen.value && editDraft.value !== null && JSON.stringify(editDraft.value) !== editBaseline);
+const closeEdit = () => guardClose(() => { editOpen.value = false; });
 
 function openEditSetup() {
   if (!detail.value?.current_event?.id) {
@@ -1060,10 +1067,11 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div v-if="!inst.running" class="mb-4 rounded-md border border-line bg-surface px-4 py-4 text-sm"><strong>Stopped</strong><span class="ml-2 text-muted">{{ upcoming.length ? `${upcoming.length} race${upcoming.length === 1 ? '' : 's'} in the run plan.` : 'Choose a race setup to get ready.' }}</span><RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-2 text-accent underline">Open run plan</RouterLink></div>
     <!-- Overview ribbon — the whole server at a glance: status, session, time,
          drivers, conditions and the loaded event in one scannable band. -->
     <section
-      class="page-enter mb-4 overflow-hidden rounded-lg border border-line shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
+      v-if="inst.running" class="page-enter mb-4 overflow-hidden rounded-lg border border-line shadow-sm"
       style="animation-delay: 30ms"
     >
       <div class="grid grid-cols-2 gap-px bg-line sm:grid-cols-3 xl:grid-cols-6">
@@ -1647,7 +1655,7 @@ onBeforeUnmount(() => {
                 {{ i + 1 }}
               </span>
             </div>
-            <span v-if="q.started_at" class="absolute top-2 right-2 z-10 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
+            <span v-if="queueState(q, inst.running) === 'active'" class="absolute top-2 right-2 z-10 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-xs text-warn">
               In progress
             </span>
 
@@ -1938,13 +1946,13 @@ onBeforeUnmount(() => {
     </Modal>
 
     <!-- Shared race-setup editor for the current event -->
-    <Sheet :open="editOpen" :title="editScopeTitle" @close="editOpen = false">
+    <Sheet wide :open="editOpen" :title="editScopeTitle" @close="closeEdit">
       <RaceSetupEditor v-if="editDraft" v-model="editDraft" :instance-id="instanceId" />
       <template #footer>
-        <span v-if="!raceSetupValid(editDraft)" class="mr-auto self-center text-xs text-muted">
+        <span v-if="!raceSetupValid(editDraft)" class="basis-full self-center text-xs text-muted">
           Track and all four presets are required.
         </span>
-        <Button variant="ghost" @click="editOpen = false">Cancel</Button>
+        <Button variant="ghost" @click="closeEdit">Cancel</Button>
         <Button :disabled="editSaving || !raceSetupValid(editDraft)" @click="saveEditSetup">
           {{
             editSaving
@@ -1958,7 +1966,7 @@ onBeforeUnmount(() => {
     </Sheet>
 
     <!-- Grid & weather editor for the running event -->
-    <Sheet :open="gridOpen" title="Edit grid & weather" @close="gridOpen = false">
+    <Sheet :open="gridOpen" title="Edit grid & weather" @close="closeGrid">
       <template v-if="gridForm">
         <FormRow label="Weather" hint="Applies to the event's time/weather preset">
           <Combobox
@@ -2002,7 +2010,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <template #footer>
-        <Button variant="ghost" @click="gridOpen = false">Cancel</Button>
+        <Button variant="ghost" @click="closeGrid">Cancel</Button>
         <Button :disabled="gridSaving" @click="saveGrid">{{ gridSaving ? "Saving…" : "Save changes" }}</Button>
       </template>
     </Sheet>

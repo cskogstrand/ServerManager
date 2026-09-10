@@ -1,32 +1,18 @@
 <script setup lang="ts">
-// Port of pw-toggle: labelled switch bound via v-model
-defineProps<{
-  label?: string;
-  disabled?: boolean;
-}>();
-
+import { inject, useId } from "vue";
+import { formFieldKey } from "@/lib/formField";
+const props = defineProps<{ label?: string; disabled?: boolean }>();
 const model = defineModel<boolean>({ required: true });
+const field = inject(formFieldKey, null);
+const generatedId = useId();
 </script>
 
 <template>
-  <label
-    class="flex cursor-pointer items-center gap-2.5 select-none"
-    :class="disabled && 'cursor-not-allowed opacity-50'"
-  >
-    <button
-      type="button"
-      role="switch"
-      :aria-checked="model"
-      :disabled="disabled"
-      class="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed"
-      :class="model ? 'border-ok/60 bg-ok-glow' : 'border-line bg-surface-2'"
-      @click="model = !model"
-    >
-      <span
-        class="absolute top-0.5 size-3.5 rounded-full transition-all duration-200"
-        :class="model ? 'left-[18px] bg-ok shadow-[0_0_12px_rgba(79,216,132,0.35)]' : 'left-0.5 bg-muted'"
-      />
-    </button>
-    <span v-if="label" class="text-sm text-text">{{ label }}</span>
+  <label :for="field?.id.value ?? generatedId" class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-text" :class="disabled && 'cursor-not-allowed opacity-50'">
+    <input :id="field?.id.value ?? generatedId" v-model="model" type="checkbox" role="switch" :disabled="disabled"
+      :aria-label="props.label" :aria-labelledby="props.label ? undefined : field?.labelId" :aria-describedby="field?.describedBy.value"
+      class="peer sr-only" />
+    <span aria-hidden="true" class="flex h-6 w-11 shrink-0 items-center rounded-full border border-control bg-surface-4 p-0.5 transition-colors peer-checked:border-primary peer-checked:bg-primary peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-accent"><span class="size-4 rounded-full bg-text shadow-sm transition-transform" :class="model ? 'translate-x-5 !bg-white' : 'translate-x-0'"></span></span>
+    <span v-if="label">{{ label }}</span>
   </label>
 </template>

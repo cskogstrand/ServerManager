@@ -80,3 +80,18 @@ describe("useQueryParam", () => {
     expect(h.router.currentRoute.value.query.keep).toBe("1");
   });
 });
+
+it("updates mounted filters on same-page navigation and back", async () => {
+  const h = await harness<string>("q", "", {}, "/x?q=first&keep=1");
+  await h.router.push("/x?q=second&keep=1"); await flushPromises();
+  expect(h.state.value).toBe("second");
+  h.router.back(); await flushPromises();
+  expect(h.state.value).toBe("first");
+  expect(h.router.currentRoute.value.query.keep).toBe("1");
+});
+it("can clear multiple filters through one route update", async () => {
+  const h = await harness<string>("q", "", {}, "/x?q=first&group=3&keep=1");
+  await h.router.replace({ query: { keep: "1" } }); await flushPromises();
+  expect(h.state.value).toBe("");
+  expect(h.router.currentRoute.value.query).toEqual({ keep: "1" });
+});

@@ -62,6 +62,8 @@ const draft = ref<RaceSetupDraft>(emptyRaceSetup());
 const raceGroupId = ref<number | null>(null);
 const savedEventId = ref<number | null>(null);
 const savedEventName = ref("");
+// Restored drafts must be saved again before they can control a server.
+const savedDraftSnapshot = ref("");
 
 // Instance + run selections.
 const runInstanceId = ref<number | null>(null);
@@ -118,7 +120,7 @@ watch([draft, raceGroupId], persistDraftAutosave, { deep: true });
 let configBaseline = "";
 let draftBaseline = "";
 const configSnapshot = () => (config.value ? JSON.stringify(config.value) : "");
-const draftSnapshot = () => JSON.stringify(draft.value);
+const draftSnapshot = () => JSON.stringify([draft.value, raceGroupId.value]);
 const markConfigClean = () => (configBaseline = configSnapshot());
 const markDraftClean = () => (draftBaseline = draftSnapshot());
 markDraftClean();
@@ -140,17 +142,18 @@ async function loadConfig() {
   markConfigClean();
 }
 
-onMounted(async () => {
+onMounted(() => guard(async () => {
   await Promise.all([reload(), loadConfig(), server.load(), content.load()]);
   // URL wins on resume; otherwise land on the first incomplete step.
   if (!route.query.step) step.value = firstIncompleteStep(summary.value);
-  runInstanceId.value = summary.value?.instances[0]?.id ?? null;
+  runInstanceId.value = server.selectedInstanceId ?? (server.instanceList.length === 1 ? server.instanceList[0].id : null);
   raceGroupId.value ??= summary.value?.groups[0]?.id ?? null;
-});
+  markDraftClean();
+}));
 
 // Keep run-instance selection valid as instances appear.
 watch(summary, (s) => {
-  if (s && runInstanceId.value === null) runInstanceId.value = s.instances[0]?.id ?? null;
+  if (s && runInstanceId.value === null && s.instances.length === 1) runInstanceId.value = s.instances[0].id;
   if (s && raceGroupId.value === null) raceGroupId.value = s.groups[0]?.id ?? null;
 });
 
@@ -276,20 +279,22 @@ const saveRaceSetup = () =>
     savedEventName.value = draft.value.name || draft.value.track_name;
     clearDraftAutosave();
     markDraftClean();
+    savedDraftSnapshot.value = draftSnapshot();
     toast.success("Race setup saved.");
     await refresh();
     if (savedEventId.value) step.value = "run";
   });
 
 // --- Step: Run ---
-const runReady = computed(() => savedEventId.value !== null && runInstanceId.value !== null && canStart.value);
+const runReady = computed(() => savedEventId.value !== null && draftSnapshot() === savedDraftSnapshot.value && runInstanceId.value !== null && !!server.instances[runInstanceId.value] && canStart.value && (runAction.value === "queue" || !server.instances[runInstanceId.value].running));
 
 const runNow = () =>
   guard(async () => {
     const eid = savedEventId.value;
     const iid = runInstanceId.value;
-    if (eid === null || iid === null) return;
+    if (eid === null || iid === null || !runReady.value) return;
 
+    server.selectInstance(iid);
     if (runAction.value === "repeat") {
       await api.put(`/api/instances/${iid}/runmode`, { run_mode: "repeat_event", repeat_event_id: eid });
       await api.post(`/api/server/start?instance=${iid}`);
@@ -552,7 +557,8 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
             />
           </FormRow>
 
-          <p v-if="!savedEventId" class="mb-3 flex items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2 text-xs text-warn">
+          <p v-if="runInstance?.is_running && runAction !== 'queue'" role="status" class="mb-3 text-sm text-warn">{{ runInstance.name }} is already running. Choose Queue only to add this race, or manage the live session in Race Control.</p>
+          <p v-if="!savedEventId || draftSnapshot() !== savedDraftSnapshot" class="mb-3 flex items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2 text-xs text-warn">
             <Icon name="alert" :size="14" />
             Save a race setup first.
             <button type="button" class="font-semibold underline" @click="go('race')">Go to Race setup</button>
@@ -615,7 +621,7 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
         <div class="mt-4 border-t border-line pt-3">
           <div class="mb-1.5 flex items-center gap-2 text-xs font-semibold" :class="canStart ? 'text-ok' : 'text-warn'">
             <Icon :name="canStart ? 'check' : 'alert'" :size="14" />
-            {{ canStart ? "Ready to run" : `${summary.blocking.length} thing${summary.blocking.length === 1 ? "" : "s"} to fix` }}
+            {{ runReady ? "Ready to " + (runAction === "queue" ? "queue" : "start") : canStart ? "Review your saved setup and selected server" : `${summary.blocking.length} thing${summary.blocking.length === 1 ? "" : "s"} to fix` }}
           </div>
           <ul v-if="summary.blocking.length" class="space-y-1">
             <li v-for="b in summary.blocking" :key="b.step + b.message">

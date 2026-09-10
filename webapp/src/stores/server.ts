@@ -165,6 +165,10 @@ export interface StatusResponse {
 // unknown-instance events from triggering a stampede of bootstrap fetches.
 let recoveryInflight = false;
 let lastRecoveryAt = 0;
+function rememberedInstance(): number | null {
+  try { const value = Number(sessionStorage.getItem("sm.selected-instance")); return value > 0 && Number.isInteger(value) ? value : null; }
+  catch { return null; }
+}
 
 // One live store for everything the SSE stream feeds: per-instance status,
 // players, current session. Replaces the old UI's 1s polling loops.
@@ -173,6 +177,10 @@ export const useServerStore = defineStore("server", {
     instances: {} as Record<number, InstanceState>,
     connected: false,
     loaded: false,
+    selectedInstanceId: rememberedInstance(),
+    loadError: "",
+    statusErrors: {} as Record<number, string>,
+    lastUpdatedAt: null as number | null,
     unsubscribe: null as null | (() => void),
   }),
 
@@ -183,6 +191,13 @@ export const useServerStore = defineStore("server", {
   },
 
   actions: {
+    selectInstance(id: number | null) {
+      this.selectedInstanceId = id !== null && this.instances[id] ? id : null;
+      try {
+        if (this.selectedInstanceId === null) sessionStorage.removeItem("sm.selected-instance");
+        else sessionStorage.setItem("sm.selected-instance", String(this.selectedInstanceId));
+      } catch { /* Session persistence is optional when storage is unavailable. */ }
+    },
     async load() {
       const res = await api.get<{ instances: InstanceListItem[] }>("/api/instances");
       for (const item of res.instances) {
@@ -222,9 +237,13 @@ export const useServerStore = defineStore("server", {
       for (const id of Object.keys(this.instances).map(Number)) {
         if (!res.instances.some((i) => i.id === id)) {
           delete this.instances[id];
+          delete this.statusErrors[id];
         }
       }
       this.loaded = true;
+      this.loadError = "";
+      this.lastUpdatedAt = Date.now();
+      if (this.selectedInstanceId !== null && !this.instances[this.selectedInstanceId]) this.selectInstance(null);
     },
 
     // syncStatus applies an authoritative /api/server/status snapshot onto an
@@ -268,18 +287,26 @@ export const useServerStore = defineStore("server", {
     },
 
     async refreshInstanceStatus(id: number) {
-      const s = await api.get<StatusResponse>(`/api/server/status?instance=${id}`);
-      this.syncStatus(id, s);
+      try {
+        const s = await api.get<StatusResponse>(`/api/server/status?instance=${id}`);
+        this.syncStatus(id, s);
+        delete this.statusErrors[id];
+        this.lastUpdatedAt = Date.now();
+      } catch (error) {
+        this.statusErrors[id] = error instanceof Error ? error.message : "Could not refresh server status.";
+      }
     },
 
     // bootstrapLiveState is the authoritative full hydrate: load the instance
     // list, then pull each instance's live status. Used on login, SSE
     // reconnect, and tab-visibility recovery so the UI never needs a refresh.
     async bootstrapLiveState() {
-      await this.load();
-      await Promise.all(
-        this.instanceList.map((i) => this.refreshInstanceStatus(i.id).catch(() => {})),
-      );
+      try {
+        await this.load();
+        await Promise.all(this.instanceList.map((i) => this.refreshInstanceStatus(i.id)));
+      } catch (error) {
+        this.loadError = error instanceof Error ? error.message : "Could not load servers.";
+      }
     },
 
     // recoverRunning is the cheap periodic heal: only re-pull status for
@@ -324,6 +351,7 @@ export const useServerStore = defineStore("server", {
     },
 
     applyEvent(event: ServerEvent) {
+      this.lastUpdatedAt = Date.now();
       if (event.type === "content_job") {
         useContentStore().applyJobEvent(event);
         return;

@@ -115,6 +115,7 @@ function routeApi() {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   setActivePinia(createPinia());
   apiGet.mockReset();
 });
@@ -250,5 +251,37 @@ describe("server store live-state recovery", () => {
 
     expect(spy).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
+  });
+});
+
+describe("server context and stale status", () => {
+  it("remembers a valid choice and rejects missing servers", () => {
+    const store = useServerStore(); store.instances[1] = seedInstance();
+    store.selectInstance(1);
+    expect(store.selectedInstanceId).toBe(1);
+    expect(sessionStorage.getItem("sm.selected-instance")).toBe("1");
+    store.selectInstance(99);
+    expect(store.selectedInstanceId).toBeNull();
+    expect(sessionStorage.getItem("sm.selected-instance")).toBeNull();
+  });
+  it("clears deleted selections and errors after the instance list refreshes", async () => {
+    const store = useServerStore(); store.instances[1] = seedInstance();
+    store.selectInstance(1); store.statusErrors[1] = "Offline";
+    apiGet.mockResolvedValue({ instances: [] }); await store.load();
+    expect(store.selectedInstanceId).toBeNull(); expect(store.statusErrors).toEqual({});
+  });
+  it("retains last-known status on failure and clears the error after retry", async () => {
+    const store = useServerStore(); store.instances[1] = seedInstance({ running: true, players: 3 });
+    apiGet.mockRejectedValue(new Error("Connection lost"));
+    await store.refreshInstanceStatus(1);
+    expect(store.instances[1].players).toBe(3); expect(store.instances[1].running).toBe(true);
+    expect(store.statusErrors[1]).toContain("Connection lost");
+    apiGet.mockResolvedValue(statusResponse(false)); await store.refreshInstanceStatus(1);
+    expect(store.statusErrors[1]).toBeUndefined(); expect(store.instances[1].running).toBe(false);
+  });
+  it("exposes a recoverable initial load error", async () => {
+    apiGet.mockRejectedValue(new Error("Unavailable")); const store = useServerStore();
+    await store.bootstrapLiveState(); expect(store.loadError).toContain("Unavailable"); expect(store.loaded).toBe(false);
+    routeApi(); await store.bootstrapLiveState(); expect(store.loadError).toBe(""); expect(store.loaded).toBe(true);
   });
 });

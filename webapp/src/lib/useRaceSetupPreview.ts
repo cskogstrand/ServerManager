@@ -14,22 +14,18 @@ export interface PreviewResult {
   render_errors: string[];
 }
 
-// previewRaceSetup renders a draft (or a saved event, when it has an id)
+// Always render the current draft, including unsaved edits to an existing event,
 // against an instance without persisting anything.
 export function previewRaceSetup(draft: RaceSetupDraft, instanceId?: number | null): Promise<PreviewResult> {
   const body: Record<string, unknown> = { instance_id: instanceId ?? 0 };
-  if (draft.id) {
-    body.event_id = draft.id;
-  } else {
-    body.name = draft.name?.trim() ?? "";
-    body.track_key = draft.track_key;
-    body.track_config = draft.track_config;
-    body.class_id = draft.class_id;
-    body.session_id = draft.session_id;
-    body.time_id = draft.time_id;
-    body.difficulty_id = draft.difficulty_id;
-    body.race_laps = draft.race_laps ?? 0;
-    body.strategy = draft.strategy ?? 1;
-  }
+  body.name = draft.name?.trim() ?? "";
+  body.track_key = draft.track_key;
+  body.track_config = draft.track_config;
+  body.class_id = draft.class_id;
+  body.session_id = draft.session_id;
+  body.time_id = draft.time_id;
+  body.difficulty_id = draft.difficulty_id;
+  body.race_laps = draft.race_laps ?? 0;
+  body.strategy = draft.strategy ?? 1;
   return api.post<PreviewResult>("/api/server/render-preview", body);
 }

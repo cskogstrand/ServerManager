@@ -6,6 +6,8 @@ import { useAuthStore } from "@/stores/auth";
 import { useServerStore } from "@/stores/server";
 import Icon from "@/components/ui/Icon.vue";
 import Toaster from "@/components/ui/Toaster.vue";
+import Sheet from "@/components/ui/Sheet.vue";
+import Button from "@/components/ui/Button.vue";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.vue";
 import type { UserConfig } from "@/types/generated";
 
@@ -137,16 +139,30 @@ const navSections = computed(() =>
     .filter((s) => s.items.length > 0),
 );
 
+watch([() => route.fullPath, () => server.loaded], () => {
+  const raw = route.name === "server-detail" ? route.params.id : route.query.instance;
+  const id = typeof raw === "string" ? Number(raw) : null;
+  if (id && server.instances[id]) server.selectInstance(id);
+}, { immediate: true });
+
 const raceControlTo = computed(() => {
-  if (route.name === "server-detail") return route.fullPath;
-  const active = server.instanceList.find((i) => i.running) ?? server.instanceList[0];
-  return active ? `/server/${active.id}` : "/";
+  const id = server.selectedInstanceId ?? (server.instanceList.length === 1 ? server.instanceList[0].id : null);
+  return id ? `/server/${id}` : "/?choose=server";
 });
-
 function navTo(item: NavItem): string {
-  return item.key === "race-control" ? raceControlTo.value : (item.to ?? "/");
+  if (item.key === "race-control") return raceControlTo.value;
+  if (item.to === "/queue" && server.selectedInstanceId) return `/queue?instance=${server.selectedInstanceId}`;
+  return item.to ?? "/";
 }
-
+function mobileLabel(item: NavItem): string {
+  return item.key === "race-control" ? "Control" : item.to === "/broadcast" ? "Broadcast" : item.to === "/" ? "Overview" : item.label;
+}
+const refreshing = ref(false);
+async function refreshConnection() {
+  refreshing.value = true;
+  try { await server.bootstrapLiveState(); }
+  finally { refreshing.value = false; }
+}
 // Bottom-tab nav (mobile): the four daily-operation items; the fifth slot opens
 // the drawer with everything else.
 const operate = allSections[0].items as readonly NavItem[];
@@ -180,14 +196,14 @@ watch(
     </a>
 
     <div class="flex h-screen overflow-hidden">
-      <aside class="hidden h-full w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface/95 px-3 py-4 md:flex">
+      <aside class="hidden h-full w-56 shrink-0 flex-col overflow-hidden border-r border-line bg-surface/95 px-3 py-4 md:flex">
         <div class="mb-6 flex shrink-0 items-center gap-3 px-2">
           <div class="grid size-9 place-items-center rounded-md border border-accent/30 bg-accent-dim text-sm font-black text-accent">
             SM
           </div>
           <div class="min-w-0">
             <div class="truncate text-sm font-bold tracking-tight text-text">Server Manager</div>
-            <div class="text-xs text-dim">Race operations</div>
+            <div class="text-xs text-muted">{{ server.connected ? "Live connection" : "Reconnecting…" }}</div>
           </div>
           <span
             class="ml-auto size-2 rounded-full"
@@ -206,8 +222,8 @@ watch(
                 v-for="item in section.items"
                 :key="item.to ?? item.key"
                 :to="navTo(item)"
-                class="flex min-h-9 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors duration-200 hover:bg-surface-2 hover:text-text"
-                active-class="bg-accent-dim !text-accent"
+                class="flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors duration-200 hover:bg-surface-2 hover:text-text"
+                active-class="" :class="(item.key === 'race-control' ? route.name === 'server-detail' : route.path === item.to) ? 'bg-accent-dim !text-accent' : ''"
               >
                 <Icon :name="item.icon" :size="17" />
                 <span class="truncate">{{ item.label }}</span>
@@ -226,12 +242,12 @@ watch(
               <div class="text-[11px] text-dim">Signed in</div>
             </div>
           </div>
-          <div class="mb-2 grid grid-cols-2 gap-1">
+          <div class="mb-2 grid gap-1">
             <RouterLink
               v-for="item in accountItems"
               :key="item.to"
               :to="item.to"
-              class="flex min-h-8 items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              class="flex min-h-11 items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
               active-class="bg-accent-dim !text-accent"
             >
               <Icon :name="item.icon" :size="15" />
@@ -241,7 +257,7 @@ watch(
           <div class="flex items-center gap-1">
             <button
               type="button"
-              class="flex min-h-8 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              class="flex min-h-11 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
               @click="logout"
             >
               <Icon name="logOut" :size="15" />
@@ -249,7 +265,7 @@ watch(
             </button>
             <button
               type="button"
-              class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              class="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
               :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
               :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
               @click="toggleTheme"
@@ -286,11 +302,18 @@ watch(
             to see what's left and fix each step.
           </span>
         </p>
+        <div v-if="!server.connected || server.loadError || Object.keys(server.statusErrors).length" role="status" class="mb-5 flex flex-wrap items-center gap-3 rounded-md border border-warn/40 bg-warn-glow px-4 py-3 text-sm">
+          <Icon name="alert" :size="18" class="shrink-0 text-warn" />
+          <div class="min-w-0 flex-1"><p class="font-semibold text-warn">{{ server.loadError ? 'Server status unavailable' : !server.connected ? 'Live updates disconnected' : 'Some server status is out of date' }}</p>
+            <p class="text-muted">{{ server.loadError || 'Showing the last known state. This does not mean your race servers have stopped.' }}<span v-if="server.lastUpdatedAt"> Last update {{ new Date(server.lastUpdatedAt).toLocaleTimeString() }}.</span></p>
+          </div>
+          <Button variant="dark" size="sm" :disabled="refreshing" @click="refreshConnection">{{ refreshing ? 'Refreshing…' : 'Retry status' }}</Button>
+        </div>
         <RouterView />
       </main>
     </div>
 
-    <nav class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 px-1 py-1.5 backdrop-blur md:hidden">
+    <nav class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
       <RouterLink
         v-for="item in mobileNav"
         :key="item.to ?? item.key"
@@ -299,13 +322,14 @@ watch(
         active-class="bg-accent-dim !text-accent"
       >
         <Icon :name="item.icon" :size="18" />
-        <span class="max-w-[68px] truncate">{{ item.label }}</span>
+        <span class="max-w-[72px]">{{ mobileLabel(item) }}</span>
       </RouterLink>
       <button
         type="button"
         class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-text"
         :class="mobileMenuOpen ? 'bg-accent-dim !text-accent' : ''"
         aria-label="More menu"
+        :aria-expanded="mobileMenuOpen"
         @click="mobileMenuOpen = true"
       >
         <Icon name="menu" :size="18" />
@@ -313,79 +337,22 @@ watch(
       </button>
     </nav>
 
-    <!-- Mobile "more" drawer: every role-visible nav item -->
-    <Teleport to="body">
-      <Transition
-        enter-active-class="transition-opacity duration-200"
-        leave-active-class="transition-opacity duration-200"
-        enter-from-class="opacity-0"
-        leave-to-class="opacity-0"
-      >
-        <div
-          v-if="mobileMenuOpen"
-          class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          @click="mobileMenuOpen = false"
-        />
-      </Transition>
-      <Transition
-        enter-active-class="transition-transform duration-200 ease-out"
-        leave-active-class="transition-transform duration-200 ease-in"
-        enter-from-class="translate-y-full"
-        leave-to-class="translate-y-full"
-      >
-        <div
-          v-if="mobileMenuOpen"
-          class="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-line bg-surface px-3 pt-3 pb-6 md:hidden"
-        >
-          <div class="mb-3 flex items-center justify-between px-2">
-            <h2 class="text-sm font-bold text-text">Menu</h2>
-            <button
-              type="button"
-              class="grid size-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
-              aria-label="Close menu"
-              @click="mobileMenuOpen = false"
-            >
-              <Icon name="x" :size="18" />
-            </button>
-          </div>
-          <nav class="space-y-4">
-            <section v-for="section in navSections" :key="section.label">
-              <h3 class="mb-1.5 px-3 text-[11px] font-bold tracking-wide text-dim uppercase">
-                {{ section.label }}
-              </h3>
-              <div class="space-y-1">
-                <RouterLink
-                  v-for="item in section.items"
-                  :key="item.to ?? item.key"
-                  :to="navTo(item)"
-                  class="flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                  active-class="bg-accent-dim !text-accent"
-                >
-                  <Icon :name="item.icon" :size="17" />
-                  <span class="truncate">{{ item.label }}</span>
-                </RouterLink>
-              </div>
-            </section>
-            <section>
-              <h3 class="mb-1.5 px-3 text-[11px] font-bold tracking-wide text-dim uppercase">
-                Account
-              </h3>
-              <div class="space-y-1">
-                <RouterLink
-                  v-for="item in accountItems"
-                  :key="item.to"
-                  :to="item.to"
-                  class="flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                  active-class="bg-accent-dim !text-accent"
-                >
-                  <Icon :name="item.icon" :size="17" />
-                  <span class="truncate">{{ item.label }}</span>
-                </RouterLink>
-              </div>
-            </section>
-          </nav>
-        </div>
-      </Transition>
-    </Teleport>
+    <Sheet :open="mobileMenuOpen" title="Menu" @close="mobileMenuOpen = false">
+      <nav aria-label="All navigation" class="space-y-5">
+        <section v-for="section in navSections" :key="section.label">
+          <h3 class="mb-2 text-xs font-semibold text-muted">{{ section.label }}</h3>
+          <RouterLink v-for="item in section.items" :key="item.to ?? item.key" :to="navTo(item)"
+            class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm text-text hover:bg-surface-2" active-class="bg-accent-dim !text-accent">
+            <Icon :name="item.icon" :size="18" />{{ item.label }}
+          </RouterLink>
+        </section>
+        <section class="border-t border-line pt-4">
+          <h3 class="mb-2 text-xs font-semibold text-muted">{{ auth.user?.name }} · Account</h3>
+          <RouterLink v-for="item in accountItems" :key="item.to" :to="item.to" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm hover:bg-surface-2"><Icon :name="item.icon" :size="18" />{{ item.label }}</RouterLink>
+          <button type="button" class="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm hover:bg-surface-2" @click="toggleTheme"><Icon :name="theme === 'dark' ? 'sun' : 'moon'" :size="18" />{{ theme === 'dark' ? 'Use light theme' : 'Use dark theme' }}</button>
+          <button type="button" class="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm hover:bg-surface-2" @click="logout"><Icon name="logOut" :size="18" />Sign out</button>
+        </section>
+      </nav>
+    </Sheet>
   </div>
 </template>

@@ -6,6 +6,7 @@ const router = createRouter({
   history: createWebHistory("/"),
   routes: [
     { path: "/login", name: "login", component: () => import("@/pages/Login.vue"), meta: { public: true } },
+    { path: "/access-denied", name: "access-denied", component: () => import("@/pages/AccessDenied.vue") },
     { path: "/", name: "dashboard", component: () => import("@/pages/Dashboard.vue") },
     { path: "/server/:id", name: "server-detail", component: () => import("@/pages/ServerDetail.vue") },
     { path: "/server/:id/broadcast", name: "server-broadcast", component: () => import("@/pages/Broadcast.vue"), meta: { bare: true } },
@@ -48,10 +49,10 @@ router.beforeEach(async (to) => {
     return { name: "login", query: { redirect: to.fullPath } };
   }
   if (to.meta.admin && !auth.isAdmin) {
-    return { name: "dashboard" };
+    return { name: "access-denied", query: { role: to.meta.admin ? "admin" : "operator" } };
   }
   if (to.meta.operate && !auth.canOperate) {
-    return { name: "dashboard" };
+    return { name: "access-denied", query: { role: to.meta.admin ? "admin" : "operator" } };
   }
   return true;
 });

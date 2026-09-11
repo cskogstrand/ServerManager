@@ -162,7 +162,7 @@ onMounted(() => guard(load));
 
 <template>
   <PageHeader
-    title="Guest Drivers"
+    eyebrow="Drivers / Shared simulators" title="Guest roster"
     subtitle="One account, many drivers. Keep a roster of who shares an account, and pick who's behind the wheel so scores land under the right name."
     icon="users"
   />

@@ -4,6 +4,11 @@ import { useAuthStore } from "@/stores/auth";
 // Canonical Pitlane destinations preserve existing operational deep links.
 const router = createRouter({
   history: createWebHistory("/"),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition;
+    if (to.hash) return { el: to.hash };
+    if (to.path !== from.path) return { top: 0 };
+  },
   routes: [
     { path: "/login", name: "login", component: () => import("@/pages/Login.vue"), meta: { public: true } },
     { path: "/access-denied", name: "access-denied", component: () => import("@/pages/AccessDenied.vue") },

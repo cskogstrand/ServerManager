@@ -103,7 +103,7 @@ async function save() {
 
 <template>
   <PageHeader
-    title="Server Configuration"
+    eyebrow="Garage / Advanced" title="Server configuration"
     subtitle="Global server identity, lobby behavior, access settings, and engine limits."
     icon="settings"
   >

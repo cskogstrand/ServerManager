@@ -34,9 +34,33 @@ Phone, dark theme. An enabled source remains visible without a connected game dr
 
 ## Drivers and Garage
 
-Driver directory with actual ingested protocol laps and distinct guest identities.
+Driver directory after the visual follow-up: open statistics, circular portraits and one responsive row per person, with actual ingested protocol laps and distinct guest identities.
 
 ![Drivers](drivers-light.jpg)
+
+Account profile with the shared Pitlane heading, open statistics and retained detailed history.
+
+![Driver profile](driver-profile-light.jpg)
+
+Completed profile body: large favourite imagery, open drive rows and a personal highlights column. The earlier compact nested panels have been replaced.
+
+![Lower driver profile](driver-profile-lower-light.jpg)
+
+Expanded history retains lap results, tagging and management actions with the same type scale and spacing.
+
+![Expanded driver history](driver-history-expanded-light.jpg)
+
+Lower profile and highlights on a 375-pixel phone in dark theme.
+
+![Phone profile highlights](driver-profile-lower-phone-dark.jpg)
+
+The same account profile on a 375-pixel phone in dark theme.
+
+![Driver profile on phone](driver-profile-phone-dark.jpg)
+
+Guest profile uses the same visual language and keeps its separate identity and attributed media.
+
+![Guest profile](guest-profile-light.jpg)
 
 Garage, light theme, with equipment, collection and Advanced destinations and separate server/club sections.
 
@@ -51,6 +75,10 @@ Native rig editor with all six supplied transparent display arrangements.
 ![Six screen arrangements](add-rig-six-arrangements.jpg)
 
 ## Library and Advanced
+
+The visual follow-up also updates the shared headers, panels and controls used by the detailed settings pages. Server configuration at 375 pixels in light theme:
+
+![Settings on phone](settings-phone-light.jpg)
 
 Track detail in dark theme: actual map/layout, local notes/tags, archive and usage controls.
 

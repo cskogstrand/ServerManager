@@ -952,7 +952,8 @@ onBeforeUnmount(() => {
 
   <template v-else-if="inst">
     <!-- Masthead -->
-    <header class="page-enter mb-5 flex flex-wrap items-center gap-3">
+    <header :class="props.targetInstanceId ? 'mb-6 flex flex-wrap items-center gap-3' : 'pitlane-heading pitlane-server-heading'">
+      <span v-if="!props.targetInstanceId" class="pitlane-eyebrow">Garage / Your servers</span>
       <RouterLink
         v-if="!props.targetInstanceId"
         to="/"

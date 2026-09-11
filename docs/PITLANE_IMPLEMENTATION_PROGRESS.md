@@ -2,6 +2,8 @@
 
 Updated 11 September 2026. The production Vue/Go implementation and local fixture checks are complete. Real simulator/CSP/spectator-client and external WHEP interoperability remain unverified external acceptance items; they are not waived or represented as passing.
 
+The subsequent [visual follow-up](PITLANE_VISUAL_AUDIT.md) corrects old presentation retained in Drivers, both profile types and the shared detailed-tool components. The completed profile-body pass passed **26 files / 89 tests**, followed by a fresh embedded preview build. The original implementation validation below remains a record of that earlier run.
+
 ## Milestones
 
 | Milestone | Implementation / validation |

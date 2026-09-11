@@ -67,7 +67,7 @@ async function save() {
 
 <template>
   <PageHeader
-    title="Preferences"
+    eyebrow="Your account" title="Your preferences"
     subtitle="Personal units and account password settings."
     icon="user"
   />

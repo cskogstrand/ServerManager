@@ -4,7 +4,7 @@
 // to a guest driver ("Driven by"), since a manual clip often credits a passenger
 // or a different real person sharing the account.
 import { ref, watch } from "vue";
-import { timeAgo } from "@/lib/driversApi";
+import { fmtScore, timeAgo } from "@/lib/driversApi";
 import { fmtClipDuration } from "@/lib/useDriverCapture";
 import type { MediaItem } from "@/types/driverStats";
 import type { GuestDriver } from "@/lib/guestDriversApi";
@@ -62,73 +62,26 @@ function pick(guestDriverId: number | null) {
 </script>
 
 <template>
-  <section v-if="items.length" class="reveal">
-    <div class="mb-2 flex items-center gap-2">
-      <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-        <Icon name="film" :size="15" class="text-accent" /> {{ heading || "Manual recordings" }}
-        <span class="text-xs font-normal text-dim">{{ context ?? "not tied to a session" }}</span>
-      </h2>
-      <span class="font-mono text-xs text-dim">({{ items.length }})</span>
+  <section v-if="items.length" class="profile-recordings">
+    <div class="profile-section-heading">
+      <div><h2>{{ heading || 'Saved moments' }}</h2><p>{{ context ?? 'Clips and pictures captured outside a drive.' }}</p></div>
+      <span class="text-sm text-muted">{{ items.length }}</span>
     </div>
-
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      <article
-        v-for="m in items"
-        :key="m.id"
-        class="group overflow-hidden rounded-lg border border-line bg-surface-2/30"
-      >
-        <button
-          type="button"
-          class="relative block aspect-video w-full overflow-hidden bg-black"
-          :class="isRealMedia(m) ? 'cursor-pointer' : 'cursor-default'"
-          @click="openMedia(m)"
-        >
-          <img v-if="m.kind === 'screenshot' && isRealMedia(m)" :src="m.url" alt="" loading="lazy" class="size-full object-cover" />
-          <img v-else-if="m.thumb_url" :src="m.thumb_url" alt="" loading="lazy" class="size-full object-cover" />
-          <video v-else-if="isRealMedia(m)" :src="m.url" class="size-full object-cover" preload="metadata" muted playsinline />
-          <div v-else class="grid size-full place-items-center text-text/25">
-            <Icon :name="m.kind === 'clip' ? 'play' : 'camera'" :size="20" />
-          </div>
-          <span
-            v-if="m.kind === 'clip' && isRealMedia(m)"
-            class="absolute inset-0 grid place-items-center bg-black/25 text-white/90 transition-colors group-hover:bg-black/40"
-          >
-            <Icon name="play" :size="20" />
-          </span>
-          <span
-            v-if="m.duration_s"
-            class="pointer-events-none absolute right-1 bottom-1 rounded bg-black/60 px-1 font-mono text-[9px] font-semibold text-white/90"
-          >{{ fmtClipDuration(m.duration_s) }}</span>
+    <div class="profile-recording-grid">
+      <article v-for="m in items" :key="m.id">
+        <button type="button" class="profile-capture-preview" :disabled="!isRealMedia(m)" :aria-label="`${m.kind === 'clip' ? 'Play' : 'View'} ${m.caption || (m.kind === 'clip' ? 'clip' : 'screenshot')}`" @click="openMedia(m)">
+          <img v-if="m.kind === 'screenshot' && isRealMedia(m)" :src="m.url" alt="" loading="lazy" />
+          <img v-else-if="m.thumb_url" :src="m.thumb_url" alt="" loading="lazy" />
+          <video v-else-if="isRealMedia(m)" :src="m.url" preload="metadata" muted playsinline />
+          <Icon v-else :name="m.kind === 'clip' ? 'play' : 'camera'" :size="28" />
+          <span v-if="m.kind === 'clip'" class="profile-capture-play"><Icon name="play" :size="22" />{{ m.duration_s ? fmtClipDuration(m.duration_s) : 'Play clip' }}</span>
         </button>
-
-        <div class="flex flex-col gap-1.5 p-2">
-          <div class="flex items-center gap-1.5">
-            <div class="min-w-0 flex-1 truncate text-[10px] text-muted">{{ timeAgo(m.captured_at) }}</div>
-            <MediaActions
-              v-if="isRealMedia(m)"
-              :item="m"
-              :can-delete="canOperate"
-              :deleting="deletingIds?.has(m.id) ?? false"
-              @download="emit('download-media', m)"
-              @delete="emit('delete-media', m)"
-            />
-          </div>
-          <!-- Driven by: per-recording guest attribution -->
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded-md border border-line/60 bg-surface/40 px-2 py-1 text-left text-[11px] transition-colors"
-            :class="canOperate ? 'cursor-pointer hover:border-accent/50' : 'cursor-default'"
-            :disabled="!canOperate"
-            @click="canOperate && (assignFor = m)"
-          >
-            <Icon name="user" :size="12" class="shrink-0 text-dim" />
-            <span class="text-muted">Driven by</span>
-            <span class="min-w-0 flex-1 truncate font-semibold" :class="guestName(m) ? 'text-accent' : 'text-text'">
-              {{ guestName(m) || accountLabel || "Account driver" }}
-            </span>
-            <Icon v-if="canOperate" name="arrowDown" :size="12" class="shrink-0 text-dim" />
-          </button>
+        <div class="profile-capture-caption">
+          <div><b>{{ m.caption || (m.kind === 'clip' ? 'Clip' : 'Screenshot') }}</b><p>{{ timeAgo(m.captured_at) }}<span v-if="m.trigger"> · +{{ fmtScore(m.trigger.delta) }} points</span></p></div>
+          <MediaActions v-if="isRealMedia(m)" :item="m" :can-delete="canOperate" :deleting="deletingIds?.has(m.id) ?? false" @download="emit('download-media', m)" @delete="emit('delete-media', m)" />
         </div>
+        <button v-if="canOperate" type="button" class="profile-recording-driver" @click="assignFor = m"><span>Driven by <b>{{ guestName(m) || accountLabel || 'Account driver' }}</b></span><Icon name="arrowDown" :size="16" /></button>
+        <p v-else class="profile-recording-credit">Driven by {{ guestName(m) || accountLabel || 'Account driver' }}</p>
       </article>
     </div>
 
@@ -184,19 +137,3 @@ function pick(guestDriverId: number | null) {
     </Modal>
   </section>
 </template>
-
-<style scoped>
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.reveal {
-  animation: rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-</style>

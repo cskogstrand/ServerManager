@@ -35,7 +35,7 @@ async function submit() {
 
 <template>
   <div class="login-page min-h-dvh bg-bg p-5 pt-24">
-    <div class="login-intro"><BrandMark /><p class="mt-8 font-mono text-[11px] tracking-widest text-dim uppercase">Server Manager / Pitlane</p><h2 class="mt-5 text-5xl leading-tight font-medium tracking-tighter lg:text-6xl">A better place<br><span class="text-accent">to run your races.</span></h2><p class="mt-6 max-w-sm text-sm leading-relaxed text-muted">Your servers, your setups, your next great race night. Everything in one calm workspace.</p><div class="mt-10 flex gap-3 border-t border-plan-line pt-6 text-xs text-muted"><Icon name="events" :size="17" />Assetto Corsa · Server management</div></div>
+    <div class="login-intro"><BrandMark /><p class="mt-8 pitlane-eyebrow">Server Manager / Pitlane</p><h2 class="mt-5 text-5xl leading-tight font-medium tracking-tighter lg:text-6xl">A better place<br><span class="text-accent">to share the drive.</span></h2><p class="mt-6 max-w-sm text-sm leading-relaxed text-muted">Your sessions, your people, and the next good evening on track.</p><div class="mt-10 flex gap-3 border-t border-plan-line pt-6 text-xs text-muted"><Icon name="events" :size="17" />Assetto Corsa · Server management</div></div>
     <form
       class="login-form w-full max-w-md rounded-lg border border-line bg-surface p-7 sm:p-9"
       @submit.prevent="submit"
@@ -43,8 +43,8 @@ async function submit() {
       <div class="mb-8 flex items-center gap-4">
         <BrandMark />
         <div>
-          <h1 class="text-2xl font-medium tracking-tight">Welcome to the paddock.</h1>
-          <p class="mt-2 text-xs leading-relaxed text-muted">Sign in to manage your race servers.</p>
+          <h1 class="text-2xl font-medium tracking-tight">Welcome to Pitlane.</h1>
+          <p class="mt-2 text-xs leading-relaxed text-muted">Sign in. Your club is waiting.</p>
         </div>
       </div>
 

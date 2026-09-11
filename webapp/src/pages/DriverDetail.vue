@@ -24,8 +24,7 @@ import Button from "@/components/ui/Button.vue";
 import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
 import Sparkline from "@/components/ui/Sparkline.vue";
-import CountUp from "@/components/ui/CountUp.vue";
-import TrackImage from "@/components/TrackImage.vue";
+import DriverFavourites from "@/components/DriverFavourites.vue";
 import SessionCard from "@/components/SessionCard.vue";
 import ManualRecordings from "@/components/ManualRecordings.vue";
 import WhepPlayer from "@/components/WhepPlayer.vue";
@@ -84,11 +83,6 @@ const liveTrackName = computed(() => {
     content.tracks.find((x) => x.key === s.track);
   return t?.name || s.track;
 });
-const favouriteTrackVersion = computed(() => {
-  const t = driver.value?.favourite_track;
-  return t ? (content.trackByKey(t.key, t.config ?? "")?.version ?? "") : "";
-});
-
 // --- avatar upload (local preview until the backend persists it) -------------
 const fileInput = ref<HTMLInputElement | null>(null);
 const localAvatar = ref<string | null>(null);
@@ -236,28 +230,9 @@ function openDeepLinkedMedia() {
 // (guid unchanged, so load() — which fires the initial open — won't re-run).
 watch(focusMediaFile, openDeepLinkedMedia);
 
-// Resolve the favourite car's preview against the cached car list — the same
-// source the Content car grid renders from — so the image matches (and carries
-// the imageVersion cache-buster) even when the driver's recorded skin is blank
-// or no longer present. Falls back to the recorded skin if the car isn't cached.
-const carImgUrl = computed(() => {
-  const c = driver.value?.favourite_car;
-  if (!c) return "";
-  const car = content.carByKey(c.key);
-  const skin = car?.skins.find((s) => s.key === c.skin)?.key ?? car?.skins[0]?.key ?? c.skin ?? "";
-  if (!skin) return ""; // no resolvable skin (e.g. content not loaded yet) — skip the doomed request
-  return `/api/car/image/${encodeURIComponent(c.key)}/${encodeURIComponent(skin)}?v=${content.imageVersion}`;
-});
-const carImgOk = ref(true);
-// Give a freshly-resolved URL a clean shot (the car list may load after first paint).
-watch(carImgUrl, () => {
-  carImgOk.value = true;
-});
-
 async function load() {
   loading.value = true;
   recording.value = false;
-  carImgOk.value = true;
   try {
     driver.value = await getDriver(guid.value);
   } catch (e) {
@@ -464,10 +439,10 @@ async function removeSession(session: DriverSession) {
 <template>
   <RouterLink
     :to="{ name: 'drivers' }"
-    class="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-accent"
+    class="pitlane-back"
   >
     <Icon name="arrowLeft" :size="16" />
-    Driver Stats
+    Everyone at the club
   </RouterLink>
 
   <!-- Loading -->
@@ -491,336 +466,123 @@ async function removeSession(session: DriverSession) {
   </Card>
 
   <template v-else>
-    <!-- HERO -->
-    <section class="hero reveal relative overflow-hidden rounded-lg border border-line">
-      <div class="hero-grid" />
-      <div class="relative flex flex-col gap-5 p-5 md:flex-row md:items-start md:p-6">
-        <!-- avatar + identity -->
-        <div class="flex items-center gap-4">
-          <div class="relative">
-            <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="137" radius="lg" />
-            <button
-              v-if="auth.canOperate"
-              type="button"
-              class="absolute -right-1.5 -bottom-1.5 grid size-7 cursor-pointer place-items-center rounded-md border border-line-hi bg-surface-3 text-muted transition-colors hover:border-accent/60 hover:text-accent"
-              title="Upload photo"
-              @click="pickPhoto"
-            >
-              <Icon name="upload" :size="14" />
-            </button>
-            <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onPickFile" />
-          </div>
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h1 class="text-2xl font-black tracking-tight text-text">{{ driver.name }}</h1>
-              <span
-                v-if="online"
-                class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[11px] font-bold tracking-wide text-ok uppercase"
-              >
-                <span class="size-1.5 rounded-full bg-ok live-dot" />
-                On track{{ liveDrift ? ` · ${fmtScore(liveDrift)}` : "" }}
-              </span>
-            </div>
-            <div class="mt-1 font-mono text-xs text-dim">{{ driver.guid }}</div>
-            <div class="mt-1 text-xs text-muted">
-              Member since {{ fmtDate(driver.first_seen) }} · last seen {{ timeAgo(driver.last_seen) }}
-            </div>
-          </div>
-        </div>
-
-        <!-- KPIs + trend -->
-        <div class="md:ml-auto md:max-w-125 md:flex-1">
-          <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-5">
-            <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best drift</div>
-              <div class="font-mono text-lg font-bold tabular-nums text-accent"><CountUp :value="driver.best_drift" /></div>
-            </div>
-            <div class="col-span-2 rounded-md border border-line bg-surface/70 px-3 py-2">
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Fastest lap</div>
-              <div class="truncate font-mono text-lg font-bold tabular-nums text-text">{{ driver.best_lap_ms ? lapTime(driver.best_lap_ms) : "—" }}</div>
-            </div>
-            <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Laps</div>
-              <div class="font-mono text-lg font-bold tabular-nums text-text"><CountUp :value="driver.total_laps" /></div>
-            </div>
-            <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Sessions</div>
-              <div class="font-mono text-lg font-bold tabular-nums text-text"><CountUp :value="driver.sessions" /></div>
-            </div>
-            <div class="rounded-md border border-line bg-surface/70 px-3 py-2">
-              <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Podiums</div>
-              <div class="font-mono text-lg font-bold tabular-nums" :class="driver.podiums ? 'text-warn' : 'text-text'"><CountUp :value="driver.podiums" /></div>
-            </div>
-          </div>
-          <div class="mt-2 flex items-center gap-3 rounded-md border border-line bg-surface/70 px-3 py-2 text-accent">
-            <span class="text-[10px] font-bold tracking-wide text-dim uppercase">Drift trend</span>
-            <Sparkline :values="driver.drift_trend" :width="300" :height="34" class="ml-auto h-auto min-w-0 max-w-full" />
-          </div>
-        </div>
+    <header class="pitlane-profile-heading">
+      <div class="pitlane-profile-photo">
+        <DriverAvatar :name="driver.name" :guid="driver.guid" :src="avatarSrc" :size="104" />
+        <button v-if="auth.canOperate" type="button" class="pitlane-photo-edit" title="Upload photo" aria-label="Upload driver photo" @click="pickPhoto"><Icon name="upload" :size="18" /></button>
+        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onPickFile" />
       </div>
-    </section>
+      <div class="min-w-0"><span class="pitlane-eyebrow">{{ online ? 'On track now' : 'Your drivers' }}</span>
+          <h1>{{ driver.name }}</h1>
+          <p>Connected through Assetto Corsa · First joined {{ fmtDate(driver.first_seen) }}</p>
+          <p>Last seen {{ timeAgo(driver.last_seen) }}<span v-if="online && liveDrift"> · {{ fmtScore(liveDrift) }} live drift points</span></p>
+          <details class="pitlane-account-id"><summary>Account details</summary><span>{{ driver.guid }}</span></details></div>
+    </header>
+    <dl class="pitlane-metrics" aria-label="Driver statistics">
+      <div><dt>Best drift</dt><dd>{{ driver.best_drift ? fmtScore(driver.best_drift) : '—' }}</dd></div>
+      <div><dt>Fastest lap</dt><dd>{{ driver.best_lap_ms ? lapTime(driver.best_lap_ms) : '—' }}</dd></div>
+      <div><dt>Laps completed</dt><dd>{{ driver.total_laps.toLocaleString() }}</dd></div>
+      <div><dt>Sessions with the club</dt><dd>{{ driver.sessions.toLocaleString() }}</dd></div>
+      <div><dt>Podiums</dt><dd>{{ driver.podiums.toLocaleString() }}</dd></div>
+    </dl>
+    <div v-if="driver.drift_trend.length" class="pitlane-profile-trend"><span>Recent drift runs</span><Sparkline :values="driver.drift_trend" :width="300" :height="34" class="text-accent max-w-full" /></div>
 
-    <!-- CURRENT RACE (only while the driver is on track) -->
-    <Card v-if="online && live" class="reveal mt-4">
-      <template #header>
-        <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-          <Icon name="flag" :size="15" class="text-accent" /> Current race
-        </h2>
-        <span class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase">
-          <span class="size-1.5 rounded-full bg-ok live-dot" /> On track
-        </span>
-      </template>
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-x-2 text-sm">
-            <span class="font-bold text-text">{{ sessionTypeLabel(liveSession?.type) }}</span>
-            <span v-if="liveSession?.name" class="truncate text-muted">· {{ liveSession.name }}</span>
-          </div>
-          <div class="mt-1 flex items-center gap-1.5 text-xs text-muted">
-            <Icon name="mapPin" :size="13" class="text-dim" /> {{ liveTrackName || "—" }}
-            <span v-if="liveInstance" class="text-dim">· {{ liveInstance.name }}</span>
-          </div>
-        </div>
-        <RouterLink
-          v-if="liveInstance"
-          :to="{ name: 'server-broadcast', params: { id: liveInstance.id } }"
-          class="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
-        >
-          <Icon name="broadcast" :size="14" /> Broadcast
-        </RouterLink>
+    <section v-if="online && live" class="profile-current">
+      <div class="profile-section-heading">
+        <div><span class="profile-status">On track now</span><h2>{{ sessionTypeLabel(liveSession?.type) }}<span v-if="liveSession?.name"> · {{ liveSession.name }}</span></h2><p>{{ liveTrackName || 'Current session' }}<span v-if="liveInstance"> · {{ liveInstance.name }}</span></p></div>
+        <RouterLink v-if="liveInstance" :to="{ name: 'server-broadcast', params: { id: liveInstance.id } }" class="pitlane-button">Watch live <Icon name="arrowLeft" :size="17" class="rotate-180" /></RouterLink>
       </div>
-
-      <div class="mt-4 grid grid-cols-3 gap-3">
+      <dl class="pitlane-metrics">
         <template v-if="liveIsDrift">
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Live</div>
-            <div class="numerals mt-1 text-2xl font-bold tabular-nums" :class="liveDrift ? 'text-accent' : 'text-dim'">{{ liveDrift ? fmtScore(liveDrift) : "—" }}</div>
-          </div>
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Best</div>
-            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ live!.drift_best ? fmtScore(live!.drift_best) : "—" }}</div>
-          </div>
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Last</div>
-            <div class="numerals mt-1 text-2xl font-medium tabular-nums text-muted">{{ live!.drift_last ? fmtScore(live!.drift_last) : "—" }}</div>
-          </div>
+          <div><dt>Live drift</dt><dd>{{ liveDrift ? fmtScore(liveDrift) : '—' }}</dd></div>
+          <div><dt>Best run</dt><dd>{{ live.drift_best ? fmtScore(live.drift_best) : '—' }}</dd></div>
+          <div><dt>Last run</dt><dd>{{ live.drift_last ? fmtScore(live.drift_last) : '—' }}</dd></div>
         </template>
         <template v-else>
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Position</div>
-            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ liveRow ? `P${liveRow.position}` : "—" }}</div>
-          </div>
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Last lap</div>
-            <div class="numerals mt-1 text-2xl font-medium tabular-nums text-text">{{ live!.last_lap_ms ? lapTime(live!.last_lap_ms) : "—" }}</div>
-          </div>
-          <div class="rounded-md border border-line bg-surface-2/40 p-3 text-center">
-            <div class="text-[10px] font-bold tracking-wide text-dim uppercase">Laps</div>
-            <div class="numerals mt-1 text-2xl font-bold tabular-nums text-text">{{ live!.laps }}</div>
-          </div>
+          <div><dt>Position</dt><dd>{{ liveRow ? `P${liveRow.position}` : '—' }}</dd></div>
+          <div><dt>Last lap</dt><dd>{{ live.last_lap_ms ? lapTime(live.last_lap_ms) : '—' }}</dd></div>
+          <div><dt>Laps</dt><dd>{{ live.laps }}</dd></div>
         </template>
-      </div>
-    </Card>
+      </dl>
+    </section>
 
-    <!-- FAVOURITES -->
-    <div class="mt-4 grid gap-4 md:grid-cols-2">
-      <div class="min-w-0 space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-        <Icon name="star" :size="15" class="text-warn" /> Favourite car
-      </h2>
-      <Card class="min-w-0">
-        <div v-if="driver.favourite_car" class="flex items-center gap-3 sm:gap-4">
-          <div class="grid h-16 w-24 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32">
-            <img
-              v-if="carImgOk && carImgUrl"
-              :src="carImgUrl"
-              alt=""
-              class="size-full object-cover"
-              @error="carImgOk = false"
-            />
-            <Icon v-else name="car" :size="28" class="text-dim" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-base font-bold text-text">{{ driver.favourite_car.name }}</div>
-            <div v-if="driver.favourite_car.skin" class="truncate text-xs text-muted">Livery · {{ driver.favourite_car.skin }}</div>
-            <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-driven car</div>
-          </div>
+    <DriverFavourites :car="driver.favourite_car" :track="driver.favourite_track" />
+
+    <div class="profile-story-grid">
+      <section class="min-w-0" aria-labelledby="recent-drives-title">
+        <div class="profile-section-heading">
+          <div><h2 id="recent-drives-title">Recent drives</h2><p>Laps, runs, and moments from each visit.</p></div>
+          <RouterLink :to="{ name: 'session-search' }" class="profile-text-link">Find a drive <Icon name="arrowLeft" :size="17" class="rotate-180" /></RouterLink>
         </div>
-        <p v-else class="text-sm text-muted">No car data yet.</p>
-      </Card>
-      </div>
-
-      <div class="min-w-0 space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-        <Icon name="mapPin" :size="15" class="text-accent" /> Favourite track
-      </h2>
-      <Card class="min-w-0">
-        <div v-if="driver.favourite_track" class="flex items-center gap-3 sm:gap-4">
-          <TrackImage
-            :track-key="driver.favourite_track.key"
-            :config="driver.favourite_track.config"
-            class="h-16 w-24 shrink-0 rounded-md border border-line bg-surface-2 sm:h-20 sm:w-32"
+        <div class="profile-drive-list">
+          <SessionCard
+            v-for="s in driver.session_history"
+            :key="s.id"
+            :session="s"
+            :can-operate="auth.canOperate"
+            :default-open="sessionOpen(s)"
+            :deleting-ids="deleting"
+            :guests="guests"
+            @add-tag="(t) => addTag(s, t)"
+            @remove-tag="(t) => removeTag(s, t)"
+            @assign="(gid) => assignSessionGuest(s, gid)"
+            @delete-media="deleteMedia"
+            @download-media="downloadMedia"
+            @delete-session="removeSession(s)"
           />
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-base font-bold text-text">{{ driver.favourite_track.name }}</div>
-            <div v-if="driver.favourite_track.country || favouriteTrackVersion" class="truncate text-xs text-muted">
-              {{ [driver.favourite_track.country, favouriteTrackVersion ? `version ${favouriteTrackVersion}` : ""].filter(Boolean).join(" · ") }}
-            </div>
-            <div class="mt-1 text-[11px] font-semibold tracking-wide text-dim uppercase">Most-raced layout</div>
-          </div>
         </div>
-        <p v-else class="text-sm text-muted">No track data yet.</p>
-      </Card>
-      </div>
-    </div>
-
-    <!-- SESSIONS + STREAM -->
-    <div class="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_380px]">
-      <!-- Sessions: each connection (connect→disconnect) grouped together -->
-      <div class="min-w-0 space-y-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-            <Icon name="activity" :size="15" /> Sessions
-            <span class="text-xs font-normal text-dim">connect → disconnect</span>
-          </h2>
-          <RouterLink
-            :to="{ name: 'session-search' }"
-            class="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/50 hover:text-accent"
-          >
-            <Icon name="search" :size="14" /> Search sessions
-          </RouterLink>
+        <div v-if="!driver.session_history.length" class="profile-quiet-empty">
+          <h3>The first drive is still to come.</h3>
+          <p>When this driver joins a server, their laps, drift runs and highlights will be kept here.</p>
         </div>
+      </section>
 
-        <SessionCard
-          v-for="(s, i) in driver.session_history"
-          :key="s.id"
-          :session="s"
+      <aside class="profile-aside">
+        <ManualRecordings
+          v-if="driver.media.length"
+          :items="driver.media"
+          heading="Personal highlights"
+          context="Saved outside a drive. More moments live in the drive history."
           :can-operate="auth.canOperate"
-          :default-open="sessionOpen(s)"
           :deleting-ids="deleting"
           :guests="guests"
-          :style="{ animationDelay: Math.min(i, 10) * 45 + 'ms' }"
-          @add-tag="(t) => addTag(s, t)"
-          @remove-tag="(t) => removeTag(s, t)"
-          @assign="(gid) => assignSessionGuest(s, gid)"
+          @assign="assignMediaGuest"
           @delete-media="deleteMedia"
           @download-media="downloadMedia"
-          @delete-session="removeSession(s)"
         />
+        <section v-else>
+          <div class="profile-section-heading"><h2>Personal highlights</h2></div>
+          <div class="profile-quiet-empty"><h3>The next good moment is out there.</h3><p>Saved clips and pictures will appear here. Moments captured during a drive stay with its history.</p></div>
+        </section>
 
-        <Card v-if="!driver.session_history.length">
-          <div class="py-10 text-center">
-            <div class="mx-auto grid size-12 place-items-center rounded-lg border border-line bg-surface-2 text-dim">
-              <Icon name="activity" :size="22" />
-            </div>
-            <p class="mt-3 text-sm font-semibold text-text">No sessions yet</p>
-            <p class="mx-auto mt-0.5 max-w-md text-sm text-muted">
-              A session is one connection — from when this driver joins until they leave. Their laps, drift runs and
-              highlights will be grouped here.
-            </p>
+        <section class="profile-camera" aria-labelledby="driver-camera-title">
+          <div class="profile-section-heading">
+            <h2 id="driver-camera-title">From the simulator</h2>
+            <span v-if="streamLive" class="profile-status">Live</span>
           </div>
-        </Card>
-      </div>
-
-      <div class="min-w-0 space-y-3 lg:sticky lg:top-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="flex flex-wrap items-center gap-2 text-sm font-bold tracking-tight">
-            <Icon name="broadcast" :size="15" :class="streamLive ? 'text-ok' : 'text-dim'" /> Live stream
-            <span
-              v-if="streamLive"
-              class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
-            >
-              <span class="size-1.5 rounded-full bg-ok live-dot" /> Live
-            </span>
-            <!-- Live capture status from the rolling-buffer recorder -->
-            <span
-              v-if="capStatus?.manual_active"
-              class="inline-flex items-center gap-1.5 rounded-full border border-danger/45 bg-danger-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-danger uppercase"
-            >
-              <span class="size-1.5 rounded-full bg-danger live-dot" /> REC {{ fmtClipDuration(cap.manualElapsed(guid)) }}
-            </span>
-            <span
-              v-else-if="capStatus?.buffering"
-              class="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-ok uppercase"
-              title="Rolling buffer recording — drift-run clips are cut from this"
-            >
-              <span class="size-1.5 rounded-full bg-ok" /> Buffering
-            </span>
-            <span
-              v-else-if="capStatus?.recorder_running"
-              class="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn-glow px-2 py-0.5 text-[10px] font-bold tracking-wide text-warn uppercase"
-              title="Recorder running but no fresh segments — source may be down"
-            >
-              Connecting…
-            </span>
-          </h2>
-        </div>
-        <Card class="min-w-0">
-        <div
-          v-if="streamLive && isWhepUrl(driver.stream!.embed_url)"
-          class="aspect-video w-full overflow-hidden rounded-md border border-line"
-        >
-          <WhepPlayer :url="driver.stream!.embed_url" />
-        </div>
-        <iframe
-          v-else-if="streamLive"
-          :src="driver.stream!.embed_url"
-          class="aspect-video w-full rounded-md border border-line"
-          allow="autoplay; encrypted-media; picture-in-picture"
-          allowfullscreen
-          referrerpolicy="strict-origin-when-cross-origin"
-        />
-        <div
-          v-else
-          class="grid aspect-video place-items-center rounded-md border border-dashed border-line bg-surface-2/40 text-center"
-        >
-          <div class="px-4">
-            <Icon name="broadcast" :size="26" class="mx-auto text-dim" />
-            <p class="mt-2 text-sm font-semibold text-text">
-              {{ driver.stream?.status === "offline" ? "Stream offline" : "No stream configured" }}
-            </p>
-            <p class="mt-0.5 text-xs text-muted">
-              {{ driver.stream?.status === "offline" ? "The driver's stream isn't live right now." : "Add a stream URL under Streaming & Capture." }}
-            </p>
+          <div v-if="streamLive" class="profile-camera-player">
+            <WhepPlayer v-if="isWhepUrl(driver.stream!.embed_url)" :url="driver.stream!.embed_url" />
+            <iframe v-else :src="driver.stream!.embed_url" title="Driver live camera" class="size-full" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" />
           </div>
-        </div>
-        <div v-if="auth.canOperate" class="mt-3 flex flex-wrap items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            :disabled="snapping"
-            title="Grab a still from the live stream now"
-            @click="takePicture"
-          >
-            <Icon name="camera" :size="14" />
-            {{ snapping ? "Capturing…" : "Take picture" }}
-          </Button>
-          <Button
-            size="sm"
-            :variant="isRecording ? 'danger' : 'ghost'"
-            :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'"
-            @click="isRecording ? stopRecord() : recordNow()"
-          >
-            <Icon :name="isRecording ? 'stop' : 'record'" :size="14" />
-            {{ isRecording ? "Stop recording" : "Record now" }}
-          </Button>
-        </div>
-        </Card>
-      </div>
+          <div v-else class="profile-quiet-empty">
+            <h3>{{ driver.stream?.status === 'offline' ? 'The camera is taking a break.' : 'A view from their seat.' }}</h3>
+            <p>{{ driver.stream?.status === 'offline' ? 'The configured stream is offline right now.' : 'No stream is configured for this account yet.' }}</p>
+            <RouterLink v-if="auth.canOperate" to="/garage/rigs" class="profile-text-link">Rigs & cameras <Icon name="arrowLeft" :size="17" class="rotate-180" /></RouterLink>
+          </div>
+          <p v-if="capStatus?.manual_active" class="profile-recorder-state text-danger">Recording · {{ fmtClipDuration(cap.manualElapsed(guid)) }}</p>
+          <p v-else-if="capStatus?.buffering" class="profile-recorder-state">Ready to capture · Receiving video</p>
+          <p v-else-if="capStatus?.recorder_running" class="profile-recorder-state">Recorder connecting · Waiting for video</p>
+          <div v-if="auth.canOperate" class="pitlane-actions mt-4">
+            <Button size="sm" variant="ghost" :disabled="snapping" title="Grab a still from the live stream now" @click="takePicture">
+              <Icon name="camera" :size="16" /> {{ snapping ? 'Capturing…' : 'Take picture' }}
+            </Button>
+            <Button size="sm" :variant="isRecording ? 'danger' : 'ghost'" :title="isRecording ? 'Stop recording now and save the clip' : 'Record a clip that ends when the current or next drift run ends'" @click="isRecording ? stopRecord() : recordNow()">
+              <Icon :name="isRecording ? 'stop' : 'record'" :size="16" /> {{ isRecording ? 'Stop recording' : 'Record now' }}
+            </Button>
+          </div>
+        </section>
+      </aside>
     </div>
-
-    <!-- MANUAL RECORDINGS — captures made outside any session -->
-    <ManualRecordings
-      v-if="driver.media.length"
-      class="mt-4"
-      :items="driver.media"
-      :can-operate="auth.canOperate"
-      :deleting-ids="deleting"
-      :guests="guests"
-      @assign="assignMediaGuest"
-      @delete-media="deleteMedia"
-      @download-media="downloadMedia"
-    />
 
     <!-- Deep-link lightbox: plays/shows the media named in ?media=:file -->
     <Modal
@@ -847,52 +609,3 @@ async function removeSession(session: DriverSession) {
     </Modal>
   </template>
 </template>
-
-<style scoped>
-.hero {
-  background:
-    radial-gradient(130% 150% at 0% 0%, var(--color-accent-glow), transparent 55%),
-    linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
-}
-.hero-grid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(var(--color-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(120% 120% at 100% 0%, #000 0%, transparent 70%);
-}
-.scanlines {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px);
-}
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.reveal {
-  animation: rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-@keyframes ping-soft {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 40%, transparent);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 5px transparent;
-  }
-}
-.live-dot {
-  animation: ping-soft 1.8s ease-out infinite;
-}
-</style>

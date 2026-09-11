@@ -197,7 +197,7 @@ watch(() => JSON.stringify([draft.value, props.instanceId]), () => { review.valu
           </div>
         </details>
       </div>
-      <aside class="editor-review paddock-plan h-fit rounded-md border p-5 sm:p-6">
+      <aside class="editor-review pitlane-plan h-fit rounded-md border p-5 sm:p-6">
         <h3 class="mb-4 text-base font-semibold">What will run</h3>
         <dl class="space-y-3 text-sm">
           <div><dt class="text-xs text-muted">Track</dt><dd class="mt-1 font-medium">{{ draft.track_name || 'Not chosen' }}</dd></div>

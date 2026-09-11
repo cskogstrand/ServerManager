@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Shared Paddock surface with an optional header and actions.
+// Shared Pitlane panel with an optional header and actions.
 defineProps<{
   title?: string;
   muted?: boolean;
@@ -8,12 +8,12 @@ defineProps<{
 
 <template>
   <section
-    class="paddock-card"
+    class="pitlane-panel"
     :class="muted ? 'bg-surface/70' : 'bg-surface'"
   >
     <header
       v-if="title || $slots.header || $slots.actions"
-      class="paddock-card-header"
+      class="pitlane-panel-heading"
     >
       <slot name="header">
         <h2 class="text-base font-semibold tracking-tight">{{ title }}</h2>
@@ -22,7 +22,7 @@ defineProps<{
         <slot name="actions" />
       </div>
     </header>
-    <div class="paddock-card-body">
+    <div class="pitlane-panel-body">
       <slot />
     </div>
   </section>

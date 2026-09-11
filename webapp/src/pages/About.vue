@@ -28,7 +28,7 @@ const downloads = [
 
 <template>
   <PageHeader
-    title="About"
+    eyebrow="Garage / System" title="About Server Manager"
     subtitle="Version, local runtime paths, and downloadable support artifacts."
     icon="info"
   />

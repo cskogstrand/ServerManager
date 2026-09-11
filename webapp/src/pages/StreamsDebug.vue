@@ -176,7 +176,7 @@ const logText = computed(() => (snap.value?.logs ?? []).join("\n"));
 
 <template>
   <PageHeader
-    title="Stream Diagnostics"
+    eyebrow="Garage / Advanced" title="Stream diagnostics"
     subtitle="Recorder state, buffers, logs, and source probes for driver streams."
     icon="broadcast"
   >

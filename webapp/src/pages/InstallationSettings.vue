@@ -104,7 +104,7 @@ async function save() {
 
 <template>
   <PageHeader
-    title="Installation"
+    eyebrow="Garage / Advanced" title="Installation & engine"
     subtitle="Assetto Corsa install path and CSP requirements used when building server configs."
     icon="folder"
   >

@@ -17,7 +17,7 @@ const adminItems = [
 
 <template>
   <PageHeader
-    title="Your workspace, configured."
+    eyebrow="Garage / The club" title="Club administration"
     subtitle="Server setup, content, and the people who keep your race nights running."
     icon="lock"
   />

@@ -114,7 +114,7 @@ onMounted(() => guard(load));
 </script>
 
 <template>
-  <PageHeader title="Users & Roles" subtitle="Manage who can sign in and what they can do." icon="users">
+  <PageHeader eyebrow="Garage / The club" title="Accounts & roles" subtitle="Manage who can sign in and what they can do." icon="users">
     <template #prefix>
       <AdminBackButton />
     </template>

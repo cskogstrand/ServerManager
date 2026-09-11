@@ -290,7 +290,7 @@ onMounted(load);
 
 <template>
   <PageHeader
-    title="Streaming & Capture"
+    eyebrow="Garage / Advanced" title="Streams & recording"
     subtitle="Driver stream links, capture sources, and automatic highlight capture."
     icon="broadcast"
   >

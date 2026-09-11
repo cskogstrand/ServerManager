@@ -18,20 +18,20 @@ function toggleFullscreen() {
     <!-- ░░ Top strap ░░ -->
     <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 sm:gap-4 sm:px-5">
       <div class="flex min-w-0 items-center gap-2.5">
-        <span class="inline-flex items-center gap-1.5 rounded-sm bg-accent px-2 py-1 text-xs font-black tracking-[0.2em] text-bg">
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-2 text-xs font-semibold tracking-wide text-text">
           <Icon name="trophy" :size="12" />
-          LEADERBOARD
+          CLUB RECORDS
         </span>
         <div class="min-w-0 leading-tight">
-          <div class="truncate text-sm font-extrabold tracking-tight">All Servers</div>
-          <div class="font-mono text-[11px] text-dim">drift bests · best laps</div>
+          <div class="truncate text-sm font-extrabold tracking-tight">Across the club</div>
+          <div class="text-xs text-muted">drift bests · best laps</div>
         </div>
       </div>
 
       <div class="ml-auto flex items-center gap-1.5">
         <button
           type="button"
-          class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
+          class="grid size-11 place-items-center rounded-full border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
           title="Toggle fullscreen"
           @click="toggleFullscreen"
         >
@@ -39,7 +39,7 @@ function toggleFullscreen() {
         </button>
         <RouterLink
           to="/"
-          class="grid size-8 place-items-center sm:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
+          class="grid size-11 place-items-center rounded-full border border-line bg-surface/70 text-muted transition-colors hover:border-danger/60 hover:text-danger"
           title="Exit leaderboard"
         >
           <Icon name="x" :size="16" />

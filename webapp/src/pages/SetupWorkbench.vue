@@ -321,7 +321,7 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
 
 <template>
   <PageHeader
-    title="Server Setup"
+    eyebrow="Garage / Advanced" title="Prepare your server"
     subtitle="Everything from a fresh install to a running server, in one guided workbench."
     icon="settings"
   >

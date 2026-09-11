@@ -49,12 +49,12 @@ const templates = computed(() =>
 
 <template>
   <PageHeader
-    title="Templates"
-    subtitle="Reusable preset building blocks for race setups. Most changes affect every race setup using the template."
+    eyebrow="Garage / Advanced / Presets" title="Driving presets"
+    subtitle="Shared driving settings for your saved setups. Changes apply to every setup using the preset."
     icon="settings"
   />
 
-  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events">Race setups</RouterLink><RouterLink to="/presets" aria-current="page">Templates</RouterLink><RouterLink to="/queue">Run plan</RouterLink></nav>
+  <nav class="workspace-tabs" aria-label="Session preparation"><RouterLink to="/events">Setups</RouterLink><RouterLink to="/presets" aria-current="page">Presets</RouterLink><RouterLink to="/queue">Running order</RouterLink></nav>
   <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
     <RouterLink v-for="(t, index) in templates" :key="t.to" :to="t.to" class="template-tile group">
       <div class="track-art flex h-28 items-center justify-between px-6"><span class="self-start pt-4 font-mono text-[10px] text-muted">{{ String(index + 1).padStart(2, '0') }} / PRESET</span><Icon :name="t.icon" :size="42" class="text-text/60" /></div>

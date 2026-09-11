@@ -375,7 +375,7 @@ onMounted(loadLibrary);
 
 <template>
   <PageHeader
-    title="Race setups"
+    eyebrow="Sessions / The setup library" title="Reusable setups"
     subtitle="A good race starts here. Build your next session from the setups you already love."
     icon="events"
   >
@@ -387,10 +387,10 @@ onMounted(loadLibrary);
     </template>
   </PageHeader>
 
-  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events" aria-current="page">Race setups</RouterLink><RouterLink v-if="auth.isAdmin" to="/presets">Templates</RouterLink><RouterLink :to="server.selectedInstanceId ? `/queue?instance=${server.selectedInstanceId}` : '/queue'">Run plan</RouterLink></nav>
+  <nav class="workspace-tabs" aria-label="Session preparation"><RouterLink to="/events" aria-current="page">Setups</RouterLink><RouterLink v-if="auth.isAdmin" to="/presets">Presets</RouterLink><RouterLink :to="server.selectedInstanceId ? `/queue?instance=${server.selectedInstanceId}` : '/queue'">Running order</RouterLink></nav>
 
   <!-- Toolbar -->
-  <div class="paddock-toolbar mb-6 flex flex-wrap items-center gap-3">
+  <div class="pitlane-toolbar mb-6 flex flex-wrap items-center gap-3">
     <div class="relative min-w-48 flex-1">
       <Icon name="search" :size="15" class="absolute top-1/2 left-2.5 -translate-y-1/2 text-dim" />
       <Input v-model="search" aria-label="Search race setups" placeholder="Search setups…" class="!pl-8" />

@@ -159,7 +159,8 @@ onMounted(() =>
 
 <template>
   <PageHeader
-    title="Drift Scoring"
+    eyebrow="Garage / Advanced / Presets"
+    title="Drift scoring"
     subtitle="Create and maintain reusable drift scoring modes."
     icon="gauge"
   >
@@ -179,7 +180,7 @@ onMounted(() =>
   </p>
 
   <div class="flex flex-col gap-5 lg:flex-row">
-    <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
+    <aside class="w-full shrink-0 rounded-[14px] border border-line bg-surface p-5 lg:w-80">
       <form class="mb-2 flex gap-2" @submit.prevent="create">
         <Input v-model="newName" aria-label="New scoring mode name" placeholder="New scoring mode..." />
         <Button type="submit" variant="dark" :disabled="busy || !newName.trim()" aria-label="Create scoring mode">

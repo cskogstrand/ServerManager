@@ -57,6 +57,7 @@ const selectedUses = computed(() => uses(props.selectedId));
 
 <template>
   <PageHeader
+    eyebrow="Garage / Advanced / Presets"
     :title="title"
     :subtitle="subtitle ?? 'Create, select, and maintain reusable server presets.'"
     :icon="icon ?? 'settings'"
@@ -72,7 +73,7 @@ const selectedUses = computed(() => uses(props.selectedId));
   </PageHeader>
 
   <div class="flex flex-col gap-5 lg:flex-row">
-    <aside class="w-full shrink-0 rounded-md border border-line bg-surface p-3 lg:w-72">
+    <aside class="w-full shrink-0 rounded-[14px] border border-line bg-surface p-5 lg:w-80">
       <form class="mb-2 flex gap-2" @submit.prevent="submitCreate">
         <Input v-model="newName" :aria-label="`New ${title.toLowerCase()} name`" :placeholder="`New ${title.toLowerCase()}…`" />
         <Button type="submit" variant="dark" :disabled="busy || !newName.trim()" aria-label="Create preset">

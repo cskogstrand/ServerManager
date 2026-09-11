@@ -94,27 +94,27 @@ function durationLabel(r: SessionSearchResult): string {
 
 <template>
   <PageHeader
-    title="Results & History"
+    eyebrow="Sessions / The drives you keep" title="Results & history"
     subtitle="Recent driver activity and race results across all servers."
     icon="trophy"
   >
     <template #actions>
-      <RouterLink to="/sessions">
+      <RouterLink to="/sessions/drives">
         <Button variant="ghost" size="sm">
           <Icon name="search" :size="14" />
-          Session Search
+          Find a drive
         </Button>
       </RouterLink>
       <RouterLink to="/leaderboard">
         <Button variant="dark" size="sm">
           <Icon name="trophy" :size="14" />
-          Leaderboard
+          Club records
         </Button>
       </RouterLink>
     </template>
   </PageHeader>
 
-  <FormRow class="max-w-xl" label="Search recent activity" hint="Filters sessions and result files. Record cards show the overall records from the available scores.">
+  <FormRow class="max-w-xl" label="Search recent activity" hint="Filters sessions and result files. Club records use all available scores.">
     <div class="flex gap-2"><Input v-model="q" placeholder="Driver, track or result file…" /><Button v-if="q" variant="dark" @click="q = ''">Clear</Button></div>
   </FormRow>
   <div v-if="sessionError || scoreError || fileError" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm">
@@ -123,35 +123,13 @@ function durationLabel(r: SessionSearchResult): string {
     <p class="mt-2 text-muted">Any previously loaded data stays visible until a refresh succeeds.</p><Button variant="dark" class="mt-3" :disabled="loading" @click="load">{{ loading ? 'Loading…' : 'Retry' }}</Button>
   </div>
 
-  <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-    <Card>
-      <div class="text-xs text-dim">Matching sessions</div>
-      <div class="mt-1 font-mono text-2xl font-black">{{ sessions.length }}</div>
-      <div class="text-xs text-muted">{{ finishedSessions.length }} finished</div>
-    </Card>
-    <Card>
-      <div class="text-xs text-dim">Matching result files</div>
-      <div class="mt-1 font-mono text-2xl font-black">{{ matchingFiles.length }}</div>
-      <div class="text-xs text-muted">race results available</div>
-    </Card>
-    <Card>
-      <div class="text-xs text-dim">Laps in matching sessions</div>
-      <div class="mt-1 font-mono text-2xl font-black">{{ totalLaps }}</div>
-      <div class="text-xs text-muted">from the sessions loaded</div>
-    </Card>
-    <Card>
-      <div class="text-xs text-dim">Top drift · overall</div>
-      <div class="mt-1 truncate font-mono text-2xl font-black text-accent">
-        {{ topDrift ? fmtScore(topDrift.drift_score ?? 0) : "—" }}
-      </div>
-      <div class="truncate text-xs text-muted">{{ topDrift?.driver ?? "No drift runs" }}</div>
-    </Card>
-    <Card>
-      <div class="text-xs text-dim">Best lap · overall</div>
-      <div class="mt-1 font-mono text-2xl font-black">{{ bestLap ? lapTime(bestLap.best_lap_ms ?? 0) : "—" }}</div>
-      <div class="truncate text-xs text-muted">{{ bestLap?.driver ?? "No timed laps" }}</div>
-    </Card>
-  </div>
+  <dl class="pitlane-metrics" aria-label="History statistics">
+    <div><dt>Matching stints</dt><dd>{{ sessions.length }}</dd><small>{{ finishedSessions.length }} finished</small></div>
+    <div><dt>Result files</dt><dd>{{ matchingFiles.length }}</dd><small>Matching your search</small></div>
+    <div><dt>Laps in matching stints</dt><dd>{{ totalLaps }}</dd></div>
+    <div><dt>Best drift · overall</dt><dd>{{ topDrift ? fmtScore(topDrift.drift_score ?? 0) : '—' }}</dd><small>{{ topDrift?.driver ?? 'No drift runs' }}</small></div>
+    <div><dt>Fastest lap · overall</dt><dd>{{ bestLap ? lapTime(bestLap.best_lap_ms ?? 0) : '—' }}</dd><small>{{ bestLap?.driver ?? 'No timed laps' }}</small></div>
+  </dl>
 
   <div class="grid gap-4 xl:grid-cols-2">
   <Card>

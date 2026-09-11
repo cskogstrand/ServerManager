@@ -344,7 +344,8 @@ watch(
   <div v-if="error" role="alert" class="mb-4 rounded-md border border-danger/40 bg-danger-glow p-4 text-sm"><p class="text-danger">{{ error }}</p><Button variant="dark" class="mt-3" :disabled="loading" @click="reload">Retry loading run plan</Button></div>
   <p v-if="loading" role="status" class="mb-3 text-sm text-muted">Updating run plan…</p>
   <PageHeader
-    :title="instance ? `${instance.name} · Run Plan` : 'Run Plan'"
+    eyebrow="Sessions / Running order"
+    :title="instance ? `${instance.name} · Running order` : 'Running order'"
     subtitle="Manage the per-instance run order, start servers, and queue individual race setups or whole groups."
     icon="queue"
   >
@@ -549,7 +550,7 @@ watch(
       />
     </Card>
 
-    <Card v-if="auth.canOperate" title="Plan the next race" class="paddock-plan">
+    <Card v-if="auth.canOperate" title="Plan the next race" class="pitlane-plan">
       <Button v-if="auth.isAdmin" class="mb-4 w-full" @click="openNewSetup">
         <Icon name="plus" :size="15" />
         New race setup

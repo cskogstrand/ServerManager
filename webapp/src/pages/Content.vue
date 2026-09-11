@@ -971,7 +971,7 @@ function jobMeta(job: ContentJob): string[] {
 
 <template>
   <PageHeader
-    title="Cars & tracks"
+    eyebrow="Garage / Your collection" title="Cars & tracks"
     subtitle="Browse installed tracks, cars, and weather; upload, delete, or rebuild the content cache."
     icon="content"
   >

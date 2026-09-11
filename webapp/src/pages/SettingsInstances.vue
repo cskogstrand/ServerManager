@@ -205,8 +205,8 @@ async function loadDriftModes() {
 
 <template>
   <PageHeader
-    title="Server Instances"
-    subtitle="Create and maintain independent acServer processes, ports, plugin pairs, and queues."
+    eyebrow="Garage / Servers & ports" title="Your servers"
+    subtitle="Give each server its own running order, connection ports, and driving rules."
     icon="instances"
   >
     <template #prefix>

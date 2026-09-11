@@ -73,7 +73,7 @@ async function restore() {
 </script>
 
 <template>
-  <PageHeader title="Backup & Restore" subtitle="Export a specific backup, or stage a database restore for the next restart." icon="content">
+  <PageHeader eyebrow="Garage / The club" title="Backups & restore" subtitle="Export a specific backup, or stage a database restore for the next restart." icon="content">
     <template #prefix>
       <AdminBackButton />
     </template>

@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button.vue";
 import { searchSessions, fmtDate, fmtScore, shortGuid } from "@/lib/driversApi";
 import { lapTime } from "@/lib/raceTelemetry";
 import type { SessionSearchResult } from "@/types/driverStats";
+import PageHeader from "@/components/ui/PageHeader.vue";
 import Card from "@/components/ui/Card.vue";
 import Icon from "@/components/ui/Icon.vue";
 import DriverAvatar from "@/components/ui/DriverAvatar.vue";
@@ -69,18 +70,9 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); ++version; });
 
 <template>
   <div class="space-y-4">
-    <header class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-black tracking-tight text-text">Session Search</h1>
-        <p class="mt-0.5 text-sm text-muted">Find a stint by tag, driver or track — across every driver.</p>
-      </div>
-      <RouterLink
-        :to="{ name: 'drivers' }"
-        class="inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-accent"
-      >
-        <Icon name="trophy" :size="16" /> Driver Stats
-      </RouterLink>
-    </header>
+    <PageHeader eyebrow="Sessions / Driver history" title="Find a drive." subtitle="Search every driver's stints by name, track, or tag.">
+      <template #actions><RouterLink to="/drivers" class="pitlane-button">Everyone at the club</RouterLink></template>
+    </PageHeader>
 
     <!-- Filter bar -->
     <Card>
@@ -92,7 +84,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); ++version; });
             aria-label="Driver name or track"
             type="text"
             placeholder="Driver name or track…"
-            class="min-h-11 w-full rounded-md border border-control bg-surface pl-9 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
+            class="min-h-11 w-full rounded-md border border-line bg-surface pl-9 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
           />
         </label>
         <label class="relative sm:w-64">
@@ -102,7 +94,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); ++version; });
             aria-label="Session tag"
             type="text"
             placeholder="Tag (e.g. tandem night)"
-            class="min-h-11 w-full rounded-md border border-control bg-surface pl-8 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
+            class="min-h-11 w-full rounded-md border border-line bg-surface pl-8 pr-3 text-sm text-text placeholder:text-dim focus:border-accent/50 focus:outline-none"
           />
         </label>
         <button

@@ -1,13 +1,5 @@
-// API contract for the Driver Stats / Driver Detail surfaces.
-//
-// Nothing here is persisted by the backend yet — drivers, drift scores and lap
-// times are live-only and reset every session. These types describe the shape
-// the aggregation endpoints WILL return once the persistence layer (driver,
-// driver_session, driver_lap, driver_drift_run tables + event hooks) lands; see
-// docs/driver-stats.md. The frontend ships now against mock data (driversApi.ts)
-// and lights up automatically when /api/drivers starts answering.
-//
-// Field names are snake_case to match the Go JSON the endpoints will emit.
+// Persisted driver, guest, stint and media API contracts.
+// Live connection state is overlaid from the shared SSE store.
 
 export type SessionKind = "race" | "qualify" | "practice" | "drift";
 

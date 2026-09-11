@@ -24,7 +24,10 @@ Suggested walkthrough:
 6. **Live → Thursday drift club**, or **Open session → Watch**. Pick a driver on the map, board, or camera strip. Their camera and position follow together. Try Erik’s disconnected feed and Leo’s missing stream.
 7. **Watch → Set up streams → Add simulator**. Use the sample source, check it, and save it. Recording expands only when needed. **Live** also shows the lounge simulator with no active session.
 8. **Watch → Record clip**, then return to Session control and hand Rig 01 to Alex. The previous clip stays with Nora; the camera label changes to Alex. Open Saved moments or Nora’s profile to find the demo capture.
-9. Try a 24-car grid on Rudskogen, or a two-hour session starting now. The concept blocks an invalid grid or a conflicting server allocation and tells you what to change.
+9. **Garage → Rigs & cameras → Rig 01 → Edit rig**. Choose triple, single, wide, ultrawide, VR, or custom. Add and edit gear, notes, and attached camera feeds.
+10. **Garage → Cars & tracks**. Browse Cars, Tracks, and Weather. Open an item to inspect usage, edit tags, archive/restore it, or use it in a session. Add a sample pack to try import review and overwrite handling.
+11. **Garage → Advanced**. Search for ports, multiplier, or a missing stream. Review a custom setup, try a port conflict, inspect an INI draft, or stage and undo a sample restore.
+12. Try a 24-car grid on Rudskogen, or a two-hour session starting now. The concept blocks an invalid grid or a conflicting server allocation and tells you what to change.
 
 The top study bar is for evaluating the prototype. It would not ship in the product. All people, activity, times, metrics, and operations are illustrative. The demo clock is Thursday 10 September 2026 at 18:42, local Oslo time. Images come from the project's existing game content. Fonts have system fallbacks.
 
@@ -37,7 +40,7 @@ The top study bar is for evaluating the prototype. It would not ship in the prod
 | **Live** | What can I watch right now? | All connected simulator and spectator feeds, session watching with linked camera/map/timing, contextual stream setup, manual capture. |
 | **Drivers** | Who is here, and how are they doing? | One profile per person, results, progress, clips, and account/rig associations. |
 
-**Garage** is a secondary destination for installation, content, server connections, recording sources, access, and recovery. Advanced controls stay discoverable here and inside their relevant session section. A professional operator can still inspect the exact configuration.
+**Garage** is a secondary destination with dedicated **Rigs & cameras**, **Cars & tracks**, and **Advanced** workspaces. Servers and The club have distinct bordered sections and headings. A rig owns its display setup, gear, notes, and source links; drivers remain separate people. Advanced has 53 searchable tools across 14 sections, including 180 labelled settings from the existing administration surfaces and proposed recovery workflows. Advanced controls stay discoverable here and inside their relevant session section. A professional operator can still inspect the exact configuration.
 
 The first implementation should preserve existing deep links and translate their destinations into this model. “Session” in the interface means the complete driving experience; practice, qualifying, and race are **phases**, avoiding the current naming ambiguity.
 
@@ -99,7 +102,9 @@ The concept deliberately does not claim that public joining, conflict-free booki
 - Camera views are explicitly labelled sample frames. Stream checks validate fields and simulate connectivity; no entered URL is fetched. Captures create local demo records, not video/image files. Inviting, backup/recovery, access, and server connection details remain explanatory panels. There are no network API operations or real operational actions. A results export contains demo data only.
 - Scheduled time does not advance automatically in the demo. It demonstrates planning and conflict handling, not a background scheduler. Advanced options shown in explanatory panels are illustrative.
 - A runnable scenario check uses the project's existing jsdom dependency: `node docs/pitlane-concept/check.cjs`. It covers the core session flows plus all-source/connected/standby filters, stream validation, linked camera/map focus, missing/offline/spectator views, shared-rig capture ownership, session-end recording boundaries, persistence, all three track maps, and animation cleanup/telemetry delay. Map updates use a controlled test clock.
-- Before the Watch/Live expansion, browser layout checks covered ten destinations at 375, 768, 1024, and 1440 CSS pixels, with no horizontal overflow. Desktop and phone theme checks and a targeted keyboard/dialog walkthrough were also performed. These are prototype checks, not a complete accessibility audit. The expanded Watch/Live screens passed the automated interaction checks; fresh browser layout inspection was unavailable while the Mac was locked.
+- Before the Watch/Live expansion, browser layout checks covered ten destinations at 375, 768, 1024, and 1440 CSS pixels, with no horizontal overflow. Desktop and phone theme checks and a targeted keyboard/dialog walkthrough were also performed. These are prototype checks, not a complete accessibility audit. Fresh browser checks after the Garage expansion covered Garage, Rigs, rig details, content library/details, Advanced, Watch, and Live at the same four widths, with no document overflow or broken images. Radio selection/cancel, dialogs, phone layouts, and themes were inspected.
+
+See [ADVANCED-COVERAGE.md](ADVANCED-COVERAGE.md) for the complete Garage/Advanced capability catalogue, what is interactive, what remains a mapped design, and backend integration boundaries.
 
 See [FEATURE-PARITY.md](FEATURE-PARITY.md) for the repository-backed comparison, the restored Watch/Live capabilities, and the remaining functionality that should survive the redesign.
 

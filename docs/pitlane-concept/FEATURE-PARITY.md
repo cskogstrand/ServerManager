@@ -21,6 +21,12 @@ This comparison is against the current repository implementation, including its 
 
 The deliberately simple setup is **name + player link → check → save**. Driver association places the feed into the right session automatically. Recording opens as an optional section because it may require a different source. In production, connection results must come from actual playback/recorder health, and only administrators should see or edit source credentials.
 
+## Garage expansion: where the deeper tools now live
+
+Garage now separates equipment, content, servers, and the club. **Rigs & cameras** adds display setup, equipment inventory, notes, and rig-owned source links. **Cars & tracks** has a dedicated sample library and import/manage flows. **Advanced** supplies a searchable 53-tool catalogue, detailed settings editors, explicit scope/review, diagnostic examples, and recovery/undo flows.
+
+See [ADVANCED-COVERAGE.md](ADVANCED-COVERAGE.md) for the current capability map. The items below are requirements for production parity. Many now have a reviewable Advanced design surface; they are not all production integrations or complete daily-workspace implementations.
+
 ## Remaining gaps that should survive the redesign
 
 These are recommendations for the full frontend, **not features already implemented by this mock**.

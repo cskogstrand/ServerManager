@@ -1,0 +1,22 @@
+{
+  "fixture": "http://localhost:3031",
+  "checked_at": "2026-09-11T11:02:22Z",
+  "checks": [
+    "Unauthenticated API rejected",
+    "viewer capabilities and secret redaction",
+    "steward capabilities and secret redaction",
+    "Inventory, sessions, guests, metadata and recovery APIs",
+    "Source version conflict rejects stale edit",
+    "Idle source snapshot produces actual JPEG",
+    "In-flight clip keeps previous owner; post-handover snapshot credits guest",
+    "Exact launch retry, handover, finish and execution-linked recap",
+    "All 14 Advanced categories reach their real API foundations",
+    "Installation, CSP, engine and global configuration persist",
+    "Independent instance create/edit/delete, port conflicts, repeat and schedule persistence",
+    "All five reusable preset types create, read, save and delete",
+    "Failed ZIP retry, duplicate conflict, overwrite, metadata/archive rescan, undo and guarded disk deletion",
+    "Preferences, password reset, role change and account removal",
+    "Consistent HTTP backup, content archive, application log and safe cleanup",
+    "Go-embedded deep links, hashed JavaScript, and legacy raw query redirect"
+  ]
+}

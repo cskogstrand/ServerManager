@@ -1,0 +1,1 @@
+<template><div class="pitlane-empty"><h1 class="text-3xl">This page isn’t here.</h1><p>The link may have changed. Your sessions and club tools are still available.</p><RouterLink to="/" class="pitlane-button primary">Back to Today</RouterLink></div></template>

@@ -137,6 +137,7 @@ func sessionEventPayload(s SessionInfo) map[string]any {
 }
 
 func (inst *Instance) publishRunning(running bool) {
+	drivingRunning(inst, running)
 	// name travels with the event so the persisted-feed history renders the same
 	// "<server> started/stopped" line the live client builds, with no instance
 	// lookup needed when replayed after a refresh.

@@ -33,14 +33,14 @@ func statContentMetadata(path string) (*string, *int64) {
 	return &path, &modifiedAt
 }
 
-func parseContent(dba Dbaccess) {
+func parseContent(dba Dbaccess) error {
 	zipfiles := map[string]string{}
 	var mutex = &sync.RWMutex{}
 
 	basepath, err := dba.basepath()
 	if err != nil {
 		log.Print("Database Error: ", err)
-		return
+		return err
 	}
 
 	log.Print("Recreating smcontent.zip... please wait....")
@@ -75,7 +75,7 @@ func parseContent(dba Dbaccess) {
 	zipfiles[filepath.Join(basepath, "server", "acServer.exe")] = "acServer.exe"
 	zipfiles[filepath.Join(basepath, "system", "data", "surfaces.ini")] = "system/data/surfaces.ini"
 
-	Zf.UpdateZipfile(zipfiles)
+	return Zf.UpdateZipfile(zipfiles)
 }
 
 func parseWeathers(dba Dbaccess) map[string]string {

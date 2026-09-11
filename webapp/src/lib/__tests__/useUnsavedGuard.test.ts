@@ -10,9 +10,9 @@ afterEach(() => wrapper?.unmount());
 it("protects both editor dismissal and route changes without losing a kept draft", async () => {
   const pinia = createPinia(); setActivePinia(pinia);
   const confirm = useConfirmStore();
-  const dirty = ref(true); const open = ref(true);
+  const dirty = ref(true); const open = ref(true); let discardCount = 0;
   let close!: () => Promise<void>;
-  const Page = defineComponent({ setup() { const guard = useUnsavedGuard(() => open.value && dirty.value); close = () => guard(() => { open.value = false; }); return () => null; } });
+  const Page = defineComponent({ setup() { const guard = useUnsavedGuard(() => open.value && dirty.value, true, () => { discardCount++; }); close = () => guard(() => { open.value = false; }); return () => null; } });
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/edit", component: Page }, { path: "/done", component: { template: "Done" } }] });
   await router.push("/edit");
   wrapper = mount(RouterView, { global: { plugins: [pinia, router] } });
@@ -24,8 +24,11 @@ it("protects both editor dismissal and route changes without losing a kept draft
   expect(confirm.open).toBe(true);
   confirm.answer(false); await navigation;
   expect(router.currentRoute.value.path).toBe("/edit");
+  expect(discardCount).toBe(0);
   const discarded = close(); confirm.answer(true); await discarded;
   expect(open.value).toBe(false);
+  expect(discardCount).toBe(1);
   await router.push("/done");
   expect(router.currentRoute.value.path).toBe("/done");
+  expect(discardCount).toBe(1);
 });

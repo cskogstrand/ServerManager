@@ -43,7 +43,7 @@ interface Describe {
 function describe(e: ServerEvent): Describe | null {
   const d = e.data ?? {};
   const guid: string | undefined = d.guid || undefined;
-  const link = guid ? `/drivers/${encodeURIComponent(guid)}` : undefined;
+  const link = guid ? (guid.startsWith("source:") ? `/garage/cameras/${encodeURIComponent(guid)}` : `/drivers/${encodeURIComponent(guid)}`) : undefined;
   const who = d.name || (guid ? shortGuid(guid) : "Driver");
 
   switch (e.type) {
@@ -87,7 +87,8 @@ function describe(e: ServerEvent): Describe | null {
     case "media": {
       const clip = d.kind === "clip";
       // Deep-link straight to this media's lightbox: /drivers/:guid?media=:file.
-      const mediaLink = link && d.file ? `${link}?media=${encodeURIComponent(d.file)}` : link;
+      const destination = d.source_id ? `/garage/cameras/${encodeURIComponent(d.source_id)}` : link;
+      const mediaLink = destination && d.file ? `${destination}?media=${encodeURIComponent(d.file)}` : destination;
       return {
         icon: clip ? "film" : "camera", tone: "accent",
         text: `${clip ? "Clip" : "Picture"} saved${d.caption ? ` — ${d.caption}` : ""}`,

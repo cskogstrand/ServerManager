@@ -32,7 +32,7 @@ import {useAuthStore} from "@/stores/auth";
 import {useToastStore} from "@/stores/toast";
 import Icon from "@/components/ui/Icon.vue";
 import StreamTheater from "@/components/StreamTheater.vue";
-import WhepPlayer from "@/components/WhepPlayer.vue";
+import SourcePlayer from "@/components/SourcePlayer.vue";
 import BroadcastLeaderboard from "@/components/BroadcastLeaderboard.vue";
 
 interface CurrentEvent {
@@ -57,6 +57,7 @@ interface TrackMapMeta {
   margin: number;
 }
 
+const props = defineProps<{ targetInstanceId?: number }>();
 const route = useRoute();
 const server = useServerStore();
 const content = useContentStore();
@@ -79,7 +80,7 @@ const busiest = computed<InstanceState | undefined>(() => {
 });
 
 const instanceId = computed(() =>
-    autoMode.value ? (busiest.value?.id ?? -1) : Number(route.params.id),
+    autoMode.value ? (busiest.value?.id ?? -1) : (props.targetInstanceId ?? Number(route.params.id)),
 );
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
 const exitTo = computed(() => (autoMode.value ? "/" : `/server/${instanceId.value}`));
@@ -209,7 +210,12 @@ const timingRows = computed<TimingRow[]>(() =>
 // --- Focused car for the telemetry block: the leader, unless the operator
 // clicks another card. Falls back to the leader if that car drops out.
 const pinnedCarId = ref<number | null>(null);
+const cameraOverride = ref<string | null>(null);
+const playbackState = ref("Playback not confirmed");
+const fullscreen = ref(false);
+const isDevelopment = import.meta.env.DEV;
 const focusRow = computed<TimingRow | null>(() => {
+  if (cameraOverride.value) return null;
   const rows = timingRows.value;
   if (!rows.length) return null;
   if (pinnedCarId.value != null) {
@@ -220,7 +226,8 @@ const focusRow = computed<TimingRow | null>(() => {
 });
 
 function focusCar(id: number) {
-  pinnedCarId.value = pinnedCarId.value === id ? null : id;
+  cameraOverride.value = null;
+  pinnedCarId.value = id;
 }
 
 const rpmMax = computed(() => rpmCeiling(positions.value));
@@ -315,14 +322,15 @@ const driverStreams = useDriverStreams();
 const theaterOpen = ref(false);
 const theaterKey = ref<string | null>(null);
 const streamChannels = computed<StreamChannel[]>(() =>
-    debug.value ? demo.channels.value : driverStreams.allChannelsFor(drivers.value),
+    debug.value ? demo.channels.value : driverStreams.allChannelsFor(drivers.value).filter(c => c.instanceId === instanceId.value || drivers.value.some(d => d.guid === c.driverGuid)),
 );
 const onlineStreamCount = computed(() => streamChannels.value.filter((c) => c.online).length);
 // guid → resolved channel, so each driver card can look up its stream in O(1).
 const channelByGuid = computed(() => {
   const m = new Map<string, StreamChannel>();
   for (const c of streamChannels.value) {
-    if (c.key.startsWith("driver:")) m.set(c.key.slice("driver:".length), c);
+    if (c.driverGuid) m.set(c.driverGuid, c);
+    else if (debug.value && c.key.startsWith("driver:")) m.set(c.key.slice("driver:".length), c);
   }
   return m;
 });
@@ -341,9 +349,18 @@ function openTheater(key: string | null) {
   theaterOpen.value = true;
 }
 
-function openStream(carId: number) {
-  openTheater(`driver:${guidForCar(carId)}`);
+const featured = computed(() => cameraOverride.value ? streamChannels.value.find(c => c.key === cameraOverride.value) ?? null : focusRow.value ? channelForCar(focusRow.value.car_id) : streamChannels.value.find(c => !c.driverGuid) ?? null);
+function chooseCamera(channel: StreamChannel) {
+  const driver = drivers.value.find(d => d.guid === channel.driverGuid);
+  if (driver) focusCar(driver.car_id);
+  else { cameraOverride.value = channel.key; pinnedCarId.value = null; }
 }
+watch(() => featured.value?.key, () => { playbackState.value = 'Playback not confirmed'; });
+const captureTarget = computed(()=>featured.value?.key.startsWith('source:')?featured.value.key:featured.value?.driverGuid);
+const telemetryDelayed = computed(() => !telemetryOnline.value || (!debug.value && (cap.nowMs.value || Date.now()) - (telemetry.value?.last_position_ms ?? 0) > 5000));
+function fullscreenChanged() { fullscreen.value = !!document.fullscreenElement; }
+onMounted(() => document.addEventListener('fullscreenchange', fullscreenChanged));
+onBeforeUnmount(() => {document.removeEventListener('fullscreenchange', fullscreenChanged);if(document.fullscreenElement)void document.exitFullscreen();});
 
 // One card per driver, in running order, joined to its stream channel.
 interface DriverCard {
@@ -376,7 +393,7 @@ async function recordCar(guid: string | undefined) {
   try {
     if (cap.isRecording(guid)) {
       await cap.stopRecording(guid);
-      toast.success("Recording stopped — clip saved.");
+      toast.success("Recording stopped. The clip is being assembled; check Saved moments for the result.");
     } else {
       await cap.recordNow(guid);
       toast.info("Recording — clip ends with the next drift run.");
@@ -426,6 +443,7 @@ watch(activeTrack, (next, prev) => {
 watch(instanceId, (id, prev) => {
   if (id === prev) return;
   pinnedCarId.value = null;
+  cameraOverride.value = null;
   if (id > 0) {
     void fetchStatus();
     void fetchMapMeta();
@@ -435,8 +453,7 @@ watch(instanceId, (id, prev) => {
 // Fullscreen helps on a dedicated broadcast screen; best-effort only.
 function toggleFullscreen() {
   if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen().catch(() => {
-  });
+  else void document.documentElement.requestFullscreen().catch(() => { toast.error("Fullscreen is unavailable in this browser."); });
 }
 
 // Demo mode toggle + a "reshuffle" while it is on. Swapping `debug` flips every
@@ -485,7 +502,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="bcast isolate overflow-hidden bg-bg text-text select-none" :class="autoMode ? 'relative min-h-0 flex-1' : 'fixed inset-0 z-50'">
+  <div class="bcast pitlane-watch isolate bg-bg text-text" :class="[{'watch-fullscreen':fullscreen}, autoMode ? 'relative min-h-0 flex-1' : 'fixed inset-0 z-50']">
 
     <!-- ░░ Top strap ░░ -->
     <header class="absolute inset-x-0 top-0 z-30 flex h-16 items-center gap-2 px-3 @min-[640px]/broadcast:gap-4 @min-[640px]/broadcast:px-5">
@@ -578,7 +595,8 @@ onBeforeUnmount(() => {
                 ? 'border-accent/60 bg-accent-dim text-accent'
                 : 'border-line bg-surface/70 text-muted hover:border-line-hi hover:text-text'
             "
-              title="Toggle demo mode (client-side fake data)"
+              v-if="isDevelopment"
+              title="Toggle explicit sample telemetry (development only)"
               @click="toggleDebug"
           >
             <Icon name="shuffle" :size="16"/>
@@ -586,7 +604,7 @@ onBeforeUnmount(() => {
           <button
               type="button"
               class="grid size-8 place-items-center @min-[640px]/broadcast:size-9 rounded-md border border-line bg-surface/70 text-muted transition-colors hover:border-line-hi hover:text-text"
-              title="Toggle fullscreen"
+               :title="fullscreen ? 'Exit fullscreen' : 'Fullscreen'" :aria-label="fullscreen ? 'Exit fullscreen' : 'Fullscreen'"
               @click="toggleFullscreen"
           >
             <Icon name="maximize" :size="16"/>
@@ -602,13 +620,15 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- ░░ Two-column stage: map (1/2) + driver cards (1/2) ░░ -->
-    <div
-        v-if="!aggregate"
-        class="absolute inset-x-0 bottom-0 top-16 z-10 flex flex-col gap-3 px-3 pb-3 @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:gap-4 @min-[1024px]/broadcast:px-4 @min-[1024px]/broadcast:pb-4"
-    >
+    <div v-if="!aggregate" class="watch-workspace">
+      <div class="watch-context"><span>{{ debug ? 'Sample telemetry · development fixture' : 'Live camera, track and timing' }}</span><RouterLink v-if="auth.isAdmin" :to="featured ? `/garage/rigs?source=${encodeURIComponent(featured.key)}` : '/garage/rigs?cameras=1'" class="pitlane-button">Set up streams</RouterLink></div>
+      <div class="watch-stage">
+        <section class="watch-video-panel">
+          <SourcePlayer v-if="featured" :url="featured.url" :name="featured.title" selected @playing="playbackState='Playing'" @error="playbackState=$event" />
+          <div v-else class="watch-no-camera"><Icon name="camera" :size="32"/><h2>{{ focusRow ? `No camera linked to ${focusRow.name}` : 'No camera selected' }}</h2><p>Timing and positions remain available independently.</p><RouterLink v-if="auth.isAdmin" to="/garage/rigs?cameras=1" class="pitlane-button">Set up a stream</RouterLink></div>
+        </section>
       <section
-          class="relative [container-type:size] flex w-full min-h-0 shrink-0 basis-2/5 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30 backdrop-blur-sm @min-[1024px]/broadcast:w-1/2 @min-[1024px]/broadcast:basis-auto">
+          class="watch-map-panel relative [container-type:size] flex items-center justify-center overflow-hidden rounded-xl border border-line bg-surface/30">
         <div
             v-if="activeTrack && effectiveMapMeta && mapImageOk"
             class="bcast-map relative"
@@ -698,242 +718,17 @@ onBeforeUnmount(() => {
           </div>
         </Transition>
       </section>
-
-      <section class="w-full min-w-0 flex-1 overflow-hidden">
-        <TransitionGroup
-            v-if="driverCards.length"
-            tag="div"
-            name="tower"
-            class="flex h-full flex-col gap-3 overflow-y-auto pr-1"
-        >
-          <article
-              v-for="card in driverCards"
-              :key="card.row.car_id"
-              class="tower-card flex h-auto shrink-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-surface/60 shadow-sm backdrop-blur-md transition-all duration-200 @min-[1024px]/broadcast:h-[calc(50%-0.375rem)] @min-[1024px]/broadcast:flex-row"
-              :class="
-          focusRow?.car_id === card.row.car_id
-            ? 'border-accent bg-surface-2/80 ring-1 ring-accent/30'
-            : card.row.isLeader
-              ? 'border-accent/30 bg-accent-glow/5'
-              : 'border-line hover:border-line-hi hover:bg-surface/90'
-        "
-              @click="focusCar(card.row.car_id)"
-          >
-            <!-- Metrics side -->
-            <div class="flex w-full min-w-0 shrink-0 flex-col gap-3 p-4 @min-[1024px]/broadcast:w-auto @min-[1280px]/broadcast:w-72">
-              <!-- Identity: position · driver + car -->
-              <header class="flex items-center gap-3">
-                <span
-                    class="numerals grid size-9 shrink-0 place-items-center rounded-lg text-lg font-bold tabular-nums"
-                    :class="card.row.isLeader ? 'bg-accent text-bg' : 'bg-surface-3 text-muted'"
-                >
-                  {{ card.row.position }}
-                </span>
-                <img
-                    :src="carImageUrl(card.row.carModel, card.row.skin)"
-                    alt=""
-                    class="h-10 w-16 shrink-0 rounded border border-line bg-surface-4 object-cover @min-[1024px]/broadcast:hidden"
-                    @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
-                />
-                <div class="min-w-0 flex-1">
-                  <h4 class="truncate text-lg font-bold leading-tight text-text">{{ card.row.name }}</h4>
-                  <p class="truncate font-mono text-xs tracking-tight text-dim @min-[1024px]/broadcast:hidden">{{ carName(card.row.carModel) }}</p>
-                </div>
-                <!-- Driver-detail link (any role); capture controls live over the stream -->
-                <RouterLink
-                  v-if="guidForCar(card.row.car_id)"
-                  :to="{ name: 'driver-detail', params: { guid: guidForCar(card.row.car_id)! } }"
-                  target="_blank"
-                  title="Open driver detail"
-                  class="grid size-7 shrink-0 place-items-center rounded-md border border-line bg-surface-2/70 text-text/90 transition-colors hover:border-accent/50 hover:text-accent"
-                  @click.stop
-                >
-                  <Icon name="user" :size="14" />
-                </RouterLink>
-              </header>
-
-              <!-- Speed / gear + RPM bar -->
-              <div class="flex flex-1 flex-col justify-center gap-3">
-                <div class="flex items-end justify-between leading-none">
-                  <div class="flex items-baseline">
-                    <span class="numerals text-5xl font-light tabular-nums @min-[1280px]/broadcast:text-6xl">{{ speedKmh(card.row.pos) }}</span>
-                    <span class="ml-1 font-mono text-xs text-dim">km/h</span>
-                  </div>
-                  <div class="flex flex-col items-center">
-                    <span class="numerals text-4xl font-bold text-accent tabular-nums @min-[1280px]/broadcast:text-5xl">{{ gearLabel(card.row.pos) }}</span>
-                    <span class="mt-0.5 font-mono text-[9px] tracking-widest text-dim uppercase">Gear</span>
-                  </div>
-                </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
-                  <div
-                      class="h-full rounded-full transition-[width] duration-300 ease-linear"
-                      :class="rpmPct(card.row.pos) > 88 ? 'bg-danger' : rpmPct(card.row.pos) > 70 ? 'bg-warn' : 'bg-accent'"
-                      :style="{ width: `${rpmPct(card.row.pos)}%` }"
-                  />
-                </div>
-                <!-- Car name + livery, below the RPM bar where there is room.
-                     On mobile this moves inline into the name header. -->
-                <div class="mt-3 hidden flex-col gap-1.5 @min-[1024px]/broadcast:flex">
-                  <p class="truncate text-center font-mono text-xs tracking-tight text-dim">{{ carName(card.row.carModel) }}</p>
-                  <img
-                      :src="carImageUrl(card.row.carModel, card.row.skin)"
-                      alt=""
-                      class="h-28 w-full shrink-0 rounded border border-line bg-surface-4 object-cover shadow-sm"
-                      @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
-                  />
-                </div>
-              </div>
-
-              <!-- Drift servers swap the Gap/Lap racing rows for the live drift
-                   score; everyone else keeps the standings + lap times. -->
-              <footer
-                  class="border-t border-line/60 pt-3"
-                  :class="isDrift ? 'grid grid-cols-3 gap-2 @min-[1024px]/broadcast:flex @min-[1024px]/broadcast:flex-col @min-[1024px]/broadcast:gap-1.5' : 'flex flex-col gap-1.5'"
-              >
-                <template v-if="isDrift">
-                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Live</span>
-                    <span
-                        class="numerals text-lg font-semibold tabular-nums"
-                        :class="card.row.driftLive ? 'text-accent' : 'text-dim'"
-                    >
-                      {{ card.row.driftLive ? card.row.driftLive.toLocaleString() : "—" }}
-                    </span>
-                  </div>
-                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Best</span>
-                    <span
-                        class="numerals text-lg font-semibold tabular-nums"
-                        :class="card.row.driftBest ? 'text-accent' : 'text-dim'"
-                    >
-                      {{ card.row.driftBest ? card.row.driftBest.toLocaleString() : "—" }}
-                    </span>
-                  </div>
-                  <div class="flex flex-col items-center @min-[1024px]/broadcast:flex-row @min-[1024px]/broadcast:items-center @min-[1024px]/broadcast:justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Last</span>
-                    <span
-                        class="numerals text-lg font-medium tabular-nums"
-                        :class="card.row.driftLast ? 'text-text' : 'text-dim'"
-                    >
-                      {{ card.row.driftLast ? card.row.driftLast.toLocaleString() : "—" }}
-                    </span>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Gap</span>
-                    <span
-                        class="numerals text-lg font-semibold tracking-tight tabular-nums"
-                        :class="card.row.gapTone === 'leader' ? 'text-accent' : card.row.gapTone === 'warn' ? 'text-warn' : 'text-text'"
-                    >
-                      {{ card.row.gapLabel }}
-                    </span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Lap</span>
-                    <span class="numerals text-lg tabular-nums text-text">{{ card.row.laps }}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Last Lap</span>
-                    <span
-                        class="numerals text-lg font-medium tabular-nums"
-                        :class="card.row.last_lap_ms ? 'text-text' : 'text-dim'"
-                    >
-                      {{ lapTime(card.row.last_lap_ms) }}
-                    </span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs tracking-wider text-dim uppercase">Best Lap</span>
-                    <span
-                        class="numerals text-lg font-semibold tabular-nums"
-                        :class="card.row.best_lap_ms ? 'text-ok' : 'text-dim'"
-                    >
-                      {{ lapTime(card.row.best_lap_ms) }}
-                    </span>
-                  </div>
-                </template>
-              </footer>
-            </div>
-
-            <div class="relative aspect-video w-full min-h-0 flex-1 border-t border-line bg-bg @min-[1024px]/broadcast:aspect-auto @min-[1024px]/broadcast:w-auto @min-[1280px]/broadcast:border-l @min-[1280px]/broadcast:border-t-0">
-              <!-- Capture controls (operate role): top-left over the stream -->
-              <div
-                v-if="auth.canOperate && guidForCar(card.row.car_id)"
-                class="absolute left-3 top-3 z-10 flex items-center gap-1"
-              >
-                <button
-                  type="button"
-                  title="Take picture from this stream"
-                  class="grid size-8 place-items-center rounded-lg border border-line bg-bg/60 text-muted shadow-sm backdrop-blur transition-all hover:border-accent/60 hover:bg-bg/90 hover:text-accent disabled:opacity-40"
-                  :disabled="snappingGuids.has(guidForCar(card.row.car_id)!)"
-                  @click.stop="takePic(guidForCar(card.row.car_id))"
-                >
-                  <Icon name="camera" :size="14" />
-                </button>
-                <button
-                  type="button"
-                  :title="cap.isRecording(guidForCar(card.row.car_id)!) ? 'Stop recording and save the clip' : 'Record clip (ends with next drift run)'"
-                  class="flex h-8 items-center gap-1 rounded-lg border px-2 text-[10px] font-bold shadow-sm backdrop-blur transition-all"
-                  :class="cap.isRecording(guidForCar(card.row.car_id)!)
-                    ? 'border-danger/50 bg-danger-glow text-danger'
-                    : 'border-line bg-bg/60 text-muted hover:border-danger/50 hover:bg-bg/90 hover:text-danger'"
-                  @click.stop="recordCar(guidForCar(card.row.car_id))"
-                >
-                  <Icon :name="cap.isRecording(guidForCar(card.row.car_id)!) ? 'stop' : 'record'" :size="14" />
-                  <span v-if="cap.isRecording(guidForCar(card.row.car_id)!)">{{ fmtClipDuration(cap.manualElapsed(guidForCar(card.row.car_id)!)) }}</span>
-                </button>
-                <span
-                  v-if="cap.isBuffering(guidForCar(card.row.car_id)!)"
-                  class="size-1.5 rounded-full bg-ok live-dot"
-                  title="Rolling buffer recording — drift-run clips cut from this"
-                />
-              </div>
-              <div v-if="card.channel?.online && card.channel.kind === 'whep'" class="absolute inset-0">
-                <WhepPlayer :key="card.channel.key" :url="card.channel.url" minimal />
-              </div>
-              <iframe
-                  v-else-if="card.channel?.online"
-                  :src="card.channel.url"
-                  :title="card.row.name"
-                  class="absolute inset-0 size-full border-0"
-                  allow="autoplay; fullscreen; picture-in-picture"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-              />
-
-              <div v-else class="grid size-full place-items-center bg-surface-2/20">
-                <div class="flex flex-col items-center gap-2.5 text-dim">
-                  <div class="grid size-11 place-items-center rounded-full border border-line bg-surface/40">
-                    <Icon name="user" :size="18"/>
-                  </div>
-                  <span class="font-mono text-[11px] tracking-wider text-muted uppercase">
-                {{ card.channel ? "Stream Offline" : "No Stream Linked" }}
-              </span>
-                </div>
-              </div>
-
-              <button
-                  v-if="card.channel"
-                  type="button"
-                  class="absolute right-3 top-3 grid size-8 place-items-center rounded-lg border border-line bg-bg/60 text-muted shadow-sm backdrop-blur transition-all hover:border-accent/60 hover:bg-bg/90 hover:text-accent"
-                  :aria-label="`Watch ${card.row.name} fullscreen`"
-                  :title="`Watch ${card.row.name} fullscreen`"
-                  @click.stop="openStream(card.row.car_id)"
-              >
-                <Icon name="maximize" :size="13"/>
-              </button>
-            </div>
-          </article>
-        </TransitionGroup>
-
-        <div v-else class="grid h-full place-items-center rounded-xl border border-dashed border-line bg-surface/10">
-          <div class="flex flex-col items-center p-6 text-center">
-            <Icon name="broadcast" :size="36" class="animate-pulse text-dim"/>
-            <h3 class="numerals mt-4 text-xl tracking-tight text-muted">
-              {{ running ? "Waiting for competitors to join session…" : "Session is currently halted." }}
-            </h3>
-          </div>
-        </div>
-      </section>
+      </div>
+      <div class="watch-lower">
+        <section>
+          <div class="watch-featured-label"><div><h2>{{ featured?.title || focusRow?.name || 'Camera' }}</h2><p>{{ featured ? (featured.kind==='iframe'?'Embedded player · playback status not observable':playbackState) : 'No player configured' }}</p></div><button v-if="featured" class="pitlane-button" @click="openTheater(featured.key)">Enlarge camera</button></div>
+          <div v-if="focusRow" class="watch-instruments"><div><span>Speed</span><b>{{ telemetryDelayed ? '—' : speedKmh(focusRow.pos) }} <small>km/h</small></b></div><div><span>Gear</span><b>{{ telemetryDelayed ? '—' : gearLabel(focusRow.pos) }}</b></div><div><span>RPM</span><b>{{ telemetryDelayed ? '—' : focusRow.pos?.engine_rpm || '—' }}</b></div><div class="watch-rpm"><i :style="{width:rpmPct(focusRow.pos)+'%'}" /></div></div>
+          <p v-if="focusRow && telemetryDelayed" role="status" class="text-warn text-sm my-3">Position updates delayed. Last update: {{ telemetry?.last_position_ms ? new Date(telemetry.last_position_ms).toLocaleTimeString() : 'not received' }}. Last timing values are retained.</p>
+          <div v-if="auth.canOperate && captureTarget" class="pitlane-actions my-4"><button class="pitlane-button" :disabled="debug || !cap.isBuffering(captureTarget) || snappingGuids.has(captureTarget)" @click="takePic(captureTarget)">Snapshot</button><button class="pitlane-button" :disabled="debug || !cap.isBuffering(captureTarget) && !cap.isRecording(captureTarget)" @click="recordCar(captureTarget)">{{ cap.isRecording(captureTarget) ? `Stop recording · ${fmtClipDuration(cap.manualElapsed(captureTarget))}` : 'Record clip' }}</button><span class="text-xs text-muted">{{ cap.isBuffering(captureTarget)?'Recorder buffering':'Recorder not ready' }}</span><RouterLink :to="captureTarget.startsWith('source:')?`/garage/cameras/${encodeURIComponent(captureTarget)}`:`/drivers/${encodeURIComponent(captureTarget)}`" class="pitlane-button">Saved moments</RouterLink></div>
+          <div class="watch-camera-strip"><button v-for="channel in streamChannels" :key="channel.key" :aria-pressed="featured?.key===channel.key" @click="chooseCamera(channel)"><span>{{ channel.title }}</span><small>{{ channel.health === 'live' ? 'Status responding' : channel.health }}</small></button></div>
+        </section>
+        <section class="watch-timing"><h2>On the circuit</h2><div class="overflow-x-auto"><table><thead><tr><th>Pos</th><th>Driver</th><th>{{ isDrift?'Live drift':'Last lap' }}</th><th>{{ isDrift?'Best drift':'Best lap' }}</th><th>Gap</th></tr></thead><tbody><tr v-for="card in driverCards" :key="card.row.car_id" :class="{'watch-selected':focusRow?.car_id===card.row.car_id}"><td>{{ card.row.position }}</td><td><button @click="focusCar(card.row.car_id)" :aria-pressed="focusRow?.car_id===card.row.car_id"><img :src="carImageUrl(card.row.carModel,card.row.skin)" alt="" @error="($event.target as HTMLImageElement).hidden=true"/><span>{{ card.row.name }}<small>{{ carName(card.row.carModel) }}</small></span></button></td><td>{{ isDrift?card.row.driftLive.toLocaleString():lapTime(card.row.last_lap_ms) }}</td><td>{{ isDrift?card.row.driftBest.toLocaleString():lapTime(card.row.best_lap_ms) }}</td><td>{{ card.row.gapLabel }}</td></tr></tbody></table></div><p v-if="!driverCards.length" class="text-muted my-5">No drivers connected. Configured spectator cameras remain available.</p></section>
+      </div>
     </div>
 
     <!-- ░░ All-servers leaderboard: auto mode, nobody online ░░ -->
@@ -954,6 +749,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.pitlane-watch { overflow:auto; --watch-panel-height:clamp(300px,43vh,650px); }
+.watch-workspace{padding:80px 24px 36px;min-width:0}.watch-context{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;font-size:13px;color:var(--color-muted)}
+.watch-stage,.watch-lower{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.watch-video-panel,.watch-map-panel{height:var(--watch-panel-height);min-width:0;border:1px solid var(--color-line);border-radius:12px;overflow:hidden;background:#111b17}.watch-map-panel{padding:24px}.watch-lower{margin-top:22px}.watch-no-camera{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;color:#edf1e8}.watch-no-camera p{font-size:13px;color:#adb6aa}.watch-featured-label{display:flex;justify-content:space-between;align-items:center;gap:12px}.watch-featured-label h2,.watch-timing h2{font-size:20px;font-weight:550}.watch-featured-label p{font-size:12px;color:var(--color-muted);margin-top:7px}.watch-instruments{display:flex;position:relative;gap:40px;padding:24px 0}.watch-instruments span{display:block;color:var(--color-muted);font-size:12px;margin-bottom:6px}.watch-instruments b{font:28px var(--font-mono)}.watch-instruments small{font-size:12px}.watch-rpm{position:absolute;bottom:0;left:0;width:100%;height:4px;background:var(--color-line)}.watch-rpm i{display:block;height:100%;background:var(--color-accent)}.watch-camera-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:20px}.watch-camera-strip button{min-width:0;min-height:78px;padding:12px;border:1px solid var(--color-line);border-radius:9px;text-align:left}.watch-camera-strip button[aria-pressed=true]{border-color:var(--color-accent);background:var(--color-accent-dim)}.watch-camera-strip span{display:block;font-size:14px;overflow-wrap:anywhere}.watch-camera-strip small{display:block;margin-top:8px;color:var(--color-muted)}.watch-timing table{width:100%;font-size:13px;border-collapse:collapse;margin-top:12px}.watch-timing td,.watch-timing th{text-align:left;padding:12px 8px;border-bottom:1px solid var(--color-line)}.watch-timing th{font-size:11px;color:var(--color-muted)}.watch-timing button{display:flex;align-items:center;gap:10px;min-height:44px;text-align:left}.watch-timing img{width:50px;height:34px;object-fit:cover;border-radius:4px}.watch-timing small{display:block;font-size:11px;color:var(--color-muted)}.watch-selected{background:var(--color-accent-dim)}
+@media(min-width:1440px){.pitlane-watch.watch-fullscreen{--watch-panel-height:clamp(360px,48vh,900px)}.watch-fullscreen .watch-stage,.watch-fullscreen .watch-lower{gap:32px}.watch-fullscreen .watch-map-panel{padding:32px}.watch-fullscreen .puck>span:first-child{min-width:34px;min-height:34px}.watch-fullscreen .watch-camera-strip{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:767px){.watch-workspace{padding:80px 12px 24px}.watch-stage,.watch-lower{grid-template-columns:1fr;gap:16px}.watch-video-panel{height:auto;aspect-ratio:16/9}.watch-map-panel{height:340px}.watch-video-panel:has(.watch-no-camera){min-height:220px}.watch-camera-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.watch-instruments{gap:28px}}
 /* Stable-width numerals keep live timing readable as values update. */
 
 .numerals {

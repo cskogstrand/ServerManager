@@ -3,6 +3,8 @@ import { api } from "@/lib/api";
 import type { CacheCar, CacheTrack, CacheWeather } from "@/types/generated";
 import type { ServerEvent } from "@/lib/sse";
 
+export interface ContentMetadata {kind:string;key:string;layout:string;revision:number;display_name:string;tags:string[];notes:string;archived:boolean}
+
 export interface ContentJob {
   id: string;
   kind: string;
@@ -27,6 +29,7 @@ export interface ContentJob {
 
 export const useContentStore = defineStore("content", {
   state: () => ({
+    metadata: [] as ContentMetadata[],
     cars: [] as CacheCar[],
     tracks: [] as CacheTrack[],
     weathers: [] as CacheWeather[],
@@ -59,9 +62,13 @@ export const useContentStore = defineStore("content", {
       this.cars = cars.items;
       this.tracks = tracks.items;
       this.weathers = weathers.items;
+      await this.loadMetadata();
       this.loaded = true;
     },
 
+    async loadMetadata() {this.metadata=(await api.get<{items:ContentMetadata[]}>("/api/content/metadata")).items;},
+    localMetadata(kind:string,key:string|undefined,layout='') {return this.metadata.find(m=>m.kind===kind&&m.key===key&&m.layout===layout);},
+    isArchived(kind:string,key:string|undefined,layout='') {return this.metadata.some(m=>m.kind===kind&&m.key===key&&m.layout===layout&&m.archived);},
     async loadJobs() {
       const r = await api.get<{ jobs: ContentJob[] }>("/api/content/jobs/active");
       for (const job of r.jobs ?? []) this.upsertJob(job);
@@ -99,7 +106,7 @@ export const useContentStore = defineStore("content", {
     },
     trackByKey(key: string | undefined | null, config = ""): CacheTrack | undefined {
       if (!key) return undefined;
-      return this.tracks.find((t) => t.key === key && (t.config ?? "") === config) ?? this.tracks.find((t) => t.key === key);
+      return this.tracks.find((t) => t.key === key && (t.config ?? "") === config);
     },
 
     // Delete content from disk + cache, then drop the local copy. The track key

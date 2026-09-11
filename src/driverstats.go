@@ -111,9 +111,9 @@ type driverSummary struct {
 
 type driverDetail struct {
 	driverSummary
-	Results  []driverResult  `json:"results"`
-	Media    []mediaItem     `json:"media"`
-	Stream   *streamRef      `json:"stream"`
+	Results []driverResult `json:"results"`
+	Media   []mediaItem    `json:"media"`
+	Stream  *streamRef     `json:"stream"`
 	// session_history, not "sessions": driverSummary already marshals a "sessions"
 	// count, and two fields with the same JSON tag would collide.
 	Sessions []driverSession `json:"session_history"`
@@ -188,13 +188,13 @@ type sessionSearchRow struct {
 // so a driver can appear many times. Shape mirrors ScoreEntry in
 // webapp/src/types/driverStats.ts.
 type scoreEntry struct {
-	Id         string   `json:"id"`
-	Guid       string   `json:"guid"`
-	Driver     string   `json:"driver"`
-	Kind       string   `json:"kind"`
-	Date       int64    `json:"date"`
-	Track      trackRef `json:"track"`
-	Car        carRef   `json:"car"`
+	Id         string     `json:"id"`
+	Guid       string     `json:"guid"`
+	Driver     string     `json:"driver"`
+	Kind       string     `json:"kind"`
+	Date       int64      `json:"date"`
+	Track      trackRef   `json:"track"`
+	Car        carRef     `json:"car"`
 	Online     bool       `json:"online"`
 	DriftScore *int       `json:"drift_score,omitempty"`
 	BestLapMs  *int       `json:"best_lap_ms,omitempty"`
@@ -219,6 +219,7 @@ type driverRow struct {
 }
 
 type dsSessionRow struct {
+	executionID int64
 	id          int64
 	guid        string
 	// name is the driver's display name at session end, carried for the
@@ -269,6 +270,7 @@ type dsDriftFullRow struct {
 // dsDriftInsert is the payload captured under Instance.mu and written after the
 // lock is released.
 type dsDriftInsert struct {
+	executionID int64
 	guid        string
 	trackKey    string
 	trackConfig string
@@ -321,13 +323,14 @@ func sessionRowFromDriverLocked(d *DriverState, now int64) dsSessionRow {
 		start = now
 	}
 	return dsSessionRow{
-		guid:        d.Guid,
-		name:        d.Name,
-		sessionType: d.sessType,
-		carKey:      d.Car,
-		skinKey:     d.Skin,
-		trackKey:    d.sessTrack,
-		trackConfig: d.sessConfig,
+		executionID:   d.executionID,
+		guid:          d.Guid,
+		name:          d.Name,
+		sessionType:   d.sessType,
+		carKey:        d.Car,
+		skinKey:       d.Skin,
+		trackKey:      d.sessTrack,
+		trackConfig:   d.sessConfig,
 		startedAt:     start,
 		endedAt:       now,
 		laps:          d.Laps,
@@ -469,10 +472,10 @@ func (dba Dbaccess) insertDriverSession(instanceId int, r dsSessionRow) error {
 	_, err := dba.db.Exec(`
 INSERT INTO driver_session
   (driver_guid, instance_id, session_type, car_key, skin_key, track_key, track_config,
-   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id, connection_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+   started_at, ended_at, laps, best_lap_ms, finish_pos, entrants, drift_best, guest_driver_id, connection_id, execution_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.guid, instanceId, r.sessionType, r.carKey, r.skinKey, r.trackKey, r.trackConfig,
-		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.guestDriverId), nullableConnId(r.connectionId))
+		r.startedAt, r.endedAt, r.laps, r.bestLapMs, r.finishPos, r.entrants, r.driftBest, nullableId(r.guestDriverId), nullableConnId(r.connectionId), nullableConnId(r.executionID))
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -484,9 +487,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 // auto-capture can tag the resulting media with it (0 on error).
 func (dba Dbaccess) insertDriftRun(instanceId int, r dsDriftInsert) (int64, error) {
 	res, err := dba.db.Exec(`
-INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, guest_driver_id, connection_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.guestDriverId), nullableConnId(r.connectionId))
+INSERT INTO driver_drift_run (driver_guid, instance_id, track_key, track_config, car_key, score, ended_at, guest_driver_id, connection_id, execution_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.guid, instanceId, r.trackKey, r.trackConfig, r.carKey, r.score, r.endedAt, nullableId(r.guestDriverId), nullableConnId(r.connectionId), nullableConnId(r.executionID))
 	if err != nil {
 		return 0, tracerr.Wrap(err)
 	}
@@ -510,9 +513,9 @@ func nullableConnId(id int64) any {
 // returns its id. left_at stays NULL until the driver disconnects.
 func (dba Dbaccess) openDriverConnection(instanceId int, r dsConnInsert) (int64, error) {
 	res, err := dba.db.Exec(`
-INSERT INTO driver_connection (driver_guid, instance_id, joined_at, car_key, skin_key, track_key, track_config)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		r.guid, instanceId, r.joinedAt, r.carKey, r.skinKey, r.trackKey, r.trackConfig)
+INSERT INTO driver_connection (driver_guid, instance_id, joined_at, car_key, skin_key, track_key, track_config, execution_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT id FROM driving_execution WHERE instance_id=? AND state='live' ORDER BY id DESC LIMIT 1))`,
+		r.guid, instanceId, r.joinedAt, r.carKey, r.skinKey, r.trackKey, r.trackConfig, instanceId)
 	if err != nil {
 		return 0, tracerr.Wrap(err)
 	}
@@ -953,7 +956,7 @@ type mediaWithConn struct {
 // its connection id (0 when unknown/legacy).
 func (dba Dbaccess) queryDriverMediaRows(guid string) ([]mediaWithConn, error) {
 	rows, err := dba.db.Query(`
-SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, connection_id, drift_run_id, guest_driver_id
+SELECT id, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, connection_id, drift_run_id, guest_driver_id,COALESCE(source_id,'')
 FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
@@ -962,11 +965,11 @@ FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 	out := make([]mediaWithConn, 0)
 	for rows.Next() {
 		var id int64
-		var kind, path string
+		var kind, path, source string
 		var caption sql.NullString
 		var capturedAt int64
 		var durationS, triggerScore, triggerDelta, connId, driftRunId, guestId sql.NullInt64
-		if err := rows.Scan(&id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta, &connId, &driftRunId, &guestId); err != nil {
+		if err := rows.Scan(&id, &kind, &path, &caption, &capturedAt, &durationS, &triggerScore, &triggerDelta, &connId, &driftRunId, &guestId, &source); err != nil {
 			return nil, tracerr.Wrap(err)
 		}
 		m := mediaItem{
@@ -975,6 +978,9 @@ FROM driver_media WHERE driver_guid = ? ORDER BY captured_at DESC`, guid)
 			Url:        "/api/drivers/" + url.PathEscape(guid) + "/media/" + filepath.Base(path),
 			Caption:    caption.String,
 			CapturedAt: capturedAt,
+		}
+		if source != "" {
+			m.Url = "/api/sources/" + url.PathEscape(source) + "/media/" + filepath.Base(path)
 		}
 		if durationS.Valid {
 			v := int(durationS.Int64)
@@ -2035,7 +2041,7 @@ func apiDriverAvatar(c *gin.Context) {
 		return
 	}
 	// rel is set by us (avatars/<sanitized>.ext); Clean defends against surprises.
-	abs := filepath.Join(mediaBaseDir(), filepath.Clean("/"+rel)[1:])
+	abs := filepath.Join(mediaBaseDir(), filepath.Clean("/" + rel)[1:])
 	c.File(abs)
 }
 
@@ -2088,7 +2094,12 @@ func apiDriverMedia(c *gin.Context) {
 		apiNotFound(c)
 		return
 	}
-	abs := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid), file)
+	storage := guid
+	var source string
+	if Dba.db.QueryRow("SELECT COALESCE(source_id,'') FROM driver_media WHERE driver_guid=? AND path=? LIMIT 1", guid, file).Scan(&source) == nil && source != "" {
+		storage = source
+	}
+	abs := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(storage), file)
 	// ?download=1 forces a save dialog (Content-Disposition: attachment) instead
 	// of inline playback/preview.
 	if c.Query("download") != "" {

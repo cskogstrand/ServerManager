@@ -109,9 +109,21 @@ const create = () =>
     await loadMode(res.id);
   }));
 
+const duplicate = () => guard(async () => {
+  if (!form.value) return;
+  const copy = { ...form.value, name: `${form.value.name || "Scoring mode"} copy` };
+  const { id } = await api.post<{ id: number }>("/api/drift-scoring-modes", { name: copy.name });
+  await api.put(`/api/drift-scoring-mode/${id}`, { ...copy, id });
+  await reloadList();
+  await loadMode(id);
+  notice.value = "Independent scoring mode created.";
+});
+
 const save = () =>
   guard(async () => {
     if (!form.value || selectedId.value == null) return;
+    await reloadList();
+    if (selectedUsage.value && !await confirm.ask({title:"Update shared scoring mode?",message:`This changes ${selectedUsage.value} server or reusable setup references.`,detail:"Saved Pitlane driving sessions keep their reviewed scoring values.",confirmLabel:"Update shared mode"})) return;
     await api.put(`/api/drift-scoring-mode/${selectedId.value}`, form.value);
     await reloadList();
     markClean();
@@ -278,6 +290,7 @@ onMounted(() =>
           <Icon name="check" :size="15" />
           Save mode
         </Button>
+        <Button type="button" variant="ghost" :disabled="busy" @click="duplicate">Duplicate mode</Button>
         <span v-if="selectedUsage" class="text-xs text-dim">Used by {{ selectedUsage }} server/race setup reference{{ selectedUsage === 1 ? "" : "s" }}.</span>
       </div>
     </form>

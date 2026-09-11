@@ -41,7 +41,7 @@ const templates = computed(() =>
       label: "Drift Scoring",
       detail: "Reusable scoring modes, reset rules, multipliers and weights.",
       icon: "gauge",
-      visible: auth.canOperate,
+      visible: auth.isAdmin,
     },
   ].filter((t) => t.visible),
 );

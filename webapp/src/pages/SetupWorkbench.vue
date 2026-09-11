@@ -297,6 +297,7 @@ const runNow = () =>
     if (eid === null || iid === null || !runReady.value) return;
 
     server.selectInstance(iid);
+    if(runAction.value === "start"){await router.push(`/sessions/new?template=${eid}&instance=${iid}`);return}
     if (runAction.value === "repeat") {
       await api.put(`/api/instances/${iid}/runmode`, { run_mode: "repeat_event", repeat_event_id: eid });
       await api.post(`/api/server/start?instance=${iid}`);
@@ -306,12 +307,7 @@ const runNow = () =>
         await api.post(`/api/queue/event/${eid}?instance=${iid}`);
         queuedOn.value = iid;
       }
-      if (runAction.value === "start") {
-        await api.post(`/api/server/start?instance=${iid}`);
-        toast.success("Event queued and server starting.");
-      } else {
-        toast.success("Event queued.");
-      }
+      toast.success("Event queued.");
     }
     await refresh();
     void router.push(`/server/${iid}`);
@@ -539,14 +535,14 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
               v-model="runAction"
               :disabled="busy || queuedOn !== null"
               :options="[
-                { value: 'start', label: 'Queue & start server' },
+                { value: 'start', label: 'Review this driving session' },
                 { value: 'queue', label: 'Queue only' },
                 { value: 'repeat', label: 'Repeat & start server' },
               ]"
             />
           </FormRow>
 
-          <p v-if="runAction === 'start'" class="mb-3 text-sm text-muted">Adds this setup to the end of the run plan, then starts the first queued race. Races already ahead of it run first.</p>
+          <p v-if="runAction === 'start'" class="mb-3 text-sm text-muted">Opens an isolated driving-session draft. Review the exact setup before starting or scheduling it.</p>
           <p v-if="queuedOn !== null" role="status" class="mb-3 text-sm text-muted">Your setup is already queued. Retry starts the server without adding another copy.</p>
           <p v-if="queueLocked" role="status" class="mb-3 text-sm text-warn">This server is in repeat mode. Switch to its manual queue in the <RouterLink :to="`/queue?instance=${runInstanceId}`" class="underline">run plan</RouterLink> before adding races.</p>
 
@@ -559,7 +555,7 @@ const draftTrackVersion = computed(() => content.trackByKey(draft.value.track_ke
 
           <Button :variant="runReady ? 'success' : 'primary'" :disabled="busy || !runReady" @click="runNow">
             <Icon name="power" :size="15" />
-            {{ busy ? "Working…" : runAction === "queue" ? "Add to run plan" : queuedOn !== null ? "Retry start" : "Start server" }}
+            {{ busy ? "Working…" : runAction === "queue" ? "Add to run plan" : runAction === "start" ? "Review session" : "Start repeating setup" }}
           </Button>
         </template>
 

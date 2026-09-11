@@ -32,7 +32,7 @@ const active = computed(
 );
 
 function healthLabel(h: StreamHealthStatus): string {
-  return h === "live" ? "Live" : h === "offline" ? "Offline" : h === "unknown" ? "Status unknown" : "Not configured";
+  return h === "live" ? "Status responding" : h === "offline" ? "Offline" : h === "unknown" ? "Status unknown" : "Not configured";
 }
 function healthDot(h: StreamHealthStatus): string {
   return h === "live" ? "bg-ok" : h === "offline" ? "bg-danger" : "bg-dim";

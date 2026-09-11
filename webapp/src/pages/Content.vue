@@ -73,6 +73,10 @@ const tab = useQueryParam<"tracks" | "cars" | "weathers">(
   enumParam(["tracks", "cars", "weathers"] as const, "tracks"),
 );
 const search = useQueryParam("q", "");
+const showArchived=ref(false);
+function localName(kind:string,item:{key?:string;config?:string;name?:string}) {return content.localMetadata(kind,item.key,item.config??'')?.display_name||item.name||item.key||'';}
+function localTags(kind:string,item:{key?:string;config?:string}) {return content.localMetadata(kind,item.key,item.config??'')?.tags.join(' ')||'';}
+
 
 function defaultSortForTab(value = tab.value): string {
   return value === "weathers" ? "name" : "newest";
@@ -124,26 +128,28 @@ const trackCountryOptions = computed(() => optionList("All countries", content.t
 const filteredTracks = computed(() => {
   const q = search.value.toLowerCase();
   const rows = content.tracks.filter((t) => {
+    if(!showArchived.value&&content.isArchived("track",t.key,t.config??""))return false;
     if (trackCountry.value && t.country !== trackCountry.value) return false;
     if (minPitboxes.value !== null && (t.pitboxes ?? 0) < minPitboxes.value) return false;
-    return searchText([t.name, t.key, t.config, t.version, t.country, t.city, t.tags?.join(" ")]).includes(q);
+    return searchText([localName("track",t), localTags("track",t),t.name, t.key, t.config, t.version, t.country, t.city, t.tags?.join(" ")]).includes(q);
   });
   return sortRows(rows, trackSortValue);
 });
 const filteredCars = computed(() => {
   const q = search.value.toLowerCase();
   const rows = content.cars.filter((c) => {
+    if(!showArchived.value&&content.isArchived("car",c.key))return false;
     if (carBrand.value && c.brand !== carBrand.value) return false;
     if (carClass.value && c.class !== carClass.value) return false;
     if (minPower.value !== null && carPower(c) < minPower.value) return false;
-    return searchText([c.name, c.key, c.brand, c.class, c.tags?.join(" ")]).includes(q);
+    return searchText([localName("car",c),localTags("car",c),c.name, c.key, c.brand, c.class, c.tags?.join(" ")]).includes(q);
   });
   return sortRows(rows, carSortValue);
 });
 const filteredWeathers = computed(() => {
   const q = search.value.toLowerCase();
   return content.weathers
-    .filter((w) => searchText([w.name, w.key]).includes(q))
+    .filter((w) => (showArchived.value||!content.isArchived("weather",w.key))&&searchText([localName("weather",w),localTags("weather",w),w.name, w.key]).includes(q))
     .sort((a, b) => byText(a.name ?? a.key, b.name ?? b.key));
 });
 const visibleCount = computed(() => {
@@ -965,7 +971,7 @@ function jobMeta(job: ContentJob): string[] {
 
 <template>
   <PageHeader
-    title="Content"
+    title="Cars & tracks"
     subtitle="Browse installed tracks, cars, and weather; upload, delete, or rebuild the content cache."
     icon="content"
   >
@@ -986,6 +992,7 @@ function jobMeta(job: ContentJob): string[] {
       </Button>
     </template>
   </PageHeader>
+<label class="flex items-center gap-3 mb-6 text-sm"><input v-model="showArchived" type="checkbox"/>Include archived content</label>
 
   <div class="grid items-start gap-5 xl:grid-cols-[1fr_360px]">
     <!-- Library -->
@@ -1068,7 +1075,7 @@ function jobMeta(job: ContentJob): string[] {
               class="aspect-video w-full"
             />
             <div class="p-2">
-              <div class="truncate text-sm font-medium">{{ t.name }}</div>
+              <div class="truncate text-sm font-medium">{{ localName("track",t) }}</div>
               <div class="text-xs text-dim">
                 {{ t.config || "default" }}<span v-if="t.version"> · version {{ t.version }}</span> · {{ t.pitboxes }} pits<span v-if="formatDate(t.modified_at)"> · {{ formatDate(t.modified_at) }}</span>
               </div>
@@ -1104,7 +1111,7 @@ function jobMeta(job: ContentJob): string[] {
               <div v-else class="grid size-full place-items-center text-xs text-dim">No preview</div>
             </div>
             <div class="p-2">
-              <div class="truncate text-sm font-medium">{{ c.name }}</div>
+              <div class="truncate text-sm font-medium">{{ localName("car",c) }}</div>
               <div class="text-xs text-dim">
                 {{ c.brand || "Unknown" }}<span v-if="carPowerLabel(c)"> · {{ carPowerLabel(c) }}</span> · {{ c.skins?.length ?? 0 }} skins<span v-if="formatDate(c.modified_at)"> · {{ formatDate(c.modified_at) }}</span>
               </div>
@@ -1123,7 +1130,7 @@ function jobMeta(job: ContentJob): string[] {
 
       <div v-else class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="w in filteredWeathers" :key="w.key" class="flex items-center gap-2 rounded-md border border-line p-2 text-sm">
-          <span class="min-w-0 flex-1 truncate">{{ w.name }}</span>
+          <RouterLink :to="`/garage/content/weather/${encodeURIComponent(w.key??'')}`" class="min-w-0 flex-1 truncate underline">{{ localName("weather",w) }}</RouterLink>
           <button
             type="button"
             class="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition hover:bg-danger-glow hover:text-danger"
@@ -1316,6 +1323,7 @@ function jobMeta(job: ContentJob): string[] {
       </div>
     </template>
     <template #footer>
+      <RouterLink v-if="selectedTrack" :to="`/garage/content/track/${encodeURIComponent(selectedTrack.key??'')}?layout=${encodeURIComponent(selectedTrack.config??'')}`" class="pitlane-button primary">Manage layout, notes & archive</RouterLink>
       <Button variant="ghost" @click="selectedTrack = null">Close</Button>
     </template>
   </Sheet>
@@ -1390,6 +1398,7 @@ function jobMeta(job: ContentJob): string[] {
       <p v-if="carDescText" class="mt-4 text-sm leading-relaxed whitespace-pre-line text-muted">{{ carDescText }}</p>
     </template>
     <template #footer>
+      <RouterLink v-if="selectedCar" :to="`/garage/content/car/${encodeURIComponent(selectedCar.key??'')}`" class="pitlane-button primary">Manage car, notes & archive</RouterLink>
       <Button variant="ghost" @click="selectedCar = null">Close</Button>
     </template>
   </Sheet>

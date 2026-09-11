@@ -110,7 +110,7 @@ func normalizeDriftScoringMode(mode DriftScoringMode) DriftScoringMode {
 }
 
 func open(name string) Dbaccess {
-	db, err := sql.Open("sqlite3", "file:"+name+"?_foreign_keys=on")
+	db, err := sql.Open("sqlite3", "file:"+name+"?_foreign_keys=on&_busy_timeout=5000&_txlock=immediate")
 	if err != nil {
 		log.Fatal("Could not open sqlite database: ", name, err)
 	}
@@ -208,6 +208,12 @@ func (dba Dbaccess) applySchema(filePath string) {
 		{"driver_media", "connection_id", "INTEGER"},
 		// Per-capture guest attribution for standalone manual recordings.
 		{"driver_media", "guest_driver_id", "INTEGER"},
+		{"driver_media", "execution_id", "INTEGER"},
+		{"driver_media", "source_id", "TEXT"},
+		{"driving_execution", "request_json", "TEXT NOT NULL DEFAULT ''"},
+		{"driver_connection", "execution_id", "INTEGER"},
+		{"driver_session", "execution_id", "INTEGER"},
+		{"driver_drift_run", "execution_id", "INTEGER"},
 		// Drift auto-capture settings.
 		{"user_config", "capture_enabled", "INTEGER NOT NULL DEFAULT 1"},
 		{"user_config", "capture_screenshots", "INTEGER NOT NULL DEFAULT 1"},
@@ -348,6 +354,13 @@ func (dba Dbaccess) selectDropDownList(filled bool, tableName string) ([]DropDow
 	where := ""
 	if filled {
 		where = " WHERE filled = 1"
+	}
+	privateColumn := map[string]string{"user_class": "class_id", "user_time": "time_id", "user_session": "session_id", "user_difficulty": "difficulty_id", "drift_scoring_mode": "drift_scoring_mode_id"}[tableName]
+	if privateColumn != "" {
+		if where == "" {
+			where = " WHERE 1=1"
+		}
+		where += " AND id NOT IN (SELECT " + privateColumn + " FROM user_event JOIN driving_setup ON driving_setup.event_id=user_event.id WHERE " + privateColumn + " IS NOT NULL)"
 	}
 	rows, err := dba.db.Query("SELECT id, name from " + tableName + where + " ORDER BY id")
 	if err != nil {
@@ -988,7 +1001,7 @@ func (dba Dbaccess) selectEvent(id int) (UserEvent, error) {
 
 func (dba Dbaccess) selectEventList() ([]UserEventList, error) {
 	ddl := make([]UserEventList, 0)
-	rows, err := dba.db.Query("SELECT s.id, t.name, s.event_category_id, s.name from user_event s JOIN cache_track t on s.cache_track_key = t.key AND s.cache_track_config = t.config")
+	rows, err := dba.db.Query("SELECT s.id, t.name, s.event_category_id, s.name from user_event s JOIN cache_track t on s.cache_track_key = t.key AND s.cache_track_config = t.config WHERE s.id NOT IN (SELECT event_id FROM driving_setup)")
 
 	if err != nil {
 		return ddl, err
@@ -1070,7 +1083,7 @@ func (dba Dbaccess) deleteEvent(id int) (int64, error) {
 // given foreign-key column, keyed by preset id. The column name is supplied by
 // the caller from a fixed whitelist — never from request input.
 func (dba Dbaccess) presetUsageCounts(column string) (map[int]int, error) {
-	rows, err := dba.db.Query("SELECT " + column + ", COUNT(*) FROM user_event WHERE " + column + " IS NOT NULL GROUP BY " + column)
+	rows, err := dba.db.Query("SELECT " + column + ", COUNT(*) FROM user_event WHERE " + column + " IS NOT NULL AND id NOT IN (SELECT event_id FROM driving_setup) GROUP BY " + column)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -1279,7 +1292,7 @@ JOIN user_class_entry ce
 	on s.class_id = ce.user_class_id
 JOIN user_time tw
 	on s.time_id = tw.id
-WHERE s.event_category_id = ?
+WHERE s.event_category_id = ? AND s.id NOT IN (SELECT event_id FROM driving_setup)
 GROUP BY s.id`
 
 	rows, err := dba.db.Query(query, id)
@@ -2381,29 +2394,16 @@ func (dba Dbaccess) selectCacheTrack(trackkey string, trackconfig string) (Cache
 	t := CacheTrack{}
 	var tags string
 
-	if trackconfig == "" {
-		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track WHERE key = ? LIMIT 1")
-		if err != nil {
-			return t, err
-		}
-		defer stmt.Close()
-		err = stmt.QueryRow(trackkey).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt)
-		if err != nil {
-			return t, err
-		}
-	} else {
-		stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track WHERE key = ? AND config = ? LIMIT 1")
-		if err != nil {
-			return t, err
-		}
-		defer stmt.Close()
-		err = stmt.QueryRow(trackkey, trackconfig).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt)
-		if err != nil {
-			return t, err
-		}
+	stmt, err := dba.db.Prepare("SELECT key, config, name, desc, tags, country, city, length, width, pitboxes, run, version, content_path, modified_at FROM cache_track WHERE key = ? AND config = ? LIMIT 1")
+	if err != nil {
+		return t, err
+	}
+	defer stmt.Close()
+	if err = stmt.QueryRow(trackkey, trackconfig).Scan(&t.Key, &t.Config, &t.Name, &t.Desc, &tags, &t.Country, &t.City, &t.Length, &t.Width, &t.Pitboxes, &t.Run, &t.Version, &t.ContentPath, &t.ModifiedAt); err != nil {
+		return t, err
 	}
 
-	err := json.Unmarshal([]byte(tags), &t.Tags)
+	err = json.Unmarshal([]byte(tags), &t.Tags)
 	if err != nil {
 		return t, err
 	}

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -22,6 +21,9 @@ type ZipFile struct {
 }
 
 func (zf *ZipFile) Open() {
+	if zf.zipFile != nil {
+		return
+	}
 	zr, err := zip.OpenReader(filepath.Join(ConfigFolder, "smcontent.zip"))
 	zf.zipFile = zr
 
@@ -35,6 +37,7 @@ func (zf *ZipFile) Close() {
 		return
 	}
 	err := zf.zipFile.Close()
+	zf.zipFile = nil
 	if err != nil {
 		log.Print("Could not close smcontent.zip", err)
 	}
@@ -144,185 +147,96 @@ func (zf *ZipFile) ExtractFiles(zi []*zip.File, filePath string) {
 	}
 }
 
-// Creates and updates smcontent.zip
-func (zf *ZipFile) UpdateZipfile(filesToZip map[string]string) {
-	zipfilename := filepath.Join(ConfigFolder, "smcontent.zip")
-	if _, err := os.Stat(zipfilename); errors.Is(err, os.ErrNotExist) {
-		newfile, err := os.Create(zipfilename)
-		if err != nil {
-			log.Print("Could not create smcontent.zip", err)
-		}
-		defer newfile.Close()
-
-		w := zip.NewWriter(newfile)
-
-		f, err := w.Create("readme.txt")
-		if err != nil {
-			log.Print("(warning) Failed to create readme.txt", err)
-		}
-		_, err = f.Write([]byte("This archive is maintained by servermanager."))
-		if err != nil {
-			log.Print("(warning) Failed to write readme.txt", err)
-		}
-
-		err = w.Close()
-		if err != nil {
-			log.Print("Failed to close readme.txt", err)
+// Rebuild from the current inventory, retaining unchanged compressed entries.
+// Close the complete temporary archive before atomically replacing the old one.
+func (zf *ZipFile) UpdateZipfile(filesToZip map[string]string) error {
+	filename := filepath.Join(ConfigFolder, "smcontent.zip")
+	previous, err := zip.OpenReader(filename)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	old := map[string]*zip.File{}
+	if previous != nil {
+		defer previous.Close()
+		for _, entry := range previous.File {
+			old[entry.Name] = entry
 		}
 	}
-
-	zr, err := zip.OpenReader(zipfilename)
+	temp, err := os.CreateTemp(ConfigFolder, "smcontent-*.zip")
 	if err != nil {
-		log.Print("Failed to open zip file", err)
+		return err
 	}
-	defer zr.Close()
-	zwf, err := os.Create(zipfilename + "_")
-	if err != nil {
-		log.Print("Failed to create backup zip file", err)
-	}
-	defer zwf.Close()
-	zw := zip.NewWriter(zwf)
-	defer zwf.Close()
-
-	log.Print("Compressing files...")
-
-	defer zw.Close()
-	var wg sync.WaitGroup
-
+	defer os.Remove(temp.Name())
+	defer temp.Close()
+	writer := zip.NewWriter(temp)
+	defer writer.Close()
 	keys := make([]string, 0, len(filesToZip))
-	for k := range filesToZip {
-		keys = append(keys, k)
+	for key := range filesToZip {
+		keys = append(keys, key)
 	}
-
-	// sort keys by name, insensitively
-	// ponytail: ToLower compare drops the sortfold dep; exact for the ASCII file paths here.
-	sort.Slice(keys, func(i, j int) bool {
-		return strings.ToLower(keys[i]) < strings.ToLower(keys[j])
-	})
-
-	newFiles := make([]string, 0)
-	for _, filepath := range keys {
-		destination := filesToZip[filepath]
-		wg.Add(1)
-		func() {
-			defer wg.Done()
-
-			src, err := os.Open(filepath)
-			if err != nil {
-				log.Print("Could not open file for reading: ", err)
-			}
-
-			fi, err := src.Stat()
-			if err != nil {
-				log.Print("Could not stat file: ", err)
-			}
-
-			// Skip file if it already exists and has the same timestamp
-			for _, zipItem := range zr.File {
-				if zipItem.Name == destination && zipItem.Modified.Unix() == fi.ModTime().Unix() {
-					return
-				}
-			}
-
-			fih := &zip.FileHeader{
-				Name:     destination,
-				Method:   zip.Deflate,
-				Modified: fi.ModTime(),
-			}
-
-			dest, err := zw.CreateHeader(fih)
-			if err != nil {
-				log.Print("Failed to create file header", err)
-			}
-
-			defer src.Close()
-			if strings.HasSuffix(filepath, ".jpg") || strings.HasSuffix(filepath, ".jpeg") {
-				img, err := jpeg.Decode(src)
-
-				if err != nil {
-					if _, err := io.Copy(dest, src); err != nil {
-						log.Print("Failed to copy jpg: ", err)
-					}
-					return
-				}
-
-				width := 640
-				height := int(float32(img.Bounds().Max.Y) / float32(img.Bounds().Max.X) * float32(width))
-				if img.Bounds().Max.X < width {
-					width = img.Bounds().Max.X
-					height = img.Bounds().Max.Y
-				}
-
-				dst := image.NewRGBA(image.Rect(0, 0, width, height))
-				draw.BiLinear.Scale(dst, dst.Rect, img, img.Bounds(), draw.Over, nil)
-
-				jpeg.Encode(dest, dst, &jpeg.Options{
-					Quality: jpeg.DefaultQuality,
-				})
-			} else if strings.HasSuffix(filepath, ".png") {
-				img, err := png.Decode(src)
-
-				if err != nil {
-					if _, err := io.Copy(dest, src); err != nil {
-						log.Print("Failed to copy png: ", err)
-					}
-					return
-				}
-
-				width := 640
-				height := int(float32(img.Bounds().Max.Y) / float32(img.Bounds().Max.X) * float32(width))
-				if img.Bounds().Max.X < width {
-					width = img.Bounds().Max.X
-					height = img.Bounds().Max.Y
-				}
-
-				dst := image.NewRGBA(image.Rect(0, 0, width, height))
-				draw.NearestNeighbor.Scale(dst, dst.Rect, img, img.Bounds(), draw.Over, nil)
-
-				png.Encode(dest, dst)
-			} else {
-				if _, err := io.Copy(dest, src); err != nil {
-					log.Print("Failed to copy file: ", err)
-				}
-			}
-
-			newFiles = append(newFiles, destination)
-		}()
-	}
-
-	wg.Wait()
-
-	log.Print("Copying zipfile content...")
-	inNewFiles := func(value string) bool {
-		for _, item := range newFiles {
-			if strings.EqualFold(item, value) {
-				return true
-			}
-		}
-		return false
-	}
-
-	for _, zipItem := range zr.File {
-		if inNewFiles(zipItem.Name) {
-			continue
-		}
-
-		zipItemReader, err := zipItem.OpenRaw()
-		if err != nil {
-			log.Print("Failed to open zipitem: ", err)
-		}
-
-		header := zipItem.FileHeader
-		targetItem, err := zw.CreateRaw(&header)
-		if err != nil {
-			log.Print("Failed to create header for zipitem: ", err)
-		}
-		_, err = io.Copy(targetItem, zipItemReader)
-		if err != nil {
-			log.Print("Failed to copy zipitem: ", err)
+	sort.Strings(keys)
+	for _, path := range keys {
+		if err = writeContentEntry(writer, old[filesToZip[path]], path, filesToZip[path]); err != nil {
+			return err
 		}
 	}
+	if err = writer.Close(); err != nil {
+		return err
+	}
+	if err = temp.Sync(); err != nil {
+		return err
+	}
+	if err = temp.Close(); err != nil {
+		return err
+	}
+	if previous != nil {
+		previous.Close()
+	}
+	zf.Close()
+	return os.Rename(temp.Name(), filename)
+}
 
-	os.Remove(zipfilename)
-	os.Rename(zipfilename+"_", zipfilename)
+func writeContentEntry(writer *zip.Writer, old *zip.File, path, destination string) error {
+	source, err := os.Open(path)
+	// The parser includes both Windows and Linux executables. Only the installed
+	// platform is required; launch readiness validates its executable explicitly.
+	if errors.Is(err, os.ErrNotExist) {
+		log.Printf("Content archive: absent file %s", path)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	info, err := source.Stat()
+	if err != nil {
+		return err
+	}
+	if old != nil && old.Modified.Unix() == info.ModTime().Unix() {
+		return writer.Copy(old)
+	}
+	header := &zip.FileHeader{Name: destination, Method: zip.Deflate, Modified: info.ModTime()}
+	output, err := writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	extension := strings.ToLower(filepath.Ext(path))
+	if extension == ".jpg" || extension == ".jpeg" || extension == ".png" {
+		img, _, decodeErr := image.Decode(source)
+		if decodeErr == nil {
+			width := min(640, img.Bounds().Dx())
+			height := max(1, int(float64(img.Bounds().Dy())/float64(img.Bounds().Dx())*float64(width)))
+			resized := image.NewRGBA(image.Rect(0, 0, width, height))
+			draw.BiLinear.Scale(resized, resized.Rect, img, img.Bounds(), draw.Over, nil)
+			if extension == ".png" {
+				return png.Encode(output, resized)
+			}
+			return jpeg.Encode(output, resized, &jpeg.Options{Quality: jpeg.DefaultQuality})
+		}
+		if _, err = source.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+	}
+	_, err = io.Copy(output, source)
+	return err
 }

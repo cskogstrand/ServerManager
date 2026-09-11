@@ -60,27 +60,31 @@ const (
 )
 
 type captureRequest struct {
-	guid        string
-	driverName  string
-	trackKey    string
-	trackConfig string
-	score       int   // peak score of the run
-	delta       int   // peak - baseline
-	runStartMs  int64 // when the run's live score first rose from zero
-	runEndMs    int64 // when the run ended
-	peakMs      int64 // when the peak score occurred (screenshot moment)
-	driftRunId  int64 // driver_drift_run row this capture belongs to (0 = unknown)
-	connectionId int64 // driver_connection (session) this capture belongs to (0 = unknown)
+	sourceKey     string
+	guestDriverID int
+	executionID   int64
+	guid          string
+	driverName    string
+	trackKey      string
+	trackConfig   string
+	score         int   // peak score of the run
+	delta         int   // peak - baseline
+	runStartMs    int64 // when the run's live score first rose from zero
+	runEndMs      int64 // when the run ended
+	peakMs        int64 // when the peak score occurred (screenshot moment)
+	driftRunId    int64 // driver_drift_run row this capture belongs to (0 = unknown)
+	connectionId  int64 // driver_connection (session) this capture belongs to (0 = unknown)
 }
 
 type captureManager struct {
 	enabled bool   // ffmpeg present on PATH
 	ffmpeg  string // resolved ffmpeg binary
 
-	mu         sync.Mutex
-	armedGuids map[string]bool // driver guids with a usable capture URL
-	cfg        captureSettings // tunables from user_config
-	recent     []int64         // unix-ms of recent captures (global rate window)
+	mu               sync.Mutex
+	autoSourceByGuid map[string]string
+	armedGuids       map[string]bool // driver guids with a usable capture URL
+	cfg              captureSettings // tunables from user_config
+	recent           []int64         // unix-ms of recent captures (global rate window)
 
 	sem chan struct{} // spike-assembly concurrency limiter
 
@@ -132,10 +136,25 @@ func (m *captureManager) refresh() {
 	}
 	cfg := loadCaptureSettings()
 	guids, err := Dba.selectCaptureGuids()
+	autoSources := map[string]string{}
+	if sources, e := Dba.cameraSources(); e == nil {
+		for _, source := range sources {
+			if source.Enabled && source.DriverGUID != "" && source.CaptureURL != "" {
+				key := source.DriverGUID
+				if strings.HasPrefix(source.ID, "source:") {
+					key = source.ID
+				}
+				if autoSources[source.DriverGUID] == "" || key == source.DriverGUID {
+					autoSources[source.DriverGUID] = key
+				}
+			}
+		}
+	}
 	m.mu.Lock()
 	m.cfg = cfg
 	if err == nil {
 		m.armedGuids = guids
+		m.autoSourceByGuid = autoSources
 	}
 	m.mu.Unlock()
 	if err != nil {
@@ -156,6 +175,7 @@ func (m *captureManager) submit(req captureRequest) {
 	now := time.Now().UnixMilli()
 
 	m.mu.Lock()
+	req.sourceKey = m.autoSourceByGuid[req.guid]
 	cutoff := now - 60_000
 	kept := m.recent[:0]
 	for _, t := range m.recent {
@@ -196,15 +216,17 @@ func (m *captureManager) run(req captureRequest) {
 	}
 
 	guid := req.guid
+	if req.sourceKey != "" {
+		guid = req.sourceKey
+	}
 	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		log.Print("driver capture: mkdir: ", err)
 		return
 	}
 
-	const preMs, postMs = 3000, 3000
-	startMs := req.runStartMs - preMs
-	endMs := req.runEndMs + postMs
+	startMs := req.runStartMs
+	endMs := req.runEndMs
 	// Never ask for more than the buffer can hold.
 	if maxSpan := int64(bufRingSeconds-5) * 1000; endMs-startMs > maxSpan {
 		startMs = endMs - maxSpan
@@ -233,7 +255,7 @@ func (m *captureManager) run(req captureRequest) {
 		}
 		if m.grabFrameFromFile(clipPath, offset, filepath.Join(dir, shot)) {
 			caption := fmt.Sprintf("Drift spike — %s pts", groupThousands(req.score))
-			if err := Dba.insertDriverMedia(guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta, req.driftRunId, req.connectionId); err != nil {
+			if err := Dba.insertDriverMedia(guid, "screenshot", shot, caption, at.UnixMilli(), 0, req.score, req.delta, req.driftRunId, req.connectionId, req.guestDriverID, req.executionID, req.guid); err != nil {
 				log.Print("driver capture: insert screenshot: ", err)
 			}
 		}
@@ -244,7 +266,7 @@ func (m *captureManager) run(req captureRequest) {
 		if trackName != "" {
 			caption += " · " + trackName
 		}
-		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), durS, req.score, req.delta, req.driftRunId, req.connectionId); err != nil {
+		if err := Dba.insertDriverMedia(guid, "clip", clipFile, caption, at.UnixMilli(), durS, req.score, req.delta, req.driftRunId, req.connectionId, req.guestDriverID, req.executionID, req.guid); err != nil {
 			log.Print("driver capture: insert clip: ", err)
 		}
 	} else {
@@ -255,6 +277,11 @@ func (m *captureManager) run(req captureRequest) {
 }
 
 func (m *captureManager) captureURLFor(guid string) string {
+	if strings.HasPrefix(guid, "source:") {
+		var source string
+		_ = Dba.db.QueryRow("SELECT capture_url FROM camera_source WHERE id=? AND enabled=1", strings.TrimPrefix(guid, "source:")).Scan(&source)
+		return strings.TrimSpace(source)
+	}
 	streams, err := Dba.selectDriverStreamsByGuids([]string{guid})
 	if err != nil {
 		return ""
@@ -369,7 +396,8 @@ type mediaRow struct {
 func (dba Dbaccess) selectCaptureGuids() (map[string]bool, error) {
 	rows, err := dba.db.Query(`
 SELECT driver_guid FROM driver_stream
-WHERE enabled = 1 AND stream_capture_url IS NOT NULL AND TRIM(stream_capture_url) <> ''`)
+WHERE enabled = 1 AND stream_capture_url IS NOT NULL AND TRIM(stream_capture_url) <> ''
+ UNION ALL SELECT 'source:'||id FROM camera_source WHERE enabled=1 AND TRIM(capture_url)<>''`)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -387,7 +415,15 @@ WHERE enabled = 1 AND stream_capture_url IS NOT NULL AND TRIM(stream_capture_url
 	return out, rows.Err()
 }
 
-func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, capturedAt int64, durationS, triggerScore, triggerDelta int, driftRunId, connectionId int64) error {
+func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, capturedAt int64, durationS, triggerScore, triggerDelta int, driftRunId, connectionId int64, guestDriverID int, executionID int64, ownerGuids ...string) error {
+	sourceID := ""
+	if strings.HasPrefix(guid, "source:") {
+		sourceID = guid
+		guid = ""
+		if len(ownerGuids) > 0 {
+			guid = ownerGuids[0]
+		}
+	}
 	var dur, ts, td, runId, connId sql.NullInt64
 	if durationS > 0 {
 		dur = sql.NullInt64{Int64: int64(durationS), Valid: true}
@@ -406,16 +442,16 @@ func (dba Dbaccess) insertDriverMedia(guid, kind, path, caption string, captured
 		connId = sql.NullInt64{Int64: connectionId, Valid: true}
 	}
 	_, err := dba.db.Exec(`
-INSERT INTO driver_media (driver_guid, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, drift_run_id, connection_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		guid, kind, path, caption, capturedAt, dur, ts, td, runId, connId)
+INSERT INTO driver_media (driver_guid, kind, path, caption, captured_at, duration_s, trigger_score, trigger_delta, drift_run_id, connection_id, guest_driver_id, execution_id, source_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		guid, kind, path, caption, capturedAt, dur, ts, td, runId, connId, nullableId(guestDriverID), nullableConnId(executionID), sourceID)
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
 	// One emit here covers every capture path (auto clip/screenshot, manual clip,
 	// snapshot). instance 0: capture isn't instance-scoped; the feed routes by guid.
 	Events.Publish("media", 0, map[string]any{
-		"guid": guid, "kind": kind, "caption": caption,
+		"guid": guid, "source_id": sourceID, "kind": kind, "caption": caption,
 		"file": filepath.Base(path), "score": triggerScore,
 		"drift_run_id": driftRunId, "connection_id": connectionId,
 	})
@@ -424,7 +460,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 func (dba Dbaccess) listDriverMedia(guid string) ([]mediaRow, error) {
 	rows, err := dba.db.Query(`
-SELECT id, path, captured_at, COALESCE(trigger_score, 0) FROM driver_media WHERE driver_guid = ?`, guid)
+SELECT id, path, captured_at, COALESCE(trigger_score, 0) FROM driver_media WHERE (driver_guid = ? AND COALESCE(source_id,'')='') OR source_id=?`, guid, guid)
 	if err != nil {
 		return nil, tracerr.Wrap(err)
 	}
@@ -520,7 +556,7 @@ func (m *captureManager) shouldTrigger(guid string, score, count int, lastMs, no
 		return false
 	}
 	m.mu.Lock()
-	armed := m.armedGuids[guid]
+	armed := m.armedGuids[guid] || m.autoSourceByGuid[guid] != ""
 	cfg := m.cfg
 	m.mu.Unlock()
 	if !armed || !cfg.enabled || (!cfg.screenshots && !cfg.clips) {
@@ -540,9 +576,15 @@ func (m *captureManager) shouldTrigger(guid string, score, count int, lastMs, no
 // (or manualMaxDuration as a safety cap). It also pins the recorder on so the
 // buffer keeps filling even if the driver isn't connected to a server.
 type manualMark struct {
-	guid    string
-	startMs int64
-	timer   *time.Timer
+	jobID         int64
+	ownerGuid     string
+	connectionID  int64
+	guestDriverID int
+	executionID   int64
+	endMs         int64
+	guid          string
+	startMs       int64
+	timer         *time.Timer
 }
 
 // startManualRecording arms a manual recording: it marks the start, ensures a
@@ -550,6 +592,8 @@ type manualMark struct {
 // the driver's next drift run ends. Returns a user-facing error when capture
 // isn't possible or one is already running.
 func (m *captureManager) startManualRecording(guid string) error {
+	captureOwnershipMu.Lock()
+	defer captureOwnershipMu.Unlock()
 	if m == nil || !m.enabled {
 		return errors.New("capture is unavailable: ffmpeg is not installed on the server")
 	}
@@ -557,6 +601,7 @@ func (m *captureManager) startManualRecording(guid string) error {
 		return errors.New("no capture URL is configured for this driver")
 	}
 
+	ownerGuid, connectionID, guestDriverID, executionID := sourceCaptureOwner(guid)
 	m.manualMu.Lock()
 	if _, busy := m.manual[guid]; busy {
 		m.manualMu.Unlock()
@@ -566,7 +611,13 @@ func (m *captureManager) startManualRecording(guid string) error {
 		m.manualMu.Unlock()
 		return errors.New("too many recordings in progress — try again shortly")
 	}
-	mark := &manualMark{guid: guid, startMs: time.Now().UnixMilli()}
+	mark := &manualMark{guid: guid, ownerGuid: ownerGuid, startMs: time.Now().UnixMilli(), connectionID: connectionID, guestDriverID: guestDriverID, executionID: executionID}
+	result, err := Dba.db.Exec("INSERT INTO capture_job(source_key,state,requested_at) VALUES(?,'recording',?)", guid, mark.startMs)
+	if err != nil {
+		m.manualMu.Unlock()
+		return errors.New("Could not record the capture request; recording has not started")
+	}
+	mark.jobID, _ = result.LastInsertId()
 	mark.timer = time.AfterFunc(manualMaxDuration, func() { m.finalizeManual(guid) })
 	m.manual[guid] = mark
 	m.manualMu.Unlock()
@@ -584,6 +635,17 @@ func (m *captureManager) onDriftRunEnd(guid string) {
 		return
 	}
 	m.finalizeManual(guid)
+	m.manualMu.Lock()
+	keys := []string{}
+	for key, mark := range m.manual {
+		if mark.ownerGuid == guid {
+			keys = append(keys, key)
+		}
+	}
+	m.manualMu.Unlock()
+	for _, key := range keys {
+		m.finalizeManual(key)
+	}
 }
 
 // stopManualRecording finalizes an in-progress manual recording immediately
@@ -609,25 +671,34 @@ func (m *captureManager) finalizeManual(guid string) {
 		m.manualMu.Unlock()
 		return
 	}
+	mark.endMs = time.Now().UnixMilli()
 	delete(m.manual, guid)
 	m.manualMu.Unlock()
 	if mark.timer != nil {
 		mark.timer.Stop()
 	}
 	Events.Publish("recording", 0, map[string]any{"guid": guid, "recording": false})
+	_, _ = Dba.db.Exec("UPDATE capture_job SET state='assembling',ended_at=? WHERE id=?", mark.endMs, mark.jobID)
 	go m.assembleManual(mark)
 }
 
 func (m *captureManager) assembleManual(mark *manualMark) {
+	jobState, jobPath, jobMessage := "failed", "", "Recording could not be assembled. Inspect recorder health and server logs."
+	defer func() {
+		_, err := Dba.db.Exec("UPDATE capture_job SET state=?,path=?,message=? WHERE id=?", jobState, jobPath, jobMessage, mark.jobID)
+		if err != nil {
+			log.Print("Could not persist capture outcome")
+		}
+	}()
 	guid := mark.guid
 	dir := filepath.Join(mediaBaseDir(), "drivers", sanitizeFilename(guid))
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		log.Print("driver capture: mkdir: ", err)
 		return
 	}
-	// A little lead-in before the press, a little trail after the run end.
-	startMs := mark.startMs - 4000
-	endMs := time.Now().UnixMilli() + 2000
+	// The requested window is also the attribution boundary.
+	startMs := mark.startMs
+	endMs := mark.endMs // Stop at the ownership boundary; never include the next driver.
 	m.waitForWindow(endMs)
 
 	stamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
@@ -638,9 +709,11 @@ func (m *captureManager) assembleManual(mark *manualMark) {
 	}
 	// duration 0: the mm:ss badge is for short auto-clips; manual clips can run
 	// long, so leave it off (matches the prior manual-recording behaviour).
-	if err := Dba.insertDriverMedia(guid, "clip", file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0, 0, liveConnectionIdForGuid(guid)); err != nil {
+	if err := Dba.insertDriverMedia(guid, "clip", file, "Manual recording", time.Now().UnixMilli(), 0, 0, 0, 0, mark.connectionID, mark.guestDriverID, mark.executionID, mark.ownerGuid); err != nil {
 		log.Print("driver capture: insert manual clip: ", err)
+		return
 	}
+	jobState, jobPath, jobMessage = "completed", file, "Clip saved"
 	m.prune(guid, dir)
 	log.Printf("driver capture: manual recording finished for %s", guid)
 }
@@ -649,6 +722,7 @@ func (m *captureManager) assembleManual(mark *manualMark) {
 // screenshot. Returns the media filename, or an error when capture is
 // unavailable or the buffer is empty (stream down / just started).
 func (m *captureManager) takeSnapshot(guid string) (string, error) {
+	ownerGuid, connectionID, guestDriverID, executionID := sourceCaptureOwner(guid)
 	if m == nil || !m.enabled {
 		return "", errors.New("capture is unavailable: ffmpeg is not installed on the server")
 	}
@@ -665,7 +739,7 @@ func (m *captureManager) takeSnapshot(guid string) (string, error) {
 		return "", errors.New("no buffered video yet — the stream may be down or still starting")
 	}
 	// trigger 0 -> NULL -> no spike badge (this is an operator snapshot).
-	if err := Dba.insertDriverMedia(guid, "screenshot", file, "Snapshot", time.Now().UnixMilli(), 0, 0, 0, 0, liveConnectionIdForGuid(guid)); err != nil {
+	if err := Dba.insertDriverMedia(guid, "screenshot", file, "Snapshot", time.Now().UnixMilli(), 0, 0, 0, 0, connectionID, guestDriverID, executionID, ownerGuid); err != nil {
 		return "", err
 	}
 	m.prune(guid, dir)

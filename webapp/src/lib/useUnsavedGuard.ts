@@ -4,7 +4,7 @@ import { useConfirmStore } from "@/stores/confirm";
 
 // Warns before navigating away (or closing the tab) while a form has unsaved
 // changes. Pass a getter that reports whether the form is currently dirty.
-export function useUnsavedGuard(isDirty: () => boolean, routeGuard = true) {
+export function useUnsavedGuard(isDirty: () => boolean, routeGuard = true, onDiscard?: () => void) {
   const confirm = useConfirmStore();
 
   const beforeUnload = (e: BeforeUnloadEvent) => {
@@ -27,6 +27,9 @@ export function useUnsavedGuard(isDirty: () => boolean, routeGuard = true) {
       confirmLabel: "Discard changes",
       cancelLabel: "Keep editing",
       tone: "danger",
+    }).then(discard => {
+      if (discard) onDiscard?.();
+      return discard;
     }).finally(() => { pending = null; });
     return pending;
   };

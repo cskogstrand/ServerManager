@@ -405,7 +405,7 @@ onMounted(load);
 
   <Modal :open="driverOpen" :title="driverForm?.id ? 'Edit driver stream' : 'New driver stream'" @close="closeDriver">
     <template v-if="driverForm">
-      <Toggle v-model="driverForm.enabled" label="Show this stream when the driver is connected" />
+      <Toggle v-model="driverForm.enabled" label="Enable this stream in Live and Watch" />
       <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
         <FormRow label="Driver GUID" for-id="dsguid">
           <Input id="dsguid" v-model="driverForm.driver_guid" class="font-mono" />
@@ -436,7 +436,7 @@ onMounted(load);
 
   <Modal :open="instanceOpen" title="Fixed spectator stream" @close="closeInstance">
     <template v-if="instanceForm">
-      <Toggle v-model="instanceForm.stream_enabled" label="Show fixed spectator stream on dashboard" />
+      <Toggle v-model="instanceForm.stream_enabled" label="Enable spectator stream in Live and Watch" />
       <div v-if="instanceForm.stream_enabled" class="mt-3">
         <FormRow label="WebRTC player URL" for-id="istream-url" hint="Browser-playable page or WHEP/player URL exposed by OBS, MediaMTX or similar.">
           <Input id="istream-url" v-model="instanceForm.stream_embed_url" placeholder="https://stream.example.com/camera" />

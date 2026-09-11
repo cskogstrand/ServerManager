@@ -18,7 +18,7 @@ func RoleMiddleware(c *gin.Context) {
 	role, _ := roleVal.(string)
 
 	// The Users admin area is admin-only, reads included.
-	if strings.HasPrefix(path, "/api/users") && role != roleAdmin {
+	if (strings.HasPrefix(path, "/api/users") || strings.HasPrefix(path, "/api/recovery")) && role != roleAdmin {
 		forbidden(c)
 		return
 	}
@@ -26,6 +26,11 @@ func RoleMiddleware(c *gin.Context) {
 	// Stream debug exposes capture URLs (which can carry tokens) and can run an
 	// ffmpeg probe — admin-only, reads included.
 	if strings.HasPrefix(path, "/api/streams/debug") && role != roleAdmin {
+		forbidden(c)
+		return
+	}
+
+	if role != roleAdmin && (path == "/api/config" || path == "/api/server/smdata" || path == "/api/server/smcontent" || path == "/api/server/logfile" || path == "/api/server/server_cfg.ini") {
 		forbidden(c)
 		return
 	}
@@ -57,6 +62,12 @@ func RoleMiddleware(c *gin.Context) {
 func stewardCanMutate(path string) bool {
 	p := strings.TrimPrefix(path, "/api")
 	switch {
+	case strings.HasPrefix(p, "/sources/") && strings.Contains(p, "/capture/"):
+		return true
+	case strings.HasPrefix(p, "/sources/") && strings.Contains(p, "/media/"):
+		return true
+	case p == "/driving-sessions" || strings.HasPrefix(p, "/driving-sessions/"):
+		return true
 	case strings.HasPrefix(p, "/server/"):
 		return true
 	case strings.HasPrefix(p, "/queue"):

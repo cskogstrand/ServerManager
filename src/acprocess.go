@@ -47,7 +47,7 @@ func (inst *Instance) serverExecutable(dir string) string {
 	return filepath.Join(dir, binary)
 }
 
-func (inst *Instance) start() {
+func (inst *Instance) start() error {
 	dir := inst.Dir()
 	fpath := inst.serverExecutable(dir)
 	if _, err := os.Stat(fpath); errors.Is(err, os.ErrNotExist) {
@@ -66,7 +66,7 @@ func (inst *Instance) start() {
 	if inst.cmd != nil {
 		inst.mu.Unlock()
 		log.Print("Instance already running: ", inst.Name())
-		return
+		return errors.New("This server is already running")
 	}
 
 	cmd := exec.Command(fpath)
@@ -85,7 +85,7 @@ func (inst *Instance) start() {
 	if err != nil {
 		inst.mu.Unlock()
 		log.Print("Could not start executable: ", fpath, err)
-		return
+		return errors.New("The game process could not start. Inspect the server log and installation")
 	}
 
 	inst.cmd = cmd
@@ -94,9 +94,9 @@ func (inst *Instance) start() {
 
 	go inst.appendOutput(stdOut, "stdout")
 	go inst.appendOutput(stdErr, "stderr")
-	go inst.waitForExit(cmd)
-
 	inst.publishRunning(true)
+	go inst.waitForExit(cmd)
+	return nil
 }
 
 // waitForExit reaps the server process. Without this the OS process becomes a
@@ -114,6 +114,7 @@ func (inst *Instance) waitForExit(cmd *exec.Cmd) {
 		inst.mu.Unlock()
 		return
 	}
+	execution := inst.executionID
 	inst.cmd = nil
 	inst.Udp.online = false
 	inst.tel.udpOnline = false
@@ -127,6 +128,9 @@ func (inst *Instance) waitForExit(cmd *exec.Cmd) {
 	}
 
 	inst.clearDrivers()
+	if err != nil && execution > 0 {
+		_, _ = Dba.db.Exec("UPDATE driving_execution SET state='failed',failure='Game process exited unexpectedly. Inspect the server log.' WHERE id=?", execution)
+	}
 	inst.publishRunning(false)
 }
 

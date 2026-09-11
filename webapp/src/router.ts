@@ -1,13 +1,13 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 
-// Routes fill in over Phases 2-5.
+// Canonical Pitlane destinations preserve existing operational deep links.
 const router = createRouter({
   history: createWebHistory("/"),
   routes: [
     { path: "/login", name: "login", component: () => import("@/pages/Login.vue"), meta: { public: true } },
     { path: "/access-denied", name: "access-denied", component: () => import("@/pages/AccessDenied.vue") },
-    { path: "/", name: "dashboard", component: () => import("@/pages/Dashboard.vue") },
+    { path: "/", name: "dashboard", component: () => import("@/pages/Today.vue") },
     { path: "/server/:id", name: "server-detail", component: () => import("@/pages/ServerDetail.vue") },
     { path: "/server/:id/broadcast", name: "server-broadcast", component: () => import("@/pages/Broadcast.vue"), meta: { bare: true } },
     { path: "/broadcast", name: "broadcast-auto", component: () => import("@/pages/Broadcast.vue") },
@@ -16,18 +16,31 @@ const router = createRouter({
     { path: "/queue", name: "queue", component: () => import("@/pages/Queue.vue") },
     { path: "/drivers", name: "drivers", component: () => import("@/pages/DriverStats.vue") },
     { path: "/drivers/:guid", name: "driver-detail", component: () => import("@/pages/DriverDetail.vue") },
-    { path: "/sessions", name: "session-search", component: () => import("@/pages/SessionSearch.vue") },
+    { path: "/sessions", name: "sessions", component: () => import("@/pages/Sessions.vue"), beforeEnter: to =>
+      ["q", "tag"].some(key => key in to.query) ? { path: "/sessions/drives", query: to.query, hash: to.hash } : true },
+    { path: "/sessions/new", name: "session-new", component: () => import("@/pages/SessionEditor.vue"), meta: { operate: true } },
+    { path: "/sessions/:sessionId/edit", name: "session-edit", component: () => import("@/pages/SessionEditor.vue"), meta: { operate: true } },
+    { path: "/sessions/:sessionId/watch", name: "session-watch", component: () => import("@/pages/SessionDetail.vue"), meta: { bare: true } },
+    { path: "/sessions/:sessionId(\\d+)", name: "session-detail", component: () => import("@/pages/SessionDetail.vue") },
+    { path: "/sessions/drives", name: "session-search", component: () => import("@/pages/SessionSearch.vue") },
+    { path: "/live", name: "live", component: () => import("@/pages/Live.vue") },
+    { path: "/garage/rigs/:rigId?", name: "rigs", component: () => import("@/pages/Rigs.vue") },
+    { path: "/garage", name: "garage", component: () => import("@/pages/Garage.vue") },
+    { path: "/garage/advanced/:section?", name: "advanced", component: () => import("@/pages/Advanced.vue") },
     { path: "/guest-drivers", name: "guest-drivers", component: () => import("@/pages/GuestDrivers.vue"), meta: { operate: true } },
-    { path: "/guest-drivers/:id", name: "guest-driver-detail", component: () => import("@/pages/GuestDriverDetail.vue"), meta: { operate: true } },
+    { path: "/guest-drivers/:id", name: "guest-driver-detail", component: () => import("@/pages/GuestDriverDetail.vue") },
     { path: "/history", name: "results-history", component: () => import("@/pages/ResultsHistory.vue") },
     { path: "/admin", name: "admin", component: () => import("@/pages/Admin.vue"), meta: { admin: true } },
-    { path: "/content", name: "content", component: () => import("@/pages/Content.vue"), meta: { admin: true } },
+    { path: "/garage/cameras/:key", name: "camera-detail", component: () => import("@/pages/CameraDetail.vue") },
+    { path: "/garage/recovery", name: "recovery", component: () => import("@/pages/Recovery.vue"), meta: { admin: true } },
+    { path: "/garage/content/:kind/:key", name: "content-detail", component: () => import("@/pages/ContentDetail.vue"), meta: { admin: true } },
+    { path: "/garage/content", alias: "/content", name: "content", component: () => import("@/pages/Content.vue"), meta: { admin: true } },
     { path: "/presets", name: "preset-templates", component: () => import("@/pages/PresetTemplates.vue"), meta: { operate: true } },
     { path: "/presets/difficulty", name: "preset-difficulty", component: () => import("@/pages/PresetDifficulty.vue"), meta: { admin: true } },
     { path: "/presets/sessions", name: "preset-sessions", component: () => import("@/pages/PresetSession.vue"), meta: { admin: true } },
     { path: "/presets/time", name: "preset-time", component: () => import("@/pages/PresetTime.vue"), meta: { admin: true } },
     { path: "/presets/classes", name: "preset-classes", component: () => import("@/pages/PresetClass.vue"), meta: { operate: true } },
-    { path: "/presets/drift-scoring", name: "drift-scoring", component: () => import("@/pages/DriftScoringModes.vue"), meta: { operate: true } },
+    { path: "/presets/drift-scoring", name: "drift-scoring", component: () => import("@/pages/DriftScoringModes.vue"), meta: { admin: true } },
     { path: "/setup", name: "setup", component: () => import("@/pages/SetupWorkbench.vue"), meta: { admin: true } },
     { path: "/settings/installation", name: "installation", component: () => import("@/pages/InstallationSettings.vue"), meta: { admin: true } },
     { path: "/settings", name: "settings", component: () => import("@/pages/SettingsConfig.vue"), meta: { admin: true } },
@@ -37,6 +50,7 @@ const router = createRouter({
     { path: "/maintenance", name: "maintenance", component: () => import("@/pages/Maintenance.vue"), meta: { admin: true } },
     { path: "/settings/users", name: "users", component: () => import("@/pages/Users.vue"), meta: { admin: true } },
     { path: "/preferences", name: "preferences", component: () => import("@/pages/SettingsUser.vue") },
+    { path: "/:pathMatch(.*)*", name: "not-found", component: () => import("@/pages/NotFound.vue") },
     { path: "/about", name: "about", component: () => import("@/pages/About.vue") },
   ],
 });

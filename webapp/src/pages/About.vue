@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import {useAuthStore} from "@/stores/auth";
+const auth=useAuthStore();
 import { api } from "@/lib/api";
 import Card from "@/components/ui/Card.vue";
 import Icon from "@/components/ui/Icon.vue";
@@ -43,7 +45,7 @@ const downloads = [
       </dl>
     </Card>
 
-    <Card title="Downloads">
+    <Card v-if="auth.isAdmin" title="Downloads">
       <div class="flex flex-wrap gap-2">
         <a
           v-for="d in downloads"

@@ -49,18 +49,14 @@ beforeEach(() => {
 });
 afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 
-it("explains queue ordering and retries a start without adding a second queue entry", async () => {
-  await setup("/events");
-  await button("Queue & start server").trigger("click"); await flushPromises();
-  const dialog = wrapper.get('[role="dialog"]');
-  expect(dialog.text()).toContain("Races already ahead of it run first");
-  vi.mocked(api.post).mockImplementation(async (url: string) => { if (url.includes("/start")) throw new Error("Start failed"); return {}; });
-  await dialog.findAll("button").find(b => b.text() === "Queue & start server")!.trigger("click"); await flushPromises();
-  expect(dialog.text()).toContain("already queued");
-  vi.mocked(api.post).mockResolvedValue({});
-  await button("Retry start").trigger("click"); await flushPromises();
-  expect(vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/queue/event/10?instance=2")).toHaveLength(1);
-  expect(vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/server/start?instance=2")).toHaveLength(2);
+it("opens an isolated session review without enqueuing or starting an older queue item", async () => {
+ const router=await setup('/events');
+ await button('Review as driving session').trigger('click');await flushPromises();
+ const dialog=wrapper.get('[role="dialog"]');
+ expect(dialog.text()).toContain('isolated driving-session draft');
+ await dialog.findAll('button').find(b=>b.text()==='Review as driving session')!.trigger('click');await flushPromises();
+ expect(router.currentRoute.value.fullPath).toBe('/sessions/new?template=10&instance=2');
+ expect(api.post).not.toHaveBeenCalled();
 });
 
 it("explains why a repeating server cannot accept a queued race", async () => {
@@ -102,7 +98,7 @@ it("shows recoverable installation errors and only confirms a completed path che
   expect(wrapper.text()).not.toContain("Server binary found");
 });
 
-it("retries the setup workbench start without requeuing the saved race", async () => {
+it("reviews the setup workbench session before any enqueue or process start", async () => {
   const router = await setup("/setup?step=race");
   wrapper.getComponent(Editor).vm.$emit("update:modelValue", { ...emptyRaceSetup(), name: "Sprint", track_key: "spa", class_id: 1, session_id: 2, time_id: 3, difficulty_id: 4 });
   await flushPromises();
@@ -112,10 +108,7 @@ it("retries the setup workbench start without requeuing the saved race", async (
     return {};
   });
   await button("Save race setup").trigger("click"); await flushPromises();
-  await button("Start server").trigger("click"); await flushPromises();
-  expect(wrapper.text()).toContain("already queued");
-  vi.mocked(api.post).mockResolvedValue({});
-  await button("Retry start").trigger("click"); await flushPromises();
-  expect(vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/queue/event/10?instance=2")).toHaveLength(1);
-  expect(router.currentRoute.value.path).toBe("/server/2");
+  await button("Review session").trigger("click"); await flushPromises();
+  expect(vi.mocked(api.post).mock.calls.filter(([url]) => url.includes("/queue/")||url.includes("/server/start"))).toHaveLength(0);
+  expect(router.currentRoute.value.fullPath).toBe("/sessions/new?template=10&instance=2");
 });

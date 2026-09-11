@@ -420,6 +420,37 @@ func getGuestDriverDetail(id int) (*guestDriverDetail, error) {
 			}
 		}
 	}
+	// Include manual clips and snapshots using their pinned owner, too.
+	rows, e := Dba.db.Query("SELECT DISTINCT driver_guid FROM driver_media WHERE guest_driver_id=?", id)
+	if e != nil {
+		return nil, e
+	}
+	guids := []string{}
+	for rows.Next() {
+		var guid string
+		if e = rows.Scan(&guid); e != nil {
+			rows.Close()
+			return nil, e
+		}
+		guids = append(guids, guid)
+	}
+	rows.Close()
+	seen := map[string]bool{}
+	for _, m := range det.Media {
+		seen[m.Id] = true
+	}
+	for _, guid := range guids {
+		media, e := Dba.queryDriverMediaRows(guid)
+		if e != nil {
+			return nil, e
+		}
+		for _, m := range media {
+			if m.item.GuestDriverId != nil && *m.item.GuestDriverId == id && !seen[m.item.Id] {
+				det.Media = append(det.Media, m.item)
+				seen[m.item.Id] = true
+			}
+		}
+	}
 	return det, nil
 }
 
@@ -530,7 +561,7 @@ func apiGuestDriverAvatar(c *gin.Context) {
 		return
 	}
 	// rel is set by us (avatars/guest-<id>.ext); Clean defends against surprises.
-	abs := filepath.Join(mediaBaseDir(), filepath.Clean("/"+rel)[1:])
+	abs := filepath.Join(mediaBaseDir(), filepath.Clean("/" + rel)[1:])
 	c.File(abs)
 }
 
@@ -763,8 +794,8 @@ func apiLiveDriverAssign(c *gin.Context) {
 			return
 		}
 	}
-	if !inst.setGuestDriverForCar(body.CarId, gdid) {
-		apiError(c, http.StatusNotFound, "no_driver", "No connected car with that id.")
+	if err := inst.handoverDriver(body.CarId, gdid); err != nil {
+		apiError(c, http.StatusConflict, "handover_boundary", err.Error())
 		return
 	}
 	c.PureJSON(http.StatusOK, gin.H{"sent": true, "car_id": body.CarId, "guest_driver_id": body.GuestDriverId})

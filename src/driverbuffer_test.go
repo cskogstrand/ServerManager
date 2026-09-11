@@ -1,6 +1,11 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,5 +71,46 @@ func TestSelectSegments(t *testing.T) {
 
 	if len(selectSegments(nil, 0, 1000)) != 0 {
 		t.Error("empty buffer must select nothing")
+	}
+}
+
+// A long-GOP MPEG-TS segment starts at a nonzero timestamp. EOF/input seeking
+// can exit successfully with no frame; exercise the real decoder and clip trim.
+func TestMPEGTSFrameAndClipWindow(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	probe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "segment.ts")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=olive:s=160x90:r=25", "-t", "8", "-c:v", "libx264", "-g", "200", "-pix_fmt", "yuv420p", "-f", "mpegts", src).CombinedOutput(); err != nil {
+		t.Fatalf("fixture encoding: %v %s", err, out)
+	}
+	manager := captureManager{ffmpeg: ffmpeg}
+	jpg := filepath.Join(dir, "still.jpg")
+	if !manager.grabFrameFromFile(src, 7, jpg) {
+		t.Fatal("No JPEG from completed MPEG-TS segment")
+	}
+	image, err := os.ReadFile(jpg)
+	if err != nil || len(image) < 2 || image[0] != 0xff || image[1] != 0xd8 {
+		t.Fatal("Invalid JPEG", err)
+	}
+	list := filepath.Join(dir, "segments.txt")
+	os.WriteFile(list, []byte("file '"+src+"'\n"), 0600)
+	clip := filepath.Join(dir, "clip.mp4")
+	if !manager.concatEncode(list, clip, 2000, 3000) {
+		t.Fatal("clip encode failed")
+	}
+	out, err := exec.Command(probe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", clip).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || duration < 1.95 || duration > 2.05 {
+		t.Fatalf("Clip escaped requested window: %s %v", out, err)
 	}
 }

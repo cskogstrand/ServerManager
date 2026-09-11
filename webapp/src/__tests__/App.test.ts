@@ -33,31 +33,27 @@ async function open(path: string) {
   return router;
 }
 
-it("keeps navigation labelled and selects the right section for nested routes and server context", async () => {
-  const router = await open("/presets/sessions");
-  expect(wrapper.get('.rail-nav [aria-label="Templates"]').attributes("aria-current")).toBe("page");
-  expect(wrapper.get('[aria-label="Admin"]').attributes("aria-current")).toBeUndefined();
-  await wrapper.get('[aria-label="Expand navigation"]').trigger("click");
-  expect(wrapper.get('[aria-label="Collapse navigation"]').attributes("aria-expanded")).toBe("true");
-  await router.push("/server/2");
-  expect(wrapper.get('.rail-nav [aria-label="Race Control"]').attributes("aria-current")).toBe("page");
-  expect(wrapper.get('.rail-nav [aria-label="Dashboard"]').attributes("aria-current")).toBeUndefined();
-  expect(wrapper.get('.rail-nav [aria-label="Run Plan"]').attributes("href")).toBe("/queue?instance=2");
+it("keeps the four main destinations labelled and selects Sessions for server operations", async () => {
+ const router=await open('/sessions/4');
+ expect(wrapper.findAll('.pitlane-nav a').map(a=>a.text())).toEqual(['Today','Sessions','Live','Drivers']);
+ expect(wrapper.get('.pitlane-nav a[href="/sessions"]').attributes('aria-current')).toBe('page');
+ await router.push('/server/2');await flushPromises();
+ expect(wrapper.get('.pitlane-nav a[href="/sessions"]').attributes('aria-current')).toBe('page');
+ expect(server.selectInstance).toHaveBeenCalledWith(2);
+ await router.push('/guest-drivers/3');await flushPromises();
+ expect(wrapper.get('.pitlane-nav a[href="/drivers"]').attributes('aria-current')).toBe('page');
+ expect(wrapper.get('[aria-label="Mobile navigation"]').findAll('a')).toHaveLength(5);
 });
-
-it("retains viewer navigation and synchronizes header and account appearance controls, even without storage", async () => {
-  auth.isAdmin = false; auth.canOperate = false;
-  await open("/");
-  expect(wrapper.find('.rail-nav [aria-label="Templates"]').exists()).toBe(false);
-  expect(wrapper.find('[aria-label="Admin"]').exists()).toBe(false);
-  await wrapper.get('[aria-label="More menu"]').trigger("click");
-  expect(wrapper.get('[aria-label="All navigation"]').text()).toContain("Preferences");
-  await wrapper.findAll('.workspace-header .theme-switch button')[0].trigger("click");
-  expect(document.documentElement.dataset.theme).toBe("light");
-  expect(localStorage.setItem).toHaveBeenCalledWith("theme", "light");
-  expect(wrapper.findAll('.theme-switch button[aria-pressed="true"]').every(button => button.text() === "Light")).toBe(true);
-  vi.mocked(localStorage.setItem).mockImplementation(() => { throw new Error("Storage unavailable"); });
-  await wrapper.findAll('.workspace-header .theme-switch button')[1].trigger("click");
-  expect(document.documentElement.dataset.theme).toBe("dark");
-  expect(wrapper.findAll('.theme-switch button[aria-pressed="true"]').every(button => button.text() === "Dark")).toBe(true);
+it("retains viewer navigation and changes appearance even when storage is unavailable", async () => {
+ auth.isAdmin=false;auth.canOperate=false;await open('/');
+ expect(wrapper.findAll('.pitlane-nav a')).toHaveLength(4);
+ await wrapper.get('[aria-label="Account and preferences"]').trigger('click');
+ expect(wrapper.text()).toContain('Preferences');
+ const themeButton=(name:string)=>wrapper.findAll('button').find(b=>b.text()===name)!;
+ await themeButton('Light').trigger('click');
+ expect(document.documentElement.dataset.theme).toBe('light');
+ expect(localStorage.setItem).toHaveBeenCalledWith('theme','light');
+ vi.mocked(localStorage.setItem).mockImplementation(()=>{throw new Error('Storage unavailable')});
+ await themeButton('Dark').trigger('click');
+ expect(document.documentElement.dataset.theme).toBe('dark');
 });

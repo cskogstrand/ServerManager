@@ -99,5 +99,8 @@ func routeLegacyApp(c *gin.Context) {
 	if target == "" {
 		target = "/"
 	}
+	if c.Request.URL.RawQuery != "" {
+		target += "?" + c.Request.URL.RawQuery
+	}
 	c.Redirect(http.StatusMovedPermanently, target)
 }

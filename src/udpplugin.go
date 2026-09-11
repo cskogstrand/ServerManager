@@ -381,6 +381,7 @@ func (inst *Instance) udpReceive() bool {
 		inst.Status.Session = sess
 		inst.mu.Unlock()
 		if changed {
+			recordExecutionPhase(inst, sess, true)
 			Events.Publish("session", inst.Id(), sessionEventPayload(sess))
 			inst.resetDriverLaps()
 		}
@@ -395,12 +396,14 @@ func (inst *Instance) udpReceive() bool {
 		inst.Status.Session = sess
 		inst.mu.Unlock()
 		if changed {
+			recordExecutionPhase(inst, sess, false)
 			Events.Publish("session", inst.Id(), sessionEventPayload(sess))
 		}
 
 	case acspEndSession:
 		file := r.ReadUTF32String()
 		log.Print("ACSP_END_SESSION: " + file)
+		recordExecutionResult(inst, file)
 
 		// Persist each connected driver's just-finished session (with race
 		// finishing order) before any track-change kick disconnects them.

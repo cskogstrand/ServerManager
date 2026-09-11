@@ -179,17 +179,17 @@ func streamHealth(enabled bool, embedURL *string, statusURL *string) StreamHealt
 		return StreamHealth{Status: "unknown"}
 	}
 	if err := validateStreamURL("stream_status_url", statusURL, true); err != nil {
-		return StreamHealth{Status: "offline", Message: err.Error()}
+		return StreamHealth{Status: "unknown", Message: "Status check unavailable"}
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	req, err := http.NewRequest(http.MethodGet, *statusURL, nil)
 	if err != nil {
-		return StreamHealth{Status: "offline", Message: err.Error()}
+		return StreamHealth{Status: "unknown", Message: "Status check unavailable"}
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return StreamHealth{Status: "offline", Message: err.Error()}
+		return StreamHealth{Status: "unknown", Message: "Status check unavailable"}
 	}
 	defer res.Body.Close()
 
@@ -449,25 +449,25 @@ func serverStatusPayload(inst *Instance) gin.H {
 	}
 
 	currentEvent := gin.H{
-		"id":         0,
-		"name":       "",
-		"category":   "",
-		"track":      "",
-		"track_key":  "",
-		"track_config": "",
-		"difficulty": "",
-		"difficulty_id": 0,
-		"session":    "",
-		"session_id": 0,
-		"class":      "",
-		"class_id":   0,
-		"time":       "",
-		"time_id":    0,
+		"id":                    0,
+		"name":                  "",
+		"category":              "",
+		"track":                 "",
+		"track_key":             "",
+		"track_config":          "",
+		"difficulty":            "",
+		"difficulty_id":         0,
+		"session":               "",
+		"session_id":            0,
+		"class":                 "",
+		"class_id":              0,
+		"time":                  "",
+		"time_id":               0,
 		"drift_scoring_mode_id": 0,
-		"weather":    "",
-		"weather_key": "",
-		"started_at": int64(0),
-		"finished":   0,
+		"weather":               "",
+		"weather_key":           "",
+		"started_at":            int64(0),
+		"finished":              0,
 	}
 	if inst.Cr.serverEvent.Id != nil {
 		currentEvent["id"] = *inst.Cr.serverEvent.Id
@@ -555,19 +555,19 @@ func serverStatusPayload(inst *Instance) gin.H {
 		"cfg_path":      filepath.Join(dir, "cfg", "server_cfg.ini"),
 		"entry_path":    filepath.Join(dir, "cfg", "entry_list.ini"),
 		"session": gin.H{
-			"name":                 st.Session.name,
-			"type":                 sessionType,
-			"type_id":              st.Session.typ,
-			"index":                st.Session.sessionIndex,
+			"name":                  st.Session.name,
+			"type":                  sessionType,
+			"type_id":               st.Session.typ,
+			"index":                 st.Session.sessionIndex,
 			"current_session_index": st.Session.currentSessionIndex,
-			"session_count":        st.Session.sessionCount,
-			"track":                st.Session.track,
-			"track_config":         st.Session.trackConfig,
-			"server_name":          st.Session.serverName,
-			"time":                 st.Session.time,
-			"laps":                 st.Session.laps,
-			"wait_time":            st.Session.waitTime,
-			"ambient_temp":         st.Session.ambientTemp,
+			"session_count":         st.Session.sessionCount,
+			"track":                 st.Session.track,
+			"track_config":          st.Session.trackConfig,
+			"server_name":           st.Session.serverName,
+			"time":                  st.Session.time,
+			"laps":                  st.Session.laps,
+			"wait_time":             st.Session.waitTime,
+			"ambient_temp":          st.Session.ambientTemp,
 			"road_temp":             st.Session.roadTemp,
 			"weather_graphics":      st.Session.weatherGraphics,
 			"elapsed_ms":            st.Session.elapsedMs,
@@ -593,6 +593,18 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 		return false, err
 	}
 
+	owned, err := ownedDrivingSetup(*serverEvent.UserEvent.Id)
+	if err != nil {
+		return false, err
+	}
+	if owned != nil {
+		if err = validateDrivingSetup(*owned, inst); err != nil {
+			return false, err
+		}
+		if err = validateDrivingInstallation(*owned, inst); err != nil {
+			return false, err
+		}
+	}
 	dir := inst.Dir()
 	contentDir := filepath.Join(dir, "content")
 
@@ -611,6 +623,9 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 	}
 
 	mode := Dba.activeDriftScoringMode(serverEvent.UserEvent.DriftScoringModeId, inst.Conf.DriftScoringModeId)
+	if owned != nil {
+		mode = owned.Setup.Scoring
+	}
 	inst.Cr.serverEvent = serverEvent
 	inst.mu.Lock()
 	inst.driftMode = mode
@@ -620,7 +635,9 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 	if inst.Cr.renderErr != nil {
 		return false, inst.Cr.renderErr
 	}
-	inst.Cr.writeIni(dir)
+	if err := inst.Cr.writeIni(dir); err != nil {
+		return false, fmt.Errorf("Could not write session configuration: %w", err)
+	}
 
 	writeModLinks(dir, cfg, &inst.Cr)
 
@@ -662,7 +679,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 		ensureAssettoServerExtraRules(dir, allowWrongWay)
 		// AssettoServer reads content/system straight from the symlinked
 		// install, so there is nothing to extract from smcontent.zip.
-		return true, nil
+		return beginDrivingExecution(inst, serverEvent)
 	}
 
 	// Kunos acServer path. A prior AssettoServer run may have symlinked
@@ -716,7 +733,7 @@ func applyServerEvent(inst *Instance, serverEvent ServerEvent) (bool, error) {
 	zf.ExtractFile(zf.FindZipFile("system/data/surfaces.ini"), dir)
 	zf.Close()
 
-	return true, nil
+	return beginDrivingExecution(inst, serverEvent)
 }
 
 func noRoute(c *gin.Context) {
@@ -1130,6 +1147,8 @@ func apiTime(c *gin.Context) {
 }
 
 func apiRecacheContent(c *gin.Context) {
+	contentLifecycleMu.Lock()
+	defer contentLifecycleMu.Unlock()
 	counts, err := refreshContentCounts()
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -1196,8 +1215,27 @@ func safeContentKey(key string) bool {
 // install and every cache row keyed by it. kind is "tracks", "cars" or
 // "weather" (the content sub-directory name).
 func deleteContentItem(c *gin.Context, kind, key string, dropRows func() error) {
+	contentLifecycleMu.Lock()
+	defer contentLifecycleMu.Unlock()
 	if !safeContentKey(key) {
 		apiBadRequest(c, "Invalid content key.")
+		return
+	}
+
+	for _, inst := range Instances.All() {
+		if inst.isRunning() {
+			apiError(c, 409, "server_running", "Stop running servers before deleting installed content. Archive is available without disk deletion.")
+			return
+		}
+	}
+	singular := map[string]string{"tracks": "track", "cars": "car", "weather": "weather"}[kind]
+	usage, err := contentUsage(singular, key, "", true)
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	if len(usage) > 0 {
+		apiError(c, 409, "content_in_use", "Saved sessions or reusable setups use this content. Archive it to hide it from new selections while preserving existing sessions.")
 		return
 	}
 
@@ -1391,18 +1429,18 @@ func apiContentUpload(c *gin.Context) {
 	cached, _ := Dba.countCacheImages()
 
 	c.PureJSON(http.StatusOK, gin.H{
-		"success":        true,
-		"async":          false,
-		"kind":           result.Kind,
-		"source":         source,
+		"success":         true,
+		"async":           false,
+		"kind":            result.Kind,
+		"source":          source,
 		"imported_assets": result.AssetKeys,
-		"imported_count": len(result.AssetKeys),
-		"files_written":  result.FilesWritten,
-		"tracks_total":   counts.Tracks,
-		"cars_total":     counts.Cars,
-		"weathers_total": counts.Weathers,
-		"cached_images":  cached,
-		"message":        fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), result.Kind, strings.Join(result.AssetKeys, ", ")),
+		"imported_count":  len(result.AssetKeys),
+		"files_written":   result.FilesWritten,
+		"tracks_total":    counts.Tracks,
+		"cars_total":      counts.Cars,
+		"weathers_total":  counts.Weathers,
+		"cached_images":   cached,
+		"message":         fmt.Sprintf("Imported %d %s archive item(s): %s", len(result.AssetKeys), result.Kind, strings.Join(result.AssetKeys, ", ")),
 	})
 }
 
@@ -1505,8 +1543,7 @@ func restartCurrentServerEvent(inst *Instance) error {
 	if !ok {
 		return errors.New("could not reapply current event")
 	}
-	inst.start()
-	return nil
+	return inst.start()
 }
 
 func apiServerRestart(c *gin.Context) {
@@ -1545,6 +1582,27 @@ func apiServerUpdateCurrentEvent(c *gin.Context) {
 			"success": false,
 			"message": "Invalid request payload",
 		})
+		return
+	}
+
+	if handled, e := applyOwnedLiveSetup(inst, payload); handled || e != nil {
+		if e != nil {
+			apiError(c, 409, "setup_conflict", e.Error())
+			return
+		}
+		restarted := false
+		if payload.RestartNow {
+			if e = restartCurrentServerEvent(inst); e != nil {
+				apiError(c, 409, "server_restart_failed", e.Error())
+				return
+			}
+			restarted = true
+		}
+		response := serverStatusPayload(inst)
+		response["success"] = true
+		response["restart_required"] = !restarted
+		response["restarted"] = restarted
+		c.JSON(200, response)
 		return
 	}
 
@@ -1991,8 +2049,18 @@ func apiServerLogfile(c *gin.Context) {
 }
 
 func apiServerSmdata(c *gin.Context) {
-	smdata := filepath.Join(ConfigFolder, "smdata.db")
-	c.FileAttachment(smdata, "smdata.db")
+	snapshot, err := os.CreateTemp(TempFolder, "sm-backup-*.db")
+	if err != nil {
+		apiDbError(c, err)
+		return
+	}
+	snapshot.Close()
+	defer os.Remove(snapshot.Name())
+	if _, err = Dba.db.Exec("VACUUM INTO ?", snapshot.Name()); err != nil {
+		apiDbError(c, err)
+		return
+	}
+	c.FileAttachment(snapshot.Name(), "smdata.db")
 }
 
 func apiServerSmcontent(c *gin.Context) {
@@ -2413,6 +2481,13 @@ func apiDriverStreamsList(c *gin.Context) {
 	if err != nil {
 		apiDbError(c, err)
 		return
+	}
+	role, _ := c.Get("role")
+	if role != roleAdmin {
+		for i := range streams {
+			streams[i].StreamCaptureUrl = nil
+			streams[i].StreamStatusUrl = nil
+		}
 	}
 	c.PureJSON(http.StatusOK, gin.H{"streams": streams})
 }

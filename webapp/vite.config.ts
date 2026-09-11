@@ -21,8 +21,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:3030",
-      "/static": "http://localhost:3030",
+      "/api": process.env.PITLANE_API_URL || "http://localhost:3030",
+      "/static": process.env.PITLANE_API_URL || "http://localhost:3030",
+      "/dl": process.env.PITLANE_API_URL || "http://localhost:3030",
     },
   },
   test: {

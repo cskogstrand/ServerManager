@@ -7,7 +7,7 @@ vi.mock("@/lib/api", () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-import { useFeedStore } from "@/stores/feed";
+import { useFeedStore, feedItemFromEvent } from "@/stores/feed";
 import { useToastStore } from "@/stores/toast";
 import type { ServerEvent } from "@/lib/sse";
 
@@ -42,4 +42,8 @@ describe("feed store", () => {
     expect(feed.items.length).toBe(1);
     expect(toast.toasts.length).toBe(0);
   });
+});
+
+it("opens source media at its camera instead of treating a source ID as a driver", () => {
+  expect(feedItemFromEvent({type:"media", instance_id:0, ts:0, data:{guid:"driver-7",source_id:"source:7",file:"clip.mp4",kind:"clip"}})?.link).toBe("/garage/cameras/source%3A7?media=clip.mp4");
 });

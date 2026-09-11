@@ -83,6 +83,12 @@ func updatePublicIp() {
 }
 
 func (inst *Instance) serverChangeTrack() {
+	drivingLaunchMu.Lock()
+	defer drivingLaunchMu.Unlock()
+	contentLifecycleMu.RLock()
+	defer contentLifecycleMu.RUnlock()
+	inst.operationMu.Lock()
+	defer inst.operationMu.Unlock()
 	log.Print("Kicking players for track change")
 	// Haven't found a cleaner way to notify the users the track is about to change but to kick them
 	for i := range inst.Cr.maxClients {

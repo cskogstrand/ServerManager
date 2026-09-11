@@ -260,8 +260,8 @@ const actionQueuedOn = ref<number | null>(null);
 const actionInstance = computed(() => actionInstanceId.value === null ? null : server.instances[actionInstanceId.value]);
 const actionBlocked = computed(() => {
   if (!actionInstance.value) return "Choose a server to continue.";
-  if (actionKind.value !== "repeat" && actionInstance.value.run_mode === "repeat_event") return "This server is repeating one race. Switch to the manual queue in its run plan before adding races.";
-  if (actionKind.value === "start" && actionInstance.value.running) return "This server is already running. Use Add to run plan to queue another race.";
+  if (actionKind.value === "queue" && actionInstance.value.run_mode === "repeat_event") return "This server is repeating one race. Switch to the manual queue in its run plan before adding races.";
+
   return "";
 });
 
@@ -281,7 +281,12 @@ const confirmAction = () =>
     if (!s?.id || iid === null || actionBlocked.value) return;
     server.selectInstance(iid);
     const inst = server.instanceList.find((i) => i.id === iid);
-    if (actionKind.value === "repeat") {
+    if (actionKind.value === "start") {
+ actionOpen.value=false;
+ await router.push(`/sessions/new?template=${s.id}&instance=${iid}`);
+ return;
+ }
+ if (actionKind.value === "repeat") {
       await server.setRunMode(iid, "repeat_event", s.id);
       toast.success(`${inst?.name ?? "Instance"} will repeat ${s.name || s.track_name}.`);
     } else {
@@ -289,12 +294,7 @@ const confirmAction = () =>
         await api.post(`/api/queue/event/${s.id}?instance=${iid}`);
         actionQueuedOn.value = iid;
       }
-      if (actionKind.value === "start") {
-        await api.post(`/api/server/start?instance=${iid}`);
-        toast.success(`Queued and starting on ${inst?.name ?? "instance"}.`);
-      } else {
-        toast.success(`Queued on ${inst?.name ?? "instance"}.`);
-      }
+      toast.success(`Queued on ${inst?.name ?? "instance"}.`);
     }
     actionOpen.value = false;
     await loadAll();
@@ -380,14 +380,14 @@ onMounted(loadLibrary);
     icon="events"
   >
     <template #actions>
-      <Button v-if="auth.canOperate" :disabled="busy" @click="openCreate">
+      <Button v-if="auth.isAdmin" :disabled="busy" @click="openCreate">
         <Icon name="plus" :size="15" />
         New race setup
       </Button>
     </template>
   </PageHeader>
 
-  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events" aria-current="page">Race setups</RouterLink><RouterLink v-if="auth.canOperate" to="/presets">Templates</RouterLink><RouterLink :to="server.selectedInstanceId ? `/queue?instance=${server.selectedInstanceId}` : '/queue'">Run plan</RouterLink></nav>
+  <nav class="workspace-tabs" aria-label="Race preparation"><RouterLink to="/events" aria-current="page">Race setups</RouterLink><RouterLink v-if="auth.isAdmin" to="/presets">Templates</RouterLink><RouterLink :to="server.selectedInstanceId ? `/queue?instance=${server.selectedInstanceId}` : '/queue'">Run plan</RouterLink></nav>
 
   <!-- Toolbar -->
   <div class="paddock-toolbar mb-6 flex flex-wrap items-center gap-3">
@@ -419,11 +419,11 @@ onMounted(loadLibrary);
         Repeating
       </button>
     </div>
-    <Button v-if="auth.canOperate" variant="dark" size="sm" @click="error = ''; groupModalOpen = true">
+    <Button v-if="auth.isAdmin" variant="dark" size="sm" @click="error = ''; groupModalOpen = true">
       <Icon name="folder" :size="14" />
       New group
     </Button>
-    <template v-if="auth.canOperate && groupFilter !== 'all'">
+    <template v-if="auth.isAdmin && groupFilter !== 'all'">
       <Button variant="ghost" size="sm" title="Duplicate group" @click="duplicateGroup">
         <Icon name="copy" :size="14" />
         Duplicate group
@@ -438,7 +438,7 @@ onMounted(loadLibrary);
   </div>
 
   <div
-    v-if="auth.canOperate && selectedIds.length"
+    v-if="auth.isAdmin && selectedIds.length"
     class="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-dim px-3 py-2"
   >
     <span class="text-sm font-semibold text-accent">{{ selectedIds.length }} selected</span>
@@ -472,7 +472,7 @@ onMounted(loadLibrary);
         </span>
       </template>
       <template #actions>
-        <label v-if="auth.canOperate && s.id" class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
+        <label v-if="auth.isAdmin && s.id" class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
           <input v-model="selectedIds" :aria-label="`Select ${s.name || s.track_name}`" type="checkbox" :value="s.id" class="accent-accent" />
           Select
         </label>
@@ -502,15 +502,15 @@ onMounted(loadLibrary);
 
       <div v-if="auth.canOperate" class="mt-5 flex flex-wrap items-start gap-2">
         <Button size="sm" @click="openAction(s, 'queue')"><Icon name="queue" :size="16" />Add to run plan</Button>
-        <Button variant="dark" size="sm" @click="openEdit(s)">Edit</Button>
+        <Button variant="dark" size="sm" v-if="auth.isAdmin" @click="openEdit(s)">Edit</Button>
         <details class="w-full rounded-md border border-line bg-surface-2/40">
           <summary class="min-h-11 cursor-pointer px-3 py-2.5 text-sm text-muted" :aria-label="`More actions for ${s.name || s.track_name}`">More actions</summary>
           <div class="flex flex-wrap gap-2 border-t border-line p-3">
-            <Button variant="dark" size="sm" @click="openAction(s, 'start')">Queue &amp; start server</Button>
+            <Button variant="dark" size="sm" @click="openAction(s, 'start')">Review as driving session</Button>
             <Button variant="dark" size="sm" @click="openAction(s, 'repeat')">Repeat</Button>
-            <Button variant="ghost" size="sm" @click="duplicateSetup(s)">Duplicate</Button>
-            <Button variant="ghost" size="sm" @click="saveAsTemplate(s)">Save as template</Button>
-            <Button variant="danger" size="sm" @click="deleteSetup(s)">Delete setup</Button>
+            <Button variant="ghost" size="sm" v-if="auth.isAdmin" @click="duplicateSetup(s)">Duplicate</Button>
+            <Button variant="ghost" size="sm" v-if="auth.isAdmin" @click="saveAsTemplate(s)">Save as template</Button>
+            <Button variant="danger" size="sm" v-if="auth.isAdmin" @click="deleteSetup(s)">Delete setup</Button>
           </div>
         </details>
       </div>
@@ -528,7 +528,7 @@ onMounted(loadLibrary);
     "
   >
     <Button v-if="search || groupFilter !== 'all' || runFilter !== 'all'" @click="clearFilters">Clear filters</Button>
-    <Button v-else-if="auth.canOperate" :disabled="busy" @click="openCreate">
+    <Button v-else-if="auth.isAdmin" :disabled="busy" @click="openCreate">
       <Icon name="plus" :size="15" />
       New race setup
     </Button>
@@ -552,13 +552,13 @@ onMounted(loadLibrary);
   <!-- Instance action picker -->
   <Modal
     :open="actionOpen"
-    :title="actionKind === 'repeat' ? 'Repeat race setup' : actionKind === 'start' ? 'Queue & start server' : 'Add to run plan'"
+    :title="actionKind === 'repeat' ? 'Repeat race setup' : actionKind === 'start' ? 'Review as driving session' : 'Add to run plan'"
     @close="actionOpen = false"
   >
     <p class="mb-3 text-sm text-muted">
       <span class="font-medium text-text">{{ actionTarget?.name || actionTarget?.track_name }}</span>
       <template v-if="actionKind === 'repeat'"> will repeat when the current race finishes. The manual queue is kept and paused. A stopped server stays stopped until you start it.</template>
-      <template v-else-if="actionKind === 'start'"> will be added to the end of the run plan, then the server will start from the first queued race. Races already ahead of it run first.</template>
+      <template v-else-if="actionKind === 'start'"> will open as an isolated driving-session draft. Review its exact setup and server before choosing Start now, After current, or Later.</template>
       <template v-else> will be added to the end of this server’s run plan.</template>
     </p>
     <p v-if="error" role="alert" class="mb-3 text-sm text-danger">{{ error }}</p>
@@ -571,13 +571,13 @@ onMounted(loadLibrary);
         :options="server.instanceList.map((i) => ({ value: i.id, label: i.name + (i.running ? ' (running)' : '') }))"
       />
     </FormRow>
-    <p v-if="actionQueuedOn !== null" role="status" class="mt-3 text-sm text-muted">This setup is already queued. Retrying starts the server without adding another copy.</p>
+    <p v-if="actionQueuedOn !== null" role="status" class="mt-3 text-sm text-muted">This setup was added to the running order.</p>
     <p v-if="actionBlocked" role="status" class="mt-3 text-sm text-warn">{{ actionBlocked }}</p>
     <RouterLink v-if="actionInstance" :to="`/queue?instance=${actionInstance.id}`" class="mt-3 inline-flex min-h-11 items-center text-sm text-accent underline">View {{ actionInstance.name }} run plan</RouterLink>
     <template #footer>
       <Button variant="ghost" @click="actionOpen = false">Cancel</Button>
       <Button :disabled="busy || !!actionBlocked" @click="confirmAction">
-        {{ busy ? "Working…" : actionKind === "repeat" ? "Set repeat mode" : actionKind === "start" ? actionQueuedOn !== null ? "Retry start" : "Queue & start server" : "Add to run plan" }}
+        {{ busy ? "Working…" : actionKind === "repeat" ? "Set repeat mode" : actionKind === "start" ? "Review as driving session" : "Add to run plan" }}
       </Button>
     </template>
   </Modal>

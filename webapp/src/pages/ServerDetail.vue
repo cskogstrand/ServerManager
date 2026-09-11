@@ -121,7 +121,8 @@ const confirm = useConfirmStore();
 const auth = useAuthStore();
 const { summary, reload: reloadSummary } = useSetupSummary();
 
-const instanceId = computed(() => Number(route.params.id));
+const props = defineProps<{ targetInstanceId?: number }>();
+const instanceId = computed(() => props.targetInstanceId ?? Number(route.params.id));
 const inst = computed<InstanceState | undefined>(() => server.instances[instanceId.value]);
 const serverOptions = computed(() =>
   server.instanceList.map((i) => ({
@@ -174,6 +175,7 @@ function trackUrl(kind: "map" | "mapmeta" | "outline" | "preview", key: string, 
 }
 
 const upcoming = computed(() => queue.value.filter((q) => !q.finished).slice(0, 6));
+const needsSession = computed(() => !inst.value?.running && inst.value?.run_mode !== "repeat_event" && !upcoming.value.length);
 const instanceSetup = computed(() => summary.value?.instances.find((i) => i.id === instanceId.value) ?? null);
 const setupReady = computed(() => summary.value?.can_start ?? false);
 const startBlocker = computed(() => {
@@ -952,13 +954,14 @@ onBeforeUnmount(() => {
     <!-- Masthead -->
     <header class="page-enter mb-5 flex flex-wrap items-center gap-3">
       <RouterLink
+        v-if="!props.targetInstanceId"
         to="/"
         class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-muted transition-colors hover:border-line-hi hover:text-text"
       >
         <Icon name="arrowUp" :size="14" class="-rotate-90" />
-        Dashboard
+        Today
       </RouterLink>
-      <div class="min-w-56 sm:min-w-72">
+      <div v-if="!props.targetInstanceId" class="min-w-56 sm:min-w-72">
         <label for="race-control-instance" class="sr-only">Server instance</label>
         <Select
           id="race-control-instance"
@@ -971,7 +974,7 @@ onBeforeUnmount(() => {
         class="size-2.5 rounded-full"
         :class="inst.running ? 'bg-ok' : 'bg-dim'"
       />
-      <h1 class="text-xl font-black tracking-tight">Race Control</h1>
+      <component :is="props.targetInstanceId ? 'h2' : 'h1'" class="text-xl font-semibold tracking-tight">Session control</component>
       <span v-if="inst.running" class="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">
         {{ inst.players }} player{{ inst.players === 1 ? "" : "s" }}
       </span>
@@ -1016,8 +1019,9 @@ onBeforeUnmount(() => {
           <Icon name="repeat" :size="15" />
           Restart
         </Button>
+        <RouterLink v-if="auth.canOperate && needsSession" :to="{ path: '/sessions/new', query: { instance: instanceId } }" class="pitlane-button primary">Prepare session</RouterLink>
         <Button
-          v-if="auth.canOperate"
+          v-if="auth.canOperate && !needsSession"
           :variant="inst.running ? 'danger' : 'success'"
           size="sm"
           :disabled="busy || (!inst.running && !!startBlocker)"
@@ -1032,7 +1036,7 @@ onBeforeUnmount(() => {
 
     <!-- Start blocker banner -->
     <div
-      v-if="auth.canOperate && !inst.running && startBlocker"
+      v-if="auth.canOperate && !inst.running && !needsSession && startBlocker"
       class="page-enter mb-4 flex flex-wrap items-center gap-2 rounded-md border border-warn/40 bg-warn-glow px-3 py-2.5 text-sm text-warn"
     >
       <Icon name="alert" :size="16" class="shrink-0" />
@@ -1066,7 +1070,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="!inst.running" class="mb-4 rounded-md border border-line bg-surface px-4 py-4 text-sm"><strong>Stopped</strong><span class="ml-2 text-muted">{{ upcoming.length ? `${upcoming.length} race${upcoming.length === 1 ? '' : 's'} in the run plan.` : 'Choose a race setup to get ready.' }}</span><RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-2 text-accent underline">Open run plan</RouterLink></div>
+    <div v-if="!inst.running" class="mb-4 rounded-md border border-line bg-surface px-4 py-4 text-sm"><strong>Stopped</strong><span class="ml-2 text-muted">{{ upcoming.length ? `${upcoming.length} session${upcoming.length === 1 ? '' : 's'} in the running order.` : 'Prepare a driving session to get ready.' }}</span><RouterLink :to="{ name: 'queue', query: { instance: instanceId } }" class="ml-2 text-accent underline">Running order</RouterLink></div>
     <!-- Overview ribbon — the whole server at a glance: status, session, time,
          drivers, conditions and the loaded event in one scannable band. -->
     <section
@@ -1389,7 +1393,7 @@ onBeforeUnmount(() => {
                   class="shrink-0 rounded-md p-1 text-accent/80 transition-colors hover:bg-accent-dim hover:text-accent"
                   :aria-label="`Watch ${row.name}'s stream`"
                   :title="`Watch ${row.name}'s stream`"
-                  @click="openStream(`driver:${guidForCar(row.car_id)}`)"
+                  @click="openStream(driverStreams.keyForGuid(guidForCar(row.car_id)) ?? '')"
                 >
                   <Icon name="play" :size="14" />
                 </button>

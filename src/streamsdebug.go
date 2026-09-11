@@ -85,7 +85,7 @@ func schemeInfo(raw string) (string, bool) {
 }
 
 func apiStreamsDebug(c *gin.Context) {
-	streams, err := Dba.selectDriverStreams()
+	streams, err := Dba.cameraSources()
 	if err != nil {
 		apiDbError(c, err)
 		return
@@ -98,22 +98,18 @@ func apiStreamsDebug(c *gin.Context) {
 		Streams: make([]streamDebugRow, 0, len(streams)),
 		Logs:    LogLines.filtered(streamLogKeywords, 300),
 	}
-	for _, ds := range streams {
-		guid := strings.TrimSpace(derefOrEmpty(ds.DriverGuid))
-		row := streamDebugRow{
-			Id:          ds.Id,
-			Guid:        guid,
-			DisplayName: derefOrEmpty(ds.DisplayName),
-			Enabled:     ds.Enabled != nil && *ds.Enabled != 0,
-			EmbedUrl:    derefOrEmpty(ds.StreamEmbedUrl),
-			StatusUrl:   derefOrEmpty(ds.StreamStatusUrl),
-			CaptureUrl:  strings.TrimSpace(derefOrEmpty(ds.StreamCaptureUrl)),
-			Online:      online[guid],
+	for _, source := range streams {
+		key := source.DriverGUID
+		if strings.HasPrefix(source.ID, "source:") {
+			key = source.ID
 		}
+		row := streamDebugRow{Guid: key, DisplayName: source.Name, Enabled: source.Enabled, EmbedUrl: source.PlayerURL, StatusUrl: source.StatusURL, CaptureUrl: source.CaptureURL, Online: online[source.DriverGUID]}
 		row.CaptureScheme, row.CaptureSupported = schemeInfo(row.CaptureUrl)
-		Captures.fillDebugRow(&row, guid)
-		if guid != "" {
-			if media, err := Dba.listDriverMedia(guid); err == nil {
+		Captures.fillDebugRow(&row, key)
+		if strings.HasPrefix(source.ID, "source:") {
+			_ = Dba.db.QueryRow("SELECT count(*) FROM driver_media WHERE source_id=?", source.ID).Scan(&row.MediaCount)
+		} else if key != "" {
+			if media, e := Dba.listDriverMedia(key); e == nil {
 				row.MediaCount = len(media)
 			}
 		}
@@ -234,7 +230,11 @@ func (m *captureManager) captureStatuses() map[string]captureStatus {
 		segs := listBufferSegments(bufferDir(g))
 		st.SegmentCount = len(segs)
 		if len(segs) > 0 {
-			st.Buffering = now-segs[len(segs)-1].startMs < freshMs
+			// A long keyframe interval can keep one segment open for longer
+			// than its nominal duration. Fresh bytes are the authoritative signal.
+			if info, e := os.Stat(segs[len(segs)-1].path); e == nil {
+				st.Buffering = st.RecorderRunning && info.Size() > 0 && now-info.ModTime().UnixMilli() < freshMs
+			}
 		}
 		m.manualMu.Lock()
 		if mk := m.manual[g]; mk != nil {

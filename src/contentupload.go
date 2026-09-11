@@ -95,7 +95,9 @@ func refreshContentCounts() (contentCounts, error) {
 	if _, err := Dba.basepath(); err != nil {
 		return contentCounts{}, err
 	}
-	parseContent(Dba)
+	if err := parseContent(Dba); err != nil {
+		return contentCounts{}, err
+	}
 	return currentContentCounts()
 }
 
@@ -473,6 +475,15 @@ func downloadContentArchive(rawURL string, destinationPath string, progress func
 }
 
 func importContentArchive(archivePath string, archiveName string, basepath string, kind string, overwrite bool) (contentArchiveImportResult, error) {
+	contentLifecycleMu.Lock()
+	defer contentLifecycleMu.Unlock()
+	if overwrite && Instances != nil {
+		for _, inst := range Instances.All() {
+			if inst.isRunning() {
+				return contentArchiveImportResult{}, contentUploadError{Status: 409, Message: "Stop running servers before replacing installed content. Your archive has not been applied."}
+			}
+		}
+	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	if kind == "" {
 		kind = "auto"
@@ -599,6 +610,13 @@ func parse7zListPaths(output string) []string {
 func detectArchiveContentKindFromPaths(paths []string) (string, error) {
 	found := map[string]bool{}
 	for _, archivePath := range paths {
+		normalized := strings.TrimPrefix(strings.ReplaceAll(archivePath, "\\", "/"), "./")
+		if normalized == "ui/ui_car.json" {
+			found["car"] = true
+		}
+		if normalized == "ui/ui_track.json" {
+			found["track"] = true
+		}
 		for _, kind := range []string{"car", "track"} {
 			if _, ok, err := detectFilesystemAsset(kind, archivePath); err != nil {
 				return "", err
@@ -753,7 +771,7 @@ func importZipArchive(archivePath string, destinationRoot string, kind string, o
 	sort.Strings(keys)
 
 	return contentArchiveImportResult{
-		AssetKeys:   keys,
+		AssetKeys:    keys,
 		FilesWritten: filesWritten,
 	}, nil
 }

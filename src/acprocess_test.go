@@ -15,6 +15,7 @@ func newTestInstance(id int) *Instance {
 }
 
 func TestWaitForExitClearsState(t *testing.T) {
+	pitlaneTestDB(t)
 	inst := newTestInstance(1)
 
 	cmd := exec.Command("sh", "-c", "exit 0")

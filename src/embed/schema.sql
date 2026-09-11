@@ -520,3 +520,133 @@ FROM user_config WHERE id = 1;
 
 -- DEFAULT USERNAME admin PASSWORD admin
 INSERT OR IGNORE INTO users (id, name, password) VALUES (1, 'admin', '$2a$08$BvgMQY6H60BhcK9wM79RBu9IlURIP26BWYcCiWJjs06L1yEdkUif2');
+
+-- Pitlane inventory is independent of game identities and content caches.
+CREATE TABLE IF NOT EXISTS rig (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  revision INTEGER NOT NULL DEFAULT 1,
+  location TEXT NOT NULL DEFAULT '',
+  display TEXT NOT NULL CHECK(display IN ('triple','single','wide','ultrawide','vr','custom')),
+  notes TEXT NOT NULL DEFAULT '',
+  usual_driver_guid TEXT NOT NULL DEFAULT '',
+  usual_guest_id INTEGER,
+  gear TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS camera_source (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  player_url TEXT NOT NULL,
+  status_url TEXT NOT NULL DEFAULT '',
+  capture_url TEXT NOT NULL DEFAULT '',
+  driver_guid TEXT NOT NULL DEFAULT '',
+  instance_id INTEGER REFERENCES server_instance(id) ON DELETE SET NULL
+);
+-- Legacy sources keep their durable driver:N/spectator:N identity and URLs.
+CREATE TABLE IF NOT EXISTS source_rig (
+  source_id TEXT PRIMARY KEY,
+  rig_id INTEGER NOT NULL REFERENCES rig(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS content_metadata (
+  kind TEXT NOT NULL CHECK(kind IN ('car','track','weather')),
+  key TEXT NOT NULL,
+  layout TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 1,
+  display_name TEXT NOT NULL DEFAULT '',
+  tags TEXT NOT NULL DEFAULT '[]',
+  notes TEXT NOT NULL DEFAULT '',
+  archived INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(kind,key,layout)
+);
+
+CREATE TABLE IF NOT EXISTS driving_session (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ revision INTEGER NOT NULL DEFAULT 1,
+ name TEXT NOT NULL,
+ experience TEXT NOT NULL CHECK(experience IN ('drift','race','practice')),
+ lifecycle TEXT NOT NULL DEFAULT 'draft',
+ setup TEXT NOT NULL,
+ event_id INTEGER REFERENCES user_event(id),
+ instance_id INTEGER REFERENCES server_instance(id),
+ scheduled_at INTEGER,
+ time_zone TEXT NOT NULL DEFAULT 'UTC',
+ created_at INTEGER NOT NULL,
+ started_at INTEGER,
+ ended_at INTEGER,
+ failure TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS driving_execution (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id INTEGER NOT NULL REFERENCES driving_session(id),
+ instance_id INTEGER NOT NULL,
+ queue_id INTEGER,
+ idempotency_key TEXT UNIQUE,
+ expected_revision INTEGER NOT NULL,
+ state TEXT NOT NULL,
+ setup_snapshot TEXT NOT NULL,
+ server_cfg TEXT NOT NULL DEFAULT '',
+ entry_list TEXT NOT NULL DEFAULT '',
+ scoring_snapshot TEXT NOT NULL DEFAULT '',
+ requested_at INTEGER NOT NULL,
+ started_at INTEGER,
+ ended_at INTEGER,
+ failure TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS instance_launch (
+ instance_id INTEGER PRIMARY KEY,
+ execution_id INTEGER NOT NULL UNIQUE REFERENCES driving_execution(id)
+);
+CREATE INDEX IF NOT EXISTS driving_execution_session ON driving_execution(session_id,id);
+-- Reserve the pending queue during launch, including older API callers.
+CREATE TRIGGER IF NOT EXISTS launch_queue_insert BEFORE INSERT ON server_event
+WHEN EXISTS(SELECT 1 FROM instance_launch WHERE instance_id=NEW.instance_id)
+BEGIN SELECT RAISE(ABORT,'Instance launch is in progress'); END;
+CREATE TRIGGER IF NOT EXISTS launch_queue_delete BEFORE DELETE ON server_event
+WHEN EXISTS(SELECT 1 FROM instance_launch WHERE instance_id=OLD.instance_id)
+BEGIN SELECT RAISE(ABORT,'Instance launch is in progress'); END;
+DROP TRIGGER IF EXISTS launch_queue_order;
+CREATE TRIGGER launch_queue_order BEFORE UPDATE OF orderby ON server_event
+WHEN OLD.orderby IS NOT NEW.orderby AND EXISTS(SELECT 1 FROM instance_launch WHERE instance_id=OLD.instance_id)
+BEGIN SELECT RAISE(ABORT,'Instance launch is in progress'); END;
+
+-- Every saved session revision owns immutable values, including superseded drafts.
+CREATE TABLE IF NOT EXISTS driving_setup (
+ event_id INTEGER PRIMARY KEY REFERENCES user_event(id),
+ name TEXT NOT NULL,
+ experience TEXT NOT NULL,
+ setup TEXT NOT NULL
+);
+INSERT OR IGNORE INTO driving_setup(event_id,name,experience,setup)
+ SELECT event_id,name,experience,setup FROM driving_session WHERE event_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS metadata_change (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ kind TEXT NOT NULL, key TEXT NOT NULL, layout TEXT NOT NULL,
+ before_json TEXT NOT NULL, after_json TEXT NOT NULL,
+ created_at INTEGER NOT NULL, undone_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS execution_phase (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ execution_id INTEGER NOT NULL REFERENCES driving_execution(id),
+ started_at INTEGER NOT NULL, payload TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_result (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ execution_id INTEGER NOT NULL REFERENCES driving_execution(id),
+ name TEXT NOT NULL, digest TEXT NOT NULL, data TEXT NOT NULL,
+ created_at INTEGER NOT NULL,
+ UNIQUE(execution_id,name,digest)
+);
+
+CREATE TABLE IF NOT EXISTS capture_job (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ source_key TEXT NOT NULL,
+ state TEXT NOT NULL,
+ requested_at INTEGER NOT NULL,
+ ended_at INTEGER,
+ path TEXT NOT NULL DEFAULT '',
+ message TEXT NOT NULL DEFAULT ''
+);

@@ -23,7 +23,7 @@ onMounted(() => void content.load());
 const search = ref("");
 
 const filtered = computed(() =>
-  content.tracks.filter((t) =>
+  content.tracks.filter((t) => !content.isArchived("track",t.key,t.config??"") &&
     `${t.name ?? ""} ${t.key ?? ""} ${t.config ?? ""} ${t.version ?? ""}`.toLowerCase().includes(search.value.toLowerCase()),
   ),
 );

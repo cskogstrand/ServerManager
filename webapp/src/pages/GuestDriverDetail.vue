@@ -143,11 +143,11 @@ onBeforeUnmount(() => {
 
 <template>
   <RouterLink
-    :to="{ name: 'guest-drivers' }"
+    :to="{ name: auth.canOperate ? 'guest-drivers' : 'drivers' }"
     class="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-accent"
   >
     <Icon name="arrowLeft" :size="16" />
-    Guest Drivers
+    {{ auth.canOperate ? "Guest roster" : "Drivers" }}
   </RouterLink>
 
   <!-- Loading -->

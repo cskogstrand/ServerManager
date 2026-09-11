@@ -45,11 +45,13 @@ type DriverState struct {
 	// driver_session row when the session ends. recorded guards against writing
 	// the same session twice (end-of-session vs. the disconnect that follows a
 	// track-change kick). See driverstats.go.
-	joinedAt   int64
-	sessType   int
-	sessTrack  string
-	sessConfig string
-	recorded   bool
+	executionID int64
+	accountName string
+	joinedAt    int64
+	sessType    int
+	sessTrack   string
+	sessConfig  string
+	recorded    bool
 
 	// connectionId is the driver_connection (one connect→disconnect "session")
 	// this car belongs to, opened in driverJoin and kept across AC session resets
@@ -72,19 +74,21 @@ type DriverState struct {
 
 func (inst *Instance) driverJoin(nc NewConnection) {
 	now := time.Now().UnixMilli()
-	d := &DriverState{
-		CarId:      nc.carId,
-		Name:       nc.driverName,
-		Car:        nc.carModel,
-		Skin:       nc.carSkin,
-		Guid:       nc.driverGuid,
-		Connected:  true,
-		joinedAt:   now,
-		sessType:   inst.Status.Session.typ,
-		sessTrack:  inst.Status.Session.track,
-		sessConfig: inst.Status.Session.trackConfig,
-	}
 	inst.mu.Lock()
+	d := &DriverState{
+		executionID: inst.executionID,
+		accountName: nc.driverName,
+		CarId:       nc.carId,
+		Name:        nc.driverName,
+		Car:         nc.carModel,
+		Skin:        nc.carSkin,
+		Guid:        nc.driverGuid,
+		Connected:   true,
+		joinedAt:    now,
+		sessType:    inst.Status.Session.typ,
+		sessTrack:   inst.Status.Session.track,
+		sessConfig:  inst.Status.Session.trackConfig,
+	}
 	if inst.drivers == nil {
 		inst.drivers = make(map[int]*DriverState)
 	}
@@ -287,16 +291,18 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 				d.captureCount++
 				d.lastCaptureMs = now
 				capReq = &captureRequest{
-					guid:         d.Guid,
-					driverName:   d.Name,
-					trackKey:     d.sessTrack,
-					trackConfig:  d.sessConfig,
-					score:        d.driftRunPeak,
-					delta:        d.driftRunPeak - d.driftRunBaseline,
-					runStartMs:   d.driftRunStartMs,
-					runEndMs:     now,
-					peakMs:       d.driftRunPeakMs,
-					connectionId: d.connectionId,
+					guid:          d.Guid,
+					driverName:    d.Name,
+					trackKey:      d.sessTrack,
+					trackConfig:   d.sessConfig,
+					score:         d.driftRunPeak,
+					delta:         d.driftRunPeak - d.driftRunBaseline,
+					runStartMs:    d.driftRunStartMs,
+					runEndMs:      now,
+					peakMs:        d.driftRunPeakMs,
+					connectionId:  d.connectionId,
+					guestDriverID: d.GuestDriverId,
+					executionID:   d.executionID,
 				}
 			}
 			d.DriftLast = score
@@ -321,6 +327,7 @@ func (inst *Instance) recordDrift(carId int, live bool, score, best int, publish
 					score:         score,
 					endedAt:       now,
 					guestDriverId: d.GuestDriverId,
+					executionID:   d.executionID,
 					connectionId:  d.connectionId,
 				}
 			}

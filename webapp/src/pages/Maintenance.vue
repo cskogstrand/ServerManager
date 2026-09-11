@@ -21,7 +21,7 @@ const restoring = ref(false);
 
 const downloads = [
   { href: "/api/server/smdata", label: "Database", hint: "smdata.db — all presets, events, users, instances", icon: "content" },
-  { href: "/api/server/smcontent", label: "Content archive", hint: "smcontent.zip — imported tracks and cars", icon: "car" },
+  { href: "/api/server/smcontent", label: "Content archive", hint: "smcontent.zip — server content archive; not the full installed game or recordings", icon: "car" },
   { href: "/api/server/logfile", label: "Server log", hint: "logfile.log", icon: "terminal" },
 ];
 
@@ -73,7 +73,7 @@ async function restore() {
 </script>
 
 <template>
-  <PageHeader title="Backup & Restore" subtitle="Download a full backup, or restore a database from a previous backup." icon="content">
+  <PageHeader title="Backup & Restore" subtitle="Export a specific backup, or stage a database restore for the next restart." icon="content">
     <template #prefix>
       <AdminBackButton />
     </template>
@@ -81,7 +81,7 @@ async function restore() {
 
   <div class="grid items-start gap-5 md:grid-cols-2">
     <Card title="Backup" class="min-w-0">
-      <p class="mb-3 text-sm text-muted">Download the data you'd want to keep. The database holds everything except imported content files.</p>
+      <p class="mb-3 text-sm text-muted">Download the data you'd want to keep. The database includes settings, accounts, session history and media references. Media files, simulator content and game binaries require separate backups. Media export is not available here.</p>
       <div class="space-y-2">
         <a
           v-for="d in downloads"

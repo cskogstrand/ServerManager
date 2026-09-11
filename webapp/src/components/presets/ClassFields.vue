@@ -100,7 +100,7 @@ function totalSlots(): number {
             <Combobox
               v-model="entry.cache_car_key"
               placeholder="Search cars…"
-              :options="content.cars.map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
+              :options="content.cars.filter(c=>!content.isArchived('car',c.key)||c.key===entry.cache_car_key).map((c) => ({ value: c.key ?? '', label: c.name ?? c.key ?? '' }))"
               @update:model-value="onCarChange(entry)"
             />
           </FormRow>

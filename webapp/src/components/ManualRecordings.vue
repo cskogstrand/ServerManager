@@ -3,7 +3,7 @@
 // (no connection). Each tile can be played, downloaded, deleted, and attributed
 // to a guest driver ("Driven by"), since a manual clip often credits a passenger
 // or a different real person sharing the account.
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { timeAgo } from "@/lib/driversApi";
 import { fmtClipDuration } from "@/lib/useDriverCapture";
 import type { MediaItem } from "@/types/driverStats";
@@ -15,6 +15,10 @@ import Button from "@/components/ui/Button.vue";
 
 const props = defineProps<{
   items: MediaItem[];
+  heading?: string;
+  context?: string;
+  initialFile?: string;
+  accountLabel?: string;
   canOperate: boolean;
   deletingIds?: Set<string>;
   guests?: GuestDriver[];
@@ -37,6 +41,13 @@ function guestName(m: MediaItem): string {
 
 // One lightbox for the whole reel.
 const active = ref<MediaItem | null>(null);
+let openedFile = "";
+watch(() => [props.initialFile, props.items] as const, ([file, items]) => {
+  if (file && file !== openedFile) {
+    const item = items.find(m => m.url.split("/").pop() === file);
+    if (item) { active.value = item; openedFile = file; }
+  }
+}, { immediate: true });
 function openMedia(m: MediaItem) {
   if (isRealMedia(m)) active.value = m;
 }
@@ -54,8 +65,8 @@ function pick(guestDriverId: number | null) {
   <section v-if="items.length" class="reveal">
     <div class="mb-2 flex items-center gap-2">
       <h2 class="flex items-center gap-2 text-sm font-bold tracking-tight">
-        <Icon name="film" :size="15" class="text-accent" /> Manual recordings
-        <span class="text-xs font-normal text-dim">not tied to a session</span>
+        <Icon name="film" :size="15" class="text-accent" /> {{ heading || "Manual recordings" }}
+        <span class="text-xs font-normal text-dim">{{ context ?? "not tied to a session" }}</span>
       </h2>
       <span class="font-mono text-xs text-dim">({{ items.length }})</span>
     </div>
@@ -113,7 +124,7 @@ function pick(guestDriverId: number | null) {
             <Icon name="user" :size="12" class="shrink-0 text-dim" />
             <span class="text-muted">Driven by</span>
             <span class="min-w-0 flex-1 truncate font-semibold" :class="guestName(m) ? 'text-accent' : 'text-text'">
-              {{ guestName(m) || "Account driver" }}
+              {{ guestName(m) || accountLabel || "Account driver" }}
             </span>
             <Icon v-if="canOperate" name="arrowDown" :size="12" class="shrink-0 text-dim" />
           </button>
@@ -153,7 +164,7 @@ function pick(guestDriverId: number | null) {
             :class="!assignFor?.guest_driver_id ? 'border-accent/50 bg-accent-dim font-semibold text-accent' : 'border-line text-text hover:border-line-hi hover:bg-surface-2'"
             @click="pick(null)"
           >
-            <Icon name="user" :size="14" /> Account driver (own name)
+            <Icon name="user" :size="14" /> {{ accountLabel || "Account driver (own name)" }}
           </button>
         </li>
         <li v-for="g in guests" :key="g.id">

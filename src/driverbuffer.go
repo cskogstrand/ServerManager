@@ -427,8 +427,9 @@ func (m *captureManager) assembleClip(guid string, startMs, endMs int64, outPath
 	}
 	defer os.Remove(listPath)
 
-	if m.concatEncode(listPath, outPath, endMs-startMs) {
-		return firstStart, true
+	actualStart := max(startMs, firstStart)
+	if m.concatEncode(listPath, outPath, endMs-actualStart, actualStart-firstStart) {
+		return actualStart, true
 	}
 	return 0, false
 }
@@ -455,12 +456,13 @@ func clipEncodeTimeout(windowMs int64) time.Duration {
 // it). Re-encoding rebuilds a clean, monotonic, zero-based timeline.
 // ponytail: re-encode always — correctness over the copy fast-path that shipped
 // unplayable clips. Re-add a copy path only if it produces verified-monotonic ts.
-func (m *captureManager) concatEncode(listPath, outPath string, windowMs int64) bool {
+func (m *captureManager) concatEncode(listPath, outPath string, windowMs int64, offsetMs int64) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), clipEncodeTimeout(windowMs))
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.ffmpeg,
 		"-nostdin", "-y", "-loglevel", "error",
 		"-f", "concat", "-safe", "0", "-i", listPath,
+		"-ss", strconv.FormatFloat(float64(offsetMs)/1000, 'f', 3, 64), "-t", strconv.FormatFloat(float64(windowMs)/1000, 'f', 3, 64),
 		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
 		"-c:a", "aac", "-movflags", "+faststart",
 		outPath)
@@ -481,30 +483,18 @@ func (m *captureManager) grabLatestFrame(guid, outPath string) bool {
 	if len(segs) == 0 {
 		return false
 	}
-	// Prefer the second-newest segment — the newest is still being written.
-	src := segs[len(segs)-1].path
+	// Completed segments end at the next segment's observed timestamp. Decode
+	// forward to that position: input-side EOF seeking is unreliable for MPEG-TS.
+	index := len(segs) - 1
+	offset := 0.0
 	if len(segs) >= 2 {
-		src = segs[len(segs)-2].path
+		index--
+		offset = max(0, float64(segs[index+1].startMs-segs[index].startMs)/1000-1)
 	}
-	return m.grabFrameFromFileEnd(src, outPath)
-}
-
-// grabFrameFromFileEnd grabs the frame ~1s before the end of a local file (the
-// freshest decodable still).
-func (m *captureManager) grabFrameFromFileEnd(src, outPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), localFfmpegTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, m.ffmpeg,
-		"-nostdin", "-y", "-loglevel", "error",
-		"-sseof", "-1",
-		"-i", src,
-		"-frames:v", "1", "-q:v", "3",
-		outPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("driver capture: snapshot frame failed: %v %s", err, strings.TrimSpace(string(out)))
-		return false
+	if m.grabFrameFromFile(segs[index].path, offset, outPath) {
+		return true
 	}
-	return fileNonEmpty(outPath)
+	return offset > 0 && m.grabFrameFromFile(segs[index].path, 0, outPath)
 }
 
 // grabFrameFromFile pulls a single still at offsetSec into a local clip file.
@@ -513,9 +503,9 @@ func (m *captureManager) grabFrameFromFile(src string, offsetSec float64, outPat
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.ffmpeg,
 		"-nostdin", "-y", "-loglevel", "error",
-		"-ss", strconv.FormatFloat(offsetSec, 'f', 3, 64),
 		"-i", src,
-		"-frames:v", "1", "-q:v", "3",
+		"-ss", strconv.FormatFloat(offsetSec, 'f', 3, 64),
+		"-frames:v", "1", "-pix_fmt", "yuvj420p", "-q:v", "3",
 		outPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("driver capture: frame extract failed: %v %s", err, strings.TrimSpace(string(out)))

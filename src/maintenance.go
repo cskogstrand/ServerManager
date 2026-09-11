@@ -1,8 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -20,6 +22,10 @@ func applyStagedRestore(dbpath string) {
 		return
 	}
 
+	if !validRestoreDatabase(staged) {
+		log.Print("Staged restore is invalid; current database preserved")
+		return
+	}
 	backup := dbpath + ".prev"
 	_ = os.Remove(backup)
 	if _, err := os.Stat(dbpath); err == nil {
@@ -30,6 +36,7 @@ func applyStagedRestore(dbpath string) {
 	}
 	if err := os.Rename(staged, dbpath); err != nil {
 		log.Print("Could not apply staged database restore: ", err)
+		_ = os.Rename(backup, dbpath)
 		return
 	}
 	log.Print("Applied staged database restore; previous database kept at ", backup)
@@ -50,6 +57,27 @@ func looksLikeSqlite(path string) bool {
 	return string(header) == sqliteMagic
 }
 
+func validRestoreDatabase(path string) bool {
+	if !looksLikeSqlite(path) {
+		return false
+	}
+	uri := (&url.URL{Scheme: "file", Path: path}).String() + "?mode=ro"
+	db, err := sql.Open("sqlite3", uri)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var check string
+	if db.QueryRow("PRAGMA quick_check").Scan(&check) != nil || check != "ok" {
+		return false
+	}
+	var count int
+	if db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('users','user_config','server_event')").Scan(&count) != nil || count != 3 {
+		return false
+	}
+	return true
+}
+
 // apiMaintenanceRestore stages an uploaded database for the next boot. All
 // servers must be stopped; the file is validated as SQLite before staging.
 func apiMaintenanceRestore(c *gin.Context) {
@@ -66,17 +94,28 @@ func apiMaintenanceRestore(c *gin.Context) {
 		return
 	}
 
-	staged := filepath.Join(ConfigFolder, "smdata.db.restore")
+	temporary, err := os.CreateTemp(ConfigFolder, "restore-upload-*.db")
+	if err != nil {
+		apiError(c, 500, "io_error", "Could not prepare restore upload")
+		return
+	}
+	staged := temporary.Name()
+	temporary.Close()
+	defer os.Remove(staged)
 	if err := c.SaveUploadedFile(file, staged); err != nil {
 		apiError(c, http.StatusInternalServerError, "io_error", "Could not save the uploaded database.")
 		return
 	}
-	if !looksLikeSqlite(staged) {
+	if !validRestoreDatabase(staged) {
 		_ = os.Remove(staged)
-		apiBadRequest(c, "That file is not a SQLite database. Upload the smdata.db downloaded from Backup.")
+		apiBadRequest(c, "That file is not an intact ServerManager database. Upload smdata.db downloaded from Backup.")
 		return
 	}
 
+	if err = os.Rename(staged, filepath.Join(ConfigFolder, "smdata.db.restore")); err != nil {
+		apiError(c, 500, "io_error", "Could not stage restore; the previous staged file is preserved")
+		return
+	}
 	c.PureJSON(http.StatusOK, gin.H{
 		"staged":  true,
 		"message": "Restore staged. Restart Server Manager to apply it; the current database is kept as smdata.db.prev.",

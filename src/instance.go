@@ -15,7 +15,10 @@ import (
 // config (ports, name), the OS process handle, the UDP plugin connection
 // and the rendered server configuration.
 type Instance struct {
-	Conf ServerInstance
+	executionID    int64 // Current concrete execution, guarded by mu.
+	phaseSignature string
+	operationMu    sync.Mutex // Serializes process launch/review against legacy controls.
+	Conf           ServerInstance
 
 	// mu guards cmd, lines, Status, drivers, positions, driftScorers and tel.
 	mu                  sync.Mutex

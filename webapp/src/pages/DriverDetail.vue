@@ -94,7 +94,6 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const localAvatar = ref<string | null>(null);
 const avatarSrc = computed(() => localAvatar.value ?? driver.value?.avatar_url ?? null);
 
-const previewFallbackMsg = "Showing a local preview — saving will work once the updated server is running.";
 
 function pickPhoto() {
   fileInput.value?.click();
@@ -115,10 +114,12 @@ async function onPickFile(e: Event) {
       headers: { "X-CSRF-Token": csrfToken() },
       body: fd,
     });
-    if (res.ok) toast.success("Driver photo updated.");
-    else toast.info(previewFallbackMsg);
-  } catch {
-    toast.info(previewFallbackMsg);
+    if (!res.ok) { const body = await res.json().catch(() => null); throw new Error(body?.error?.message || `Photo upload failed (${res.status})`); }
+    toast.success("Driver photo updated.");
+  } catch (e) {
+    if (localAvatar.value) URL.revokeObjectURL(localAvatar.value);
+    localAvatar.value = null;
+    toast.error(String(e));
   }
 }
 
@@ -371,8 +372,7 @@ async function deleteMedia(m: MediaItem) {
 
 // --- session tags ------------------------------------------------------------
 // Optimistic: update the chip set immediately, reconcile with the server's
-// returned set. In mock/preview mode (endpoint 404/501) keep the optimistic
-// change so the UI stays usable.
+// returned set. Every failure restores the saved state.
 async function addTag(session: DriverSession, tag: string) {
   if (session.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
   const prev = session.tags.slice();
@@ -380,10 +380,6 @@ async function addTag(session: DriverSession, tag: string) {
   try {
     session.tags = await addSessionTag(guid.value, session.id, tag);
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
-      toast.info(previewFallbackMsg);
-      return;
-    }
     session.tags = prev;
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
@@ -395,10 +391,6 @@ async function removeTag(session: DriverSession, tag: string) {
   try {
     session.tags = await removeSessionTag(guid.value, session.id, tag);
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
-      toast.info(previewFallbackMsg);
-      return;
-    }
     session.tags = prev;
     toast.error(e instanceof ApiError ? e.message : String(e));
   }
@@ -463,10 +455,6 @@ async function removeSession(session: DriverSession) {
     await deleteSession(guid.value, session.id);
     toast.success("Session deleted.");
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
-      toast.info(previewFallbackMsg);
-      return;
-    }
     if (driver.value) driver.value.session_history = prev;
     toast.error(e instanceof ApiError ? e.message : String(e));
   }

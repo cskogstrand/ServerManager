@@ -56,7 +56,7 @@ function removeWeather(index: number) {
         <FormRow label="Weather">
           <Select
             v-model="weather.graphics"
-            :options="content.weathers.map((w) => ({ value: w.key ?? '', label: w.name ?? w.key ?? '' }))"
+            :options="content.weathers.filter(w=>w.key===weather.graphics||!content.isArchived('weather',w.key)).map((w) => ({ value: w.key ?? '', label: w.name ?? w.key ?? '' }))"
           />
         </FormRow>
       </div>

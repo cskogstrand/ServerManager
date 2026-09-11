@@ -27,7 +27,8 @@ async function refresh() {
     for (const k of Object.keys(statuses)) if (!live.has(k)) delete statuses[k];
     Object.assign(statuses, res.drivers ?? {});
   } catch {
-    /* transient — keep the last snapshot */
+    for (const key of Object.keys(statuses)) delete statuses[key];
+    nowMs.value=Date.now();
   }
 }
 
@@ -62,15 +63,15 @@ export function useDriverCapture() {
     return Math.max(0, Math.floor(((nowMs.value || Date.now()) - s.manual_started_ms) / 1000));
   }
   async function takePicture(guid: string): Promise<void> {
-    await api.post(`/api/drivers/${encodeURIComponent(guid)}/snapshot`);
+    await api.post(guid.startsWith("source:")?`/api/sources/${encodeURIComponent(guid)}/capture/snapshot`:`/api/drivers/${encodeURIComponent(guid)}/snapshot`);
     void refresh();
   }
   async function recordNow(guid: string): Promise<void> {
-    await api.post(`/api/drivers/${encodeURIComponent(guid)}/record`);
+    await api.post(guid.startsWith("source:")?`/api/sources/${encodeURIComponent(guid)}/capture/record`:`/api/drivers/${encodeURIComponent(guid)}/record`);
     void refresh();
   }
   async function stopRecording(guid: string): Promise<void> {
-    await api.post(`/api/drivers/${encodeURIComponent(guid)}/record/stop`);
+    await api.post(guid.startsWith("source:")?`/api/sources/${encodeURIComponent(guid)}/capture/stop`:`/api/drivers/${encodeURIComponent(guid)}/record/stop`);
     void refresh();
   }
   return {

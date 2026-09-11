@@ -19,6 +19,11 @@ func startScheduler() {
 }
 
 func checkSchedules() {
+	drivingLaunchMu.Lock()
+	defer drivingLaunchMu.Unlock()
+	contentLifecycleMu.RLock()
+	defer contentLifecycleMu.RUnlock()
+	checkDrivingSchedules()
 	now := time.Now().Unix()
 	for _, inst := range Instances.All() {
 		if inst.Conf.ScheduledStart == nil || *inst.Conf.ScheduledStart == 0 {
@@ -28,6 +33,7 @@ func checkSchedules() {
 			continue
 		}
 
+		inst.operationMu.Lock()
 		if !inst.isRunning() {
 			log.Printf("Scheduled start firing for instance %s", inst.Name())
 			if ok, err := inst.serverApplyTrack(); ok {
@@ -39,6 +45,7 @@ func checkSchedules() {
 			}
 		}
 
+		inst.operationMu.Unlock()
 		// One-shot: clear the schedule whether or not it could start.
 		if _, err := Dba.updateServerInstanceSchedule(inst.Id(), nil); err != nil {
 			log.Print("Could not clear scheduled start: ", err)

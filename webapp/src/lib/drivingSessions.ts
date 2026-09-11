@@ -1,0 +1,3 @@
+import type {UserClass,UserDifficulty,UserSession,UserTime,DriftScoringMode} from '@/types/generated';
+export interface DrivingSetup {custom_ini?:string;track_key:string;track_config:string;race_laps:number;difficulty:UserDifficulty;phases:UserSession;conditions:UserTime;grid:UserClass;scoring:DriftScoringMode}
+export interface DrivingSession {id:number;revision:number;name:string;experience:'drift'|'race'|'practice';lifecycle:string;setup:DrivingSetup;event_id:number|null;instance_id:number|null;scheduled_at:number|null;time_zone:string;created_at:number;started_at:number|null;ended_at:number|null;failure:string}

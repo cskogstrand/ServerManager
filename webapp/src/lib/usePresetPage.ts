@@ -130,6 +130,9 @@ export function usePresetPage<T extends { id?: number }>(
   const save = () =>
     guard(async () => {
       if (!form.value || selectedId.value === null) return;
+      await reloadUsage();
+      const affected=usedBy(selectedId.value);
+      if (affected && !await confirm.ask({title:"Update shared preset?",message:`This changes ${affected} reusable setup${affected===1?'':'s'} using this preset.`,detail:"Use Duplicate first to edit a separate copy. Saved Pitlane driving sessions retain their reviewed values.",confirmLabel:"Update shared preset",cancelLabel:"Keep editing"})) return;
       await resource.update(selectedId.value, form.value);
       await reloadList();
       markClean();

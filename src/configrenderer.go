@@ -17,6 +17,7 @@ import (
 )
 
 type ConfigRenderer struct {
+	draft           *DrivingSetup // Unsaved Pitlane preview; the renderer and its rules stay shared.
 	serverCfgIni    *ttemplate.Template
 	entryListIni    *ttemplate.Template
 	serverCfgResult string
@@ -66,22 +67,15 @@ func (cr *ConfigRenderer) timeToSunAngle(timeStr *string) int {
 	return angle
 }
 
-func (cr *ConfigRenderer) writeIni(dir string) {
+func (cr *ConfigRenderer) writeIni(dir string) error {
 	cfgfolder := filepath.Join(dir, "cfg")
-	err := os.MkdirAll(cfgfolder, os.ModePerm)
-	if err != nil {
-		log.Print("Could not create temp folder: ", cfgfolder, err)
+	if err := os.MkdirAll(cfgfolder, 0755); err != nil {
+		return err
 	}
-
-	err = os.WriteFile(filepath.Join(cfgfolder, "server_cfg.ini"), []byte(cr.serverCfgResult), 0644)
-	if err != nil {
-		log.Print("Could not write server_cfg.ini: ", err)
+	if err := os.WriteFile(filepath.Join(cfgfolder, "server_cfg.ini"), []byte(cr.serverCfgResult), 0600); err != nil {
+		return err
 	}
-
-	err = os.WriteFile(filepath.Join(cfgfolder, "entry_list.ini"), []byte(cr.entryListResult), 0644)
-	if err != nil {
-		log.Print("Could not write entry_list.ini: ", err)
-	}
+	return os.WriteFile(filepath.Join(cfgfolder, "entry_list.ini"), []byte(cr.entryListResult), 0600)
 }
 
 func reserveSpectatorSlots(entryCount int, capacity int, spectator bool) (normalSlots int, totalClients int, err error) {
@@ -159,10 +153,20 @@ func entryListData(class UserClass, instance ServerInstance) (EntryListTemplateD
 }
 
 func (cr *ConfigRenderer) renderIni(eventId int, instance ServerInstance) {
+	cr.draft = nil
 	event, err := Dba.selectEvent(eventId)
 	if err != nil {
-		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
+	}
+	owned, err := ownedDrivingSetup(eventId)
+	if err != nil {
+		cr.renderErr = err
+		return
+	}
+	if owned != nil {
+		cr.draft = &owned.Setup
+		event.Name, event.CacheTrackKey, event.CacheTrackConfig, event.RaceLaps = &owned.Name, &owned.Setup.TrackKey, &owned.Setup.TrackConfig, &owned.Setup.RaceLaps
 	}
 	cr.renderEvent(event, instance, nil, "")
 }
@@ -184,9 +188,10 @@ func (cr *ConfigRenderer) renderEvent(event UserEvent, instance ServerInstance, 
 		}
 	}
 
-	tm, err := Dba.selectTimeWeather(*event.TimeId)
+	tm, err := cr.sessionTime(event)
 	if err != nil {
 		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
 	}
 
@@ -195,21 +200,24 @@ func (cr *ConfigRenderer) renderEvent(event UserEvent, instance ServerInstance, 
 		tm.Weathers[0].Graphics = &wk
 	}
 
-	diff, err := Dba.selectDifficulty(*event.DifficultyId)
+	diff, err := cr.sessionDifficulty(event)
 	if err != nil {
 		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
 	}
 
 	cfg, err := Dba.selectConfig()
 	if err != nil {
 		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
 	}
 
-	session, err := Dba.selectSession(*event.SessionId)
+	session, err := cr.sessionPhases(event)
 	if err != nil {
 		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
 	}
 
@@ -217,9 +225,10 @@ func (cr *ConfigRenderer) renderEvent(event UserEvent, instance ServerInstance, 
 	if classOverride != nil {
 		class = *classOverride
 	} else {
-		class, err = Dba.selectClassEntries(*event.ClassId)
+		class, err = cr.sessionGrid(event)
 		if err != nil {
 			log.Print("Database error: ", err)
+			cr.renderErr = err
 			return
 		}
 	}
@@ -240,6 +249,7 @@ func (cr *ConfigRenderer) renderEvent(event UserEvent, instance ServerInstance, 
 	track, err := Dba.selectCacheTrack(*event.CacheTrackKey, *event.CacheTrackConfig)
 	if err != nil {
 		log.Print("Database error: ", err)
+		cr.renderErr = err
 		return
 	}
 

@@ -550,7 +550,7 @@ watch(
     </Card>
 
     <Card v-if="auth.canOperate" title="Plan the next race" class="paddock-plan">
-      <Button class="mb-4 w-full" @click="openNewSetup">
+      <Button v-if="auth.isAdmin" class="mb-4 w-full" @click="openNewSetup">
         <Icon name="plus" :size="15" />
         New race setup
       </Button>

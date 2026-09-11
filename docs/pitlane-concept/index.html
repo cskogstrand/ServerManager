@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Pitlane — a fresh start for Server Manager</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="watch.css">
+  <script src="map-data.js" defer></script>
+  <script src="watch.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-action="skip">Skip to content</a>
+  <div class="study-bar">
+    <span><b>DESIGN STUDY / 01</b><span class="study-description">Interactive concept · simulated data</span></span>
+    <div><button data-action="first-use">Try first use</button><button data-action="notes">The idea</button><button data-action="theme" aria-label="Switch to night theme">Night theme</button><button data-action="reset">Reset demo</button></div>
+  </div>
+  <div id="shell">
+    <header class="app-header">
+      <a class="brand" href="#today" aria-label="Pitlane home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>pitlane<span class="brand-period">.</span></a>
+      <nav aria-label="Main navigation"><a href="#today">Today</a><a href="#sessions">Sessions</a><a href="#streams">Live</a><a href="#drivers">Drivers</a></nav>
+      <div class="header-end"><a class="garage-link" href="#garage">Garage <span aria-hidden="true">↗</span></a><span class="club-avatar" aria-label="Northside driving club">N</span></div>
+    </header>
+    <main id="main" tabindex="-1"></main>
+    <footer class="app-footer"><span><span class="status-dot"></span> Your club, connected.</span><span>Built around the drive. Powered by Assetto Corsa.</span><a href="#garage">Server details ↗</a></footer>
+  </div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
